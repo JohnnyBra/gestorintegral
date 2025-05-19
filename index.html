@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor Escolar Integral</title>
+    <link rel="stylesheet" href="style.css">
+    </head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo-container">
+                <div class="logo-text">GestorPlus</div>
+            </div>
+            <nav id="main-nav-sidebar" style="display:none;"> <ul>
+                    <li><a href="#" data-section="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                    <li><a href="#" data-section="clases"><i class="fas fa-chalkboard-teacher"></i> Clases</a></li>
+                    <li><a href="#" data-section="alumnos"><i class="fas fa-user-graduate"></i> Alumnos</a></li>
+                    <li><a href="#" data-section="excursiones"><i class="fas fa-map-signs"></i> Excursiones</a></li>
+                    <li><a href="#" data-section="participaciones"><i class="fas fa-clipboard-check"></i> Participaciones</a></li>
+                    <li id="nav-admin-usuarios" style="display:none;"> 
+                        <a href="#" data-section="admin-usuarios"><i class="fas fa-users-cog"></i> Admin Usuarios</a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <div class="main-panel">
+            <header class="main-header">
+                <div id="auth-status">
+                    <span id="userInfoDisplay">Por favor, inicia sesión.</span>
+                    <button id="auth_button">Iniciar Sesión</button>
+                    <button id="signout_button" style="display:none;">Cerrar Sesión</button>
+                </div>
+            </header>
+
+            <main class="content-area">
+                <div id="login-section" style="display:none;"> <h3>Iniciar Sesión</h3>
+                    <form id="loginForm">
+                        <div>
+                            <label for="email">Email:</label>
+                            <input type="email" id="email" name="email" required autocomplete="username">
+                        </div>
+                        <div>
+                            <label for="password">Contraseña:</label>
+                            <input type="password" id="password" name="password" required autocomplete="current-password">
+                        </div>
+                        <button type="submit">Entrar</button>
+                        <p id="loginError" class="error-message"></p>
+                    </form>
+                </div>
+
+                <div id="dashboard-section" class="main-section" style="display:none;">
+                    <h2>Dashboard</h2>
+                    <p>Bienvenido/a <span class="current-user-name" style="font-weight:bold;"></span>.</p>
+                    <div id="dashboard-summary-content">
+                        </div>
+                </div>
+
+                <div id="clases-section" class="main-section" style="display:none;">
+                    <h2>Gestión de Clases</h2>
+                    <div id="clases-content">
+                        </div>
+                </div>
+
+                <div id="alumnos-section" class="main-section" style="display:none;">
+                    <h2>Gestión de Alumnos</h2>
+                    <div id="alumnos-content">
+                        </div>
+                </div>
+
+                <div id="excursiones-section" class="main-section" style="display:none;">
+                    <h2>Gestión de Excursiones</h2>
+                    <div id="excursiones-content">
+                        </div>
+                </div>
+
+                <div id="participaciones-section" class="main-section" style="display:none;">
+                    <h2>Gestión de Participaciones en Excursiones</h2>
+                    <div id="participaciones-content">
+                        </div>
+                </div>
+                
+                <div id="admin-usuarios-section" class="main-section" style="display:none;">
+                    <h2>Administración de Usuarios</h2>
+                    <div id="admin-usuarios-content">
+                        </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
