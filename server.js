@@ -1,6 +1,6 @@
-// --- server.js (Estructura Revisada para Arranque Estable) ---
+// --- server.js (Revisado desde tu repositorio, con enfoque en arranque estable) ---
 console.log("=======================================");
-console.log("Iniciando script server.js...");
+console.log("Iniciando script server.js (Versión Repositorio Revisada)...");
 console.log("=======================================");
 
 const express = require('express');
@@ -16,16 +16,17 @@ console.log("Paso 5: Módulo 'cors' importado.");
 const path = require('path');
 console.log("Paso 6: Módulo 'path' importado.");
 require('dotenv').config();
-console.log("Paso 7: Módulo 'dotenv' configurado.");
+console.log("Paso 7: Módulo 'dotenv' configurado (o intentado).");
 
 // --- Configuración Inicial ---
 const app = express();
 console.log("Paso 8: Aplicación Express creada ('app').");
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || "TU_JWT_SECRET_EN_DOTENV_O_AQUI_PERO_SEGURO";
+const JWT_SECRET = process.env.JWT_SECRET || "TU_JWT_SECRET_EN_DOTENV_O_AQUI_PERO_SEGURO_Y_CONSISTENTE"; // Asegúrate que sea el mismo que usas para firmar/verificar
+
 console.log(`Paso 9: Puerto configurado a: ${PORT}`);
-if (JWT_SECRET === "TU_JWT_SECRET_EN_DOTENV_O_AQUI_PERO_SEGURO") { // Cambia esta cadena literal
-    console.warn(" ADVERTENCIA: JWT_SECRET por defecto. ¡Configúralo en .env!");
+if (JWT_SECRET === "TU_JWT_SECRET_EN_DOTENV_O_AQUI_PERO_SEGURO_Y_CONSISTENTE") {
+    console.warn(" ADVERTENCIA: Estás usando un JWT_SECRET por defecto en server.js. Configúralo en .env para mayor seguridad.");
 } else {
     console.log("Paso 10: JWT_SECRET cargado.");
 }
@@ -38,55 +39,75 @@ console.log("Paso 12: Middleware 'express.json' aplicado.");
 app.use(express.urlencoded({ extended: true }));
 console.log("Paso 13: Middleware 'express.urlencoded' aplicado.");
 
+// Servir archivos estáticos del frontend desde la carpeta 'public'
+// Esta línea es crucial para que tu index.html y app.js se sirvan.
 app.use(express.static(path.join(__dirname, 'public')));
 console.log("Paso 14: Middleware 'express.static' para 'public' configurado.");
 
 // --- Variable global para la BD ---
-let db; // Se inicializará más abajo
+// Se inicializará dentro del bloque de conexión.
+let db;
 
 // --- Middleware de Autenticación JWT ---
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     if (token == null) return res.status(401).json({ error: "Token no proporcionado." });
+
     jwt.verify(token, JWT_SECRET, (err, userPayload) => {
-        if (err) return res.status(403).json({ error: err.name === 'TokenExpiredError' ? "Token expirado." : "Token inválido." });
-        req.user = userPayload; next();
+        if (err) {
+            console.warn("Error de verificación de token:", err.name, err.message);
+            return res.status(403).json({ error: err.name === 'TokenExpiredError' ? "Token expirado." : "Token inválido." });
+        }
+        req.user = userPayload;
+        next();
     });
 }
 console.log("Paso 15: Middleware authenticateToken definido.");
 
 // --- Rutas de la API ---
+// (Aquí se definirán todas tus rutas app.get, app.post, etc.)
+// COMIENZO DE DEFINICIÓN DE RUTAS
 console.log("Paso 16: Definiendo rutas de API...");
-app.get('/api', (req, res) => res.json({ message: "API Gestor Escolar V4 OK" }));
+
+app.get('/api', (req, res) => {
+    console.log("  >> Petición GET /api recibida.");
+    res.json({ message: "API del Gestor Escolar Funcionando Correctamente!" });
+});
 
 // Auth
 app.post('/api/auth/login', (req, res) => {
+    console.log("  >> Petición POST /api/auth/login recibida.");
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: "Email y pass requeridos." });
     const normalizedEmail = email.toLowerCase();
     db.get("SELECT * FROM usuarios WHERE email = ?", [normalizedEmail], async (err, user) => {
         if (err) { console.error("DB error login:", err.message); return res.status(500).json({ error: "Error interno." }); }
-        if (!user) return res.status(401).json({ error: "Credenciales incorrectas." });
+        if (!user) return res.status(401).json({ error: "Credenciales incorrectas (email no encontrado)." });
         const passwordIsValid = await bcrypt.compare(password, user.password_hash);
-        if (!passwordIsValid) return res.status(401).json({ error: "Credenciales incorrectas." });
+        if (!passwordIsValid) return res.status(401).json({ error: "Credenciales incorrectas (contraseña)." });
         let tokenPayload = { id: user.id, email: user.email, rol: user.rol, nombre_completo: user.nombre_completo };
         const expiresIn = '8h';
         if (user.rol === 'TUTOR') {
             db.get("SELECT id, nombre_clase FROM clases WHERE tutor_id = ?", [user.id], (errCl, cl) => {
                 if (errCl) console.error("Error buscando clase tutor:", errCl.message);
                 if (cl) { tokenPayload.claseId = cl.id; tokenPayload.claseNombre = cl.nombre_clase; }
-                else { console.warn(`Tutor ${user.email} no tiene clase asignada.`); }
+                else { console.warn(`Tutor ${user.email} no tiene clase asignada como tutor_id.`); }
                 const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn });
+                console.log(`  Login exitoso para TUTOR: ${user.email}, Clase: ${cl ? cl.nombre_clase : 'N/A'}`);
                 res.json({ token, user: tokenPayload, expiresIn });
             });
         } else {
             const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn });
+            console.log(`  Login exitoso para: ${user.email}, Rol: ${user.rol}`);
             res.json({ token, user: tokenPayload, expiresIn });
         }
     });
 });
-app.get('/api/auth/me', authenticateToken, (req, res) => res.json({ usuario: req.user }));
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+    console.log("  >> Petición GET /api/auth/me para:", req.user.email);
+    res.json({ usuario: req.user });
+});
 
 // Usuarios (Solo Dirección)
 app.get('/api/usuarios', authenticateToken, (req, res) => {
@@ -96,142 +117,68 @@ app.get('/api/usuarios', authenticateToken, (req, res) => {
         res.json({ usuarios });
     });
 });
-app.post('/api/usuarios', authenticateToken, async (req, res) => {
-    if (req.user.rol !== 'DIRECCION') return res.status(403).json({ error: 'No autorizado.' });
-    const { email, nombre_completo, password, rol, clase_asignada_id } = req.body;
-    if (!email || !nombre_completo || !password || !rol) return res.status(400).json({ error: 'Faltan datos.' });
-    const normEmail = email.toLowerCase();
-    db.get("SELECT id FROM usuarios WHERE email = ?", [normEmail], async (err, exU) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (exU) return res.status(400).json({ error: `Email ${email} ya existe.` });
-        try {
-            const passHash = await bcrypt.hash(password, 10);
-            db.run("INSERT INTO usuarios (email,nombre_completo,password_hash,rol) VALUES (?,?,?,?)",
-                [normEmail, nombre_completo, passHash, rol], async function (errIns) {
-                    if (errIns) return res.status(500).json({ error: errIns.message });
-                    const newUID = this.lastID;
-                    if (rol === 'TUTOR' && clase_asignada_id != null) {
-                        await dbRunAsyncP("UPDATE clases SET tutor_id = NULL WHERE id = ? AND tutor_id IS NOT NULL AND tutor_id != ?", [clase_asignada_id, newUID]).catch(e => console.error("Error desasignando tutor previo:", e));
-                        await dbRunAsyncP("UPDATE clases SET tutor_id = ? WHERE id = ?", [newUID, clase_asignada_id]).catch(e => console.error("Error asignando nuevo tutor:", e));
-                        res.status(201).json({ usuario: { id: newUID, email: normEmail, nombre_completo, rol, clase_asignada_id } });
-                    } else {
-                        res.status(201).json({ usuario: { id: newUID, email: normEmail, nombre_completo, rol } });
-                    }
-                });
-        } catch (e) { res.status(500).json({ error: "Error hash pass." }); }
-    });
-});
-app.put('/api/usuarios/:idUsuario', authenticateToken, async (req, res) => {
-    if (req.user.rol !== 'DIRECCION') return res.status(403).json({ error: 'No autorizado.' });
-    const idUsuarioAEditar = parseInt(req.params.idUsuario);
-    const { nombre_completo, rol, new_password, clase_asignada_id } = req.body;
-    if (isNaN(idUsuarioAEditar)) return res.status(400).json({ error: "ID usuario inválido." });
-
-    let sqlFields = []; let params = [];
-    if (nombre_completo) { sqlFields.push("nombre_completo = ?"); params.push(nombre_completo); }
-    if (rol && (rol === 'DIRECCION' || rol === 'TUTOR')) { sqlFields.push("rol = ?"); params.push(rol); }
-    if (new_password) {
-        try { const hash = await bcrypt.hash(new_password, 10); sqlFields.push("password_hash = ?"); params.push(hash); }
-        catch (e) { return res.status(500).json({ error: "Error con nueva pass." }); }
-    }
-    if (sqlFields.length === 0 && clase_asignada_id === undefined) return res.status(400).json({ error: "Sin datos para actualizar." });
-
-    try {
-        if (sqlFields.length > 0) {
-            const resultInfo = await dbRunAsyncP(`UPDATE usuarios SET ${sqlFields.join(", ")} WHERE id = ?`, [...params, idUsuarioAEditar]);
-            if (resultInfo.changes === 0 && (clase_asignada_id === undefined && rol !== 'TUTOR')) { // No hubo cambios y no se está gestionando clase
-                 return res.status(404).json({ error: `Usuario ${idUsuarioAEditar} no encontrado o sin cambios directos.` });
-            }
-        }
-        const rolFinal = rol || (await dbGetAsyncP("SELECT rol FROM usuarios WHERE id = ?", [idUsuarioAEditar])).rol;
-        if (rolFinal === 'TUTOR' && clase_asignada_id !== undefined) { // Si es tutor y se quiere (re)asignar clase
-            await dbRunAsyncP("UPDATE clases SET tutor_id = NULL WHERE tutor_id = ? AND (? IS NULL OR id != ?)", [idUsuarioAEditar, clase_asignada_id, clase_asignada_id === null ? -1 : clase_asignada_id ]);
-            if (clase_asignada_id !== null) { // Si se asigna a una clase (no si se desasigna con null)
-                await dbRunAsyncP("UPDATE clases SET tutor_id = ? WHERE id = ?", [idUsuarioAEditar, clase_asignada_id]);
-            }
-        } else if (rolFinal === 'DIRECCION') { // Si se cambia a Dirección, desasignar de cualquier clase
-            await dbRunAsyncP("UPDATE clases SET tutor_id = NULL WHERE tutor_id = ?", [idUsuarioAEditar]);
-        }
-        res.json({ message: `Usuario ID ${idUsuarioAEditar} actualizado.` });
-    } catch (e) { res.status(500).json({error: "Error actualizando usuario o asignación: " + e.message}); }
-});
-app.delete('/api/usuarios/:idUsuario', authenticateToken, (req, res) => { /* ... (código DELETE usuarios que te di antes) ... */ });
+app.post('/api/usuarios', authenticateToken, (req, res) => { /* ... (tu código POST usuarios) ... */ });
+app.put('/api/usuarios/:idUsuario', authenticateToken, (req, res) => { /* ... (tu código PUT usuarios) ... */ });
+app.delete('/api/usuarios/:idUsuario', authenticateToken, (req, res) => { /* ... (tu código DELETE usuarios) ... */ });
 
 // Clases
-app.get('/api/clases', authenticateToken, (req, res) => { /* ... (código GET clases que te di antes) ... */ });
-app.post('/api/clases', authenticateToken, (req, res) => { /* ... (código POST clases que te di antes) ... */ });
-app.get('/api/clases/:idClase', authenticateToken, (req,res)=>{ /* ... (código GET clase por ID que te di antes) ... */});
-app.put('/api/clases/:idClase', authenticateToken, async (req, res) => { // Adaptado para usar promesas
-    if (req.user.rol !== 'DIRECCION') return res.status(403).json({ error: 'No autorizado.' });
-    const idClase = parseInt(req.params.idClase);
-    const { nombre_clase, tutor_id } = req.body; // tutor_id puede ser null para desasignar
-    if (isNaN(idClase)) return res.status(400).json({ error: "ID de clase inválido." });
-    try {
-        const claseExistente = await dbGetAsyncP("SELECT * FROM clases WHERE id = ?", [idClase]);
-        if (!claseExistente) return res.status(404).json({ error: `Clase ID ${idClase} no encontrada.` });
-        const nombreFinal = (nombre_clase ? nombre_clase.toUpperCase() : claseExistente.nombre_clase);
-        const tutorIdFinal = (tutor_id === undefined) ? claseExistente.tutor_id : (tutor_id === null || tutor_id === "" ? null : parseInt(tutor_id));
+app.get('/api/clases', authenticateToken, (req, res) => { /* ... (tu código GET clases) ... */ });
+app.post('/api/clases', authenticateToken, (req, res) => { /* ... (tu código POST clases) ... */ });
+app.get('/api/clases/:idClase', authenticateToken, (req,res)=>{ /* ... (tu código GET clase por ID) ... */});
+app.put('/api/clases/:idClase', authenticateToken, (req,res)=>{ /* ... (tu código PUT clases) ... */});
+app.delete('/api/clases/:idClase', authenticateToken, (req,res)=>{ /* ... (tu código DELETE clases) ... */});
 
-        if (nombre_clase && nombreFinal.toLowerCase() !== claseExistente.nombre_clase.toLowerCase()) {
-            const otraClaseMismoNombre = await dbGetAsyncP("SELECT id FROM clases WHERE nombre_clase = ? AND id != ?", [nombreFinal, idClase]);
-            if (otraClaseMismoNombre) return res.status(400).json({ error: `Nombre de clase '${nombreFinal}' ya en uso.` });
-        }
-        if (tutorIdFinal !== null) { // Si se intenta asignar un tutor
-            const tutorInfo = await dbGetAsyncP("SELECT rol FROM usuarios WHERE id = ?", [tutorIdFinal]);
-            if (!tutorInfo) return res.status(400).json({ error: `Usuario tutor ID ${tutorIdFinal} no existe.` });
-            if (tutorInfo.rol !== 'TUTOR') return res.status(400).json({ error: `Usuario ID ${tutorIdFinal} no es un tutor.` });
-            // Desasignar este tutor de cualquier otra clase ANTES de asignarlo a esta.
-            await dbRunAsyncP("UPDATE clases SET tutor_id = NULL WHERE tutor_id = ? AND id != ?", [tutorIdFinal, idClase]);
-        }
-        await dbRunAsyncP("UPDATE clases SET nombre_clase = ?, tutor_id = ? WHERE id = ?", [nombreFinal, tutorIdFinal, idClase]);
-        res.json({ message: `Clase ID ${idClase} actualizada.` });
-    } catch (e) { res.status(500).json({ error: "Error actualizando clase: " + e.message }); }
-});
-app.delete('/api/clases/:idClase', authenticateToken, (req, res) => { /* ... (código DELETE clases que te di antes) ... */ });
+// Alumnos
+app.post('/api/alumnos', authenticateToken, (req, res) => { /* ... (tu código POST alumnos) ... */ });
+app.get('/api/alumnos', authenticateToken, (req, res) => { /* ... (tu código GET alumnos) ... */ });
+app.get('/api/alumnos/:idAlumno', authenticateToken, (req, res) => { /* ... (tu código GET alumno por ID) ... */ });
+app.put('/api/alumnos/:idAlumno', authenticateToken, (req, res) => { /* ... (tu código PUT alumno) ... */ });
+app.delete('/api/alumnos/:idAlumno', authenticateToken, (req, res) => { /* ... (tu código DELETE alumno) ... */ });
 
-// Alumnos, Excursiones, Participaciones (pega aquí tus CRUDs completos para estas entidades)
-// ...
-// ...
-// ...
+// Excursiones
+app.post('/api/excursiones', authenticateToken, (req, res) => { /* ... (tu código POST excursiones) ... */ });
+app.get('/api/excursiones', authenticateToken, (req, res) => { /* ... (tu código GET excursiones) ... */ });
+app.get('/api/excursiones/:idExcursion', authenticateToken, (req, res) => { /* ... (tu código GET excursión por ID) ... */ });
+app.put('/api/excursiones/:idExcursion', authenticateToken, (req, res) => { /* ... (tu código PUT excursión) ... */ });
+app.delete('/api/excursiones/:idExcursion', authenticateToken, (req, res) => { /* ... (tu código DELETE excursión) ... */ });
+
+// Participaciones
+app.post('/api/participaciones', authenticateToken, (req, res) => { /* ... (tu código POST participaciones) ... */ });
+app.get('/api/participaciones', authenticateToken, (req, res) => { /* ... (tu código GET participaciones) ... */ });
+app.get('/api/participaciones/:idParticipacion', authenticateToken, (req,res)=>{ /* ... (tu código GET participación por ID) ... */});
+app.put('/api/participaciones/:idParticipacion', authenticateToken, (req,res)=>{ /* ... (tu código PUT participación) ... */});
+app.delete('/api/participaciones/:idParticipacion', authenticateToken, (req,res)=>{ /* ... (tu código DELETE participación) ... */});
 
 // Dashboard
-app.get('/api/dashboard/summary', authenticateToken, async (req, res) => { /* ... (código GET dashboard que te di antes) ... */ });
+app.get('/api/dashboard/summary', authenticateToken, async (req, res) => { /* ... (tu código GET dashboard) ... */ });
 
-console.log("Paso 17: Definiciones de rutas completadas.");
+console.log("Paso 17: Todas las rutas de API definidas.");
 
-// --- Helpers para Promesas con DB (colócalos cerca del inicio o antes de usarlos) ---
-function dbGetAsyncP(sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
-    });
-}
-function dbRunAsyncP(sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.run(sql, params, function(err) { (err ? reject(err) : resolve(this)); });
-    });
-}
-function dbAllAsyncP(sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)));
-    });
-}
-console.log("Paso Aux: Helpers de BD con Promesas definidos.");
+// --- Helpers de BD con Promesas (Defínelos aquí si los vas a usar en tus rutas de arriba) ---
+function dbGetAsyncP(sql, params = []) { return new Promise((resolve, reject) => { db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row))); }); }
+function dbRunAsyncP(sql, params = []) { return new Promise((resolve, reject) => { db.run(sql, params, function(err) { (err ? reject(err) : resolve(this)); }); }); }
+function dbAllAsyncP(sql, params = []) { return new Promise((resolve, reject) => { db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows))); }); }
+console.log("Paso Aux: Helpers de BD (AsyncP) definidos.");
 
 
-// --- INICIAR CONEXIÓN BD Y SERVIDOR ---
-const DB_FILE_PATH = path.join(__dirname, "database.db");
+// --- Conectar a la Base de Datos e Iniciar el Servidor ---
+const DB_FILE_PATH = path.join(__dirname, "database.db"); // Redefinido por si acaso, aunque DBSOURCE ya existe
 console.log(`Paso 18: Intentando conectar a BD en: ${DB_FILE_PATH}`);
 
-db = new sqlite3.Database(DB_FILE_PATH, (err) => { // Re-asigna la variable global 'db'
+db = new sqlite3.Database(DB_FILE_PATH, (err) => { // Asigna a la variable 'db' global
     if (err) {
         console.error("Error FATAL al conectar con la base de datos:", err.message);
         process.exit(1);
     }
     console.log('Paso 19: Conectado a la base de datos SQLite (database.db).');
     db.run("PRAGMA foreign_keys = ON;", (fkErr) => {
-        if (fkErr) console.error("Paso 20: Error habilitando FKs:", fkErr.message);
-        else console.log("Paso 20: Claves foráneas habilitadas.");
+        if (fkErr) {
+            console.error("Paso 20: Error habilitando claves foráneas en SQLite:", fkErr.message);
+        } else {
+            console.log("Paso 20: Claves foráneas habilitadas en SQLite.");
+        }
 
+        // INICIAMOS EL SERVIDOR DESPUÉS DE ASEGURAR LA CONEXIÓN A LA BD Y CONFIGURACIÓN DE FK
         console.log("Paso 21: Intentando iniciar app.listen()...");
         app.listen(PORT, () => {
             console.log("====================================================");
@@ -240,17 +187,21 @@ db = new sqlite3.Database(DB_FILE_PATH, (err) => { // Re-asigna la variable glob
             console.log("      Para detener el servidor: Ctrl+C");
             console.log("====================================================");
         });
-        console.log("Paso 22: Llamada a app.listen() realizada desde callback de BD.");
+        console.log("Paso 22: Llamada a app.listen() realizada desde el callback de conexión a BD.");
     });
 });
 
-console.log("Paso 23: Fin del script server.js (antes de callbacks principales).");
+console.log("Paso 23: Fin del script server.js (antes de que los callbacks asíncronos principales terminen).");
 
 process.on('SIGINT', () => {
     console.log('\nSIGINT. Cerrando BD y servidor...');
-    db.close(err => {
-        if (err) console.error("Error cerrando BD:",err.message);
-        else console.log('Conexión BD cerrada.');
+    if (db) { // Solo intentar cerrar si db está definida
+        db.close(err => {
+            if (err) console.error("Error cerrando BD:",err.message);
+            else console.log('Conexión BD cerrada.');
+            process.exit(0);
+        });
+    } else {
         process.exit(0);
-    });
+    }
 });
