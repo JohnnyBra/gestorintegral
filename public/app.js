@@ -284,37 +284,78 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Dashboard --- (Como lo tenías, asegúrate que usa `currentUser` para el rol)
-    async function loadDashboardData() {
-        if (!dashboardSummaryContentDiv || !currentToken) return;
-        dashboardSummaryContentDiv.innerHTML = "<p>Cargando resumen...</p>";
-        try {
-            const data = await apiFetch('/dashboard/summary');
-            let html = '<h4>Resumen General</h4>';
-            if (currentUser.rol === 'DIRECCION') {
-                html += `<ul><li>Total Clases: ${data.totalClases ?? 'N/D'}</li><li>Total Alumnos: ${data.totalAlumnos ?? 'N/D'}</li><li>Total Excursiones: ${data.totalExcursiones ?? 'N/D'}</li></ul>`;
-                if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
-                    html += '<h5>Próximas Excursiones (Global):</h5><ul>';
-                    data.proximasExcursiones.forEach(ex => html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'})</li>`);
-                    html += '</ul>';
-                } else { html += '<p>No hay próximas excursiones generales.</p>';}
-            }
-            if (currentUser.rol === 'TUTOR') {
-                 html += `<ul><li>Tu Clase: ${currentUser.claseNombre || 'No asignada'}</li><li>Nº Alumnos en tu Clase: ${data.infoSuClase ? data.infoSuClase.numAlumnos : 'N/D'}</li></ul>`;
-                if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
-                    html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
-                    data.proximasExcursiones.forEach(ex => html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'}) ${ex.para_clase_id === currentUser.claseId ? '(Específica tuya)' : (ex.para_clase_id === null ? '(Global)' : '(Otra clase)')}</li>`);
-                    html += '</ul>';
-                } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
-                if (data.resumenProximaExcursionSuClase) {
-                    const r = data.resumenProximaExcursionSuClase;
-                    html += `<h5>Resumen Próxima Excursión (${r.nombreExcursion||'N/A'} - ${r.fecha||'N/A'}):</h5>
-                             <ul><li>Inscritos: ${r.totalInscritos??0}</li><li>Autoriz. Sí: ${r.autorizadosSi??0} | No: ${r.autorizadosNo??0}</li><li>Pagos Sí: ${r.pagadoSi??0} | Parcial: ${r.pagadoParcial??0} | No: ${r.pagadoNo??0}</li></ul>`;
-                } else if (data.proximasExcursiones && data.proximasExcursiones.length > 0) { html += `<p>Sin datos de participación para la próxima excursión.</p>`; }
-            }
-            dashboardSummaryContentDiv.innerHTML = html;
-        } catch (error) { dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error cargando datos del dashboard: ${error.message}</p>`; }
+ async function loadDashboardData() {
+    if (!dashboardSummaryContentDiv) {
+        console.error("Elemento dashboardSummaryContentDiv no encontrado.");
+        return;
+    }
+    if (!currentToken) {
+        console.warn("loadDashboardData: No hay token, no se puede cargar.");
+        // Opcional: podrías llamar a handleLogout() aquí si no debería pasar
+        dashboardSummaryContentDiv.innerHTML = '<p class="error-message">Error de sesión. Por favor, inicia sesión de nuevo.</p>';
+        return;
     }
 
+    dashboardSummaryContentDiv.innerHTML = "<p>Cargando resumen del dashboard...</p>"; // Mensaje de carga
+    console.log("[loadDashboardData] Iniciando carga de datos del dashboard...");
+
+    try {
+        const data = await apiFetch('/dashboard/summary'); // Llama a GET /api/dashboard/summary
+        console.log("[loadDashboardData] Datos recibidos del backend:", data);
+
+        if (!data) {
+            console.warn("[loadDashboardData] No se recibieron datos (null o undefined) del backend.");
+            dashboardSummaryContentDiv.innerHTML = `<p class="error-message">No se pudo obtener el resumen del dashboard del servidor.</p>`;
+            return;
+        }
+
+        let html = '<h4>Resumen General</h4>';
+        // Renderizar datos de Dirección
+        if (currentUser && currentUser.rol === 'DIRECCION') {
+            html += `<ul>
+                <li>Total Clases: ${data.totalClases ?? 'N/D'}</li>
+                <li>Total Alumnos Global: ${data.totalAlumnos ?? 'N/D'}</li>
+                <li>Total Excursiones: ${data.totalExcursiones ?? 'N/D'}</li>
+            </ul>`;
+            if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
+                html += '<h5>Próximas Excursiones (Global):</h5><ul>';
+                data.proximasExcursiones.forEach(ex => html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'})</li>`);
+                html += '</ul>';
+            } else { html += '<p>No hay próximas excursiones generales.</p>';}
+        }
+        // Renderizar datos de Tutor
+        if (currentUser && currentUser.rol === 'TUTOR') {
+             html += `<ul>
+                <li>Tu Clase: ${currentUser.claseNombre || 'No asignada'}</li>
+                <li>Nº Alumnos en tu Clase: ${data.infoSuClase ? data.infoSuClase.numAlumnos : 'N/D'}</li>
+            </ul>`;
+            if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
+                html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
+                data.proximasExcursiones.forEach(ex => html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'}) ${ex.para_clase_id === currentUser.claseId ? '(Específica tuya)' : (ex.para_clase_id === null ? '(Global)' : '(Otra clase)')}</li>`);
+                html += '</ul>';
+            } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
+
+            if (data.resumenProximaExcursionSuClase) {
+                const r = data.resumenProximaExcursionSuClase;
+                html += `<h5>Resumen Próxima Excursión (${r.nombreExcursion||'N/A'} - ${r.fecha||'N/A'}):</h5>
+                         <ul>
+                            <li>Inscritos: ${r.totalInscritos ?? 0}</li>
+                            <li>Autoriz. Sí: ${r.autorizadosSi ?? 0} | No: ${r.autorizadosNo ?? 0}</li>
+                            <li>Pagos Sí: ${r.pagadoSi ?? 0} | Parcial: ${r.pagadoParcial ?? 0} | No: ${r.pagadoNo ?? 0}</li>
+                         </ul>`;
+            } else if (data.proximasExcursiones && data.proximasExcursiones.length > 0) { 
+                 html += `<p>Aún no hay datos de participación para la excursión más próxima de tu clase.</p>`;
+            } else {
+                // No hay próximas excursiones para el tutor, no se muestra nada más de resumen.
+            }
+        }
+        console.log("[loadDashboardData] HTML generado para el dashboard:", html.substring(0, 200) + "..."); // Loguear una parte del HTML
+        dashboardSummaryContentDiv.innerHTML = html;
+    } catch (error) {
+        console.error("[loadDashboardData] Error capturado al cargar datos del dashboard:", error.message);
+        dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar los datos del dashboard: ${error.message}</p>`;
+    }
+}
     // --- Gestión de Clases --- (Renderizado y lógica de formularios completa)
     async function loadClases() {
         if (!clasesContentDiv || !currentToken) return;
