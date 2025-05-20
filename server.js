@@ -1,4 +1,3 @@
-//cambios
 // --- server.js (Versión Muy Completa) ---
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
