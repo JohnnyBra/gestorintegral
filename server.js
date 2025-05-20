@@ -87,4 +87,81 @@ app.post('/api/auth/login', (req, res) => {
         const expiresIn = '8h';
         if (user.rol === 'TUTOR') {
             db.get("SELECT id, nombre_clase FROM clases WHERE tutor_id = ?", [user.id], (errCl, cl) => {
-                if (errCl) { console.error("Error buscando clase tutor:", errCl.message); /*
+                if (errCl) { console.error("Error buscando clase tutor:", errCl.message); /* Sigue sin info de clase */ }
+                if (cl) { tokenPayload.claseId = cl.id; tokenPayload.claseNombre = cl.nombre_clase; }
+                else { console.warn(`Tutor ${user.email} no tiene clase asignada como tutor_id.`); }
+                const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn });
+                console.log(`  Login exitoso para TUTOR: ${user.email}, Clase: ${cl ? cl.nombre_clase : 'N/A'}`);
+                res.json({ token, user: tokenPayload, expiresIn });
+            });
+        } else {
+            const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn });
+            console.log(`  Login exitoso para: ${user.email}, Rol: ${user.rol}`);
+            res.json({ token, user: tokenPayload, expiresIn });
+        }
+    });
+});
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+    console.log("  >> Petición GET /api/auth/me para:", req.user.email);
+    res.json({ usuario: req.user });
+});
+
+// Usuarios (Solo Dirección)
+// (Aquí irían tus endpoints CRUD para /api/usuarios como los tenías, con sus propios console.log internos)
+// Ejemplo de uno:
+app.get('/api/usuarios', authenticateToken, (req, res) => {
+    console.log("  >> Petición GET /api/usuarios");
+    if (req.user.rol !== 'DIRECCION') return res.status(403).json({ error: 'No autorizado.' });
+    db.all("SELECT id, email, nombre_completo, rol FROM usuarios ORDER BY nombre_completo", [], (err, u) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ usuarios: u });
+    });
+});
+// ... (Asegúrate de que TODOS tus endpoints POST, PUT, DELETE, GET para Usuarios, Clases, Alumnos, etc. estén aquí)
+
+console.log("Paso 17: Todas las definiciones de rutas de API completadas (o deberían estarlo).");
+
+// --- Conectar a la Base de Datos e Iniciar el Servidor ---
+const DBSOURCE = path.join(__dirname, "database.db");
+console.log(`Paso 18: Intentando conectar a la base de datos en: ${DBSOURCE}`);
+let db = new sqlite3.Database(DBSOURCE, (err) => { // Asegúrate que 'db' se define aquí si no está ya global
+    if (err) {
+        console.error("Error FATAL al conectar con la base de datos:", err.message);
+        process.exit(1);
+    }
+    console.log('Paso 19: Conectado a la base de datos SQLite (database.db).');
+    db.run("PRAGMA foreign_keys = ON;", (fkErr) => {
+        if (fkErr) {
+            console.error("Paso 20: Error habilitando claves foráneas en SQLite:", fkErr.message);
+        } else {
+            console.log("Paso 20: Claves foráneas habilitadas en SQLite.");
+        }
+
+        // INICIAMOS EL SERVIDOR AQUÍ, DESPUÉS DE CONECTAR A LA BD
+        console.log("Paso 21: Intentando iniciar app.listen()...");
+        app.listen(PORT, () => {
+            console.log("====================================================");
+            console.log(`      Servidor backend CORRIENDO en http://localhost:${PORT}`);
+            console.log(`      Endpoints API disponibles en http://localhost:${PORT}/api`);
+            console.log("      Para detener el servidor: Ctrl+C");
+            console.log("====================================================");
+        });
+        console.log("Paso 22: Llamada a app.listen() realizada desde el callback de conexión a BD.");
+    });
+});
+
+console.log("Paso 23: Fin del script server.js (antes de que los callbacks asíncronos principales terminen).");
+
+// Manejo de cierre de la base de datos cuando el servidor se detiene
+process.on('SIGINT', () => {
+    console.log('\nSeñal SIGINT recibida. Cerrando base de datos y servidor...');
+    db.close((err) => {
+        if (err) {
+            console.error("Error al cerrar la conexión a la BD:", err.message);
+        } else {
+            console.log('Conexión a la base de datos cerrada limpiamente.');
+        }
+        console.log("Servidor detenido.");
+        process.exit(0);
+    });
+});
