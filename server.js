@@ -1,51 +1,37 @@
-// --- server.js (Revisado desde tu repositorio, con enfoque en arranque estable) ---
-console.log("=======================================");
-console.log("Iniciando script server.js (Versión Repositorio Revisada)...");
-console.log("=======================================");
+// --- server.js (Enfoque en Arranque Estable y Completitud) ---
+console.log("==================================================");
+console.log(" Iniciando server.js (Versión para Arranque Estable)");
+console.log("==================================================");
 
+// --- Imports ---
 const express = require('express');
-console.log("Paso 1: Módulo 'express' importado.");
 const sqlite3 = require('sqlite3').verbose();
-console.log("Paso 2: Módulo 'sqlite3' importado.");
 const bcrypt = require('bcryptjs');
-console.log("Paso 3: Módulo 'bcryptjs' importado.");
 const jwt = require('jsonwebtoken');
-console.log("Paso 4: Módulo 'jsonwebtoken' importado.");
 const cors = require('cors');
-console.log("Paso 5: Módulo 'cors' importado.");
 const path = require('path');
-console.log("Paso 6: Módulo 'path' importado.");
-require('dotenv').config();
-console.log("Paso 7: Módulo 'dotenv' configurado (o intentado).");
+require('dotenv').config(); // Carga variables desde el archivo .env
 
-// --- Configuración Inicial ---
+console.log(" Paso 1: Módulos principales importados.");
+
+// --- Configuración Inicial de Express y Constantes ---
 const app = express();
-console.log("Paso 8: Aplicación Express creada ('app').");
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || "TU_JWT_SECRET_EN_DOTENV_O_AQUI_PERO_SEGURO_Y_CONSISTENTE"; // Asegúrate que sea el mismo que usas para firmar/verificar
+const JWT_SECRET = process.env.JWT_SECRET || "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV";
 
-console.log(`Paso 9: Puerto configurado a: ${PORT}`);
-if (JWT_SECRET === "TU_JWT_SECRET_EN_DOTENV_O_AQUI_PERO_SEGURO_Y_CONSISTENTE") {
-    console.warn(" ADVERTENCIA: Estás usando un JWT_SECRET por defecto en server.js. Configúralo en .env para mayor seguridad.");
-} else {
-    console.log("Paso 10: JWT_SECRET cargado.");
+if (JWT_SECRET === "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV") {
+    console.warn(" ADVERTENCIA CRÍTICA: Estás usando un JWT_SECRET por defecto. ¡DEBES CAMBIARLO!");
 }
+console.log(` Paso 2: Express app creada. Puerto: ${PORT}. JWT_SECRET ${JWT_SECRET === "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV" ? "es el por defecto (INSEGURO)" : "cargado (esperemos que seguro)"}.`);
 
-// --- Middlewares Globales ---
+// --- Middlewares Globales de Express ---
 app.use(cors());
-console.log("Paso 11: Middleware 'cors' aplicado.");
 app.use(express.json());
-console.log("Paso 12: Middleware 'express.json' aplicado.");
 app.use(express.urlencoded({ extended: true }));
-console.log("Paso 13: Middleware 'express.urlencoded' aplicado.");
+app.use(express.static(path.join(__dirname, 'public'))); // Para servir tu frontend
+console.log(" Paso 3: Middlewares globales (cors, json, urlencoded, static) configurados.");
 
-// Servir archivos estáticos del frontend desde la carpeta 'public'
-// Esta línea es crucial para que tu index.html y app.js se sirvan.
-app.use(express.static(path.join(__dirname, 'public')));
-console.log("Paso 14: Middleware 'express.static' para 'public' configurado.");
-
-// --- Variable global para la BD ---
-// Se inicializará dentro del bloque de conexión.
+// --- Variable para la instancia de la Base de Datos (se inicializará después) ---
 let db;
 
 // --- Middleware de Autenticación JWT ---
@@ -56,129 +42,146 @@ function authenticateToken(req, res, next) {
 
     jwt.verify(token, JWT_SECRET, (err, userPayload) => {
         if (err) {
-            console.warn("Error de verificación de token:", err.name, err.message);
+            console.warn(`[AuthMiddleware] Token inválido o expirado: ${err.name}`);
             return res.status(403).json({ error: err.name === 'TokenExpiredError' ? "Token expirado." : "Token inválido." });
         }
         req.user = userPayload;
+        // console.log(`[AuthMiddleware] Usuario autenticado: ${req.user.email} (Rol: ${req.user.rol})`);
         next();
     });
 }
-console.log("Paso 15: Middleware authenticateToken definido.");
+console.log(" Paso 4: Middleware authenticateToken definido.");
 
-// --- Rutas de la API ---
-// (Aquí se definirán todas tus rutas app.get, app.post, etc.)
-// COMIENZO DE DEFINICIÓN DE RUTAS
-console.log("Paso 16: Definiendo rutas de API...");
+// --- Helpers de Base de Datos con Promesas (para un código más limpio en los endpoints) ---
+function dbGetAsync(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        if (!db) return reject(new Error("La base de datos no está inicializada."));
+        db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
+    });
+}
+function dbRunAsync(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        if (!db) return reject(new Error("La base de datos no está inicializada."));
+        db.run(sql, params, function(err) { (err ? reject(err) : resolve(this)); }); // Usar function() para 'this'
+    });
+}
+function dbAllAsync(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        if (!db) return reject(new Error("La base de datos no está inicializada."));
+        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)));
+    });
+}
+console.log(" Paso 5: Helpers de BD con Promesas definidos.");
+
+// --- Definición de Rutas de la API ---
+console.log(" Paso 6: Definiendo rutas de API...");
 
 app.get('/api', (req, res) => {
-    console.log("  >> Petición GET /api recibida.");
-    res.json({ message: "API del Gestor Escolar Funcionando Correctamente!" });
+    console.log("  Ruta: GET /api solicitada.");
+    res.json({ message: "API del Gestor Escolar v5 - ¡Funcionando!" });
 });
 
-// Auth
-app.post('/api/auth/login', (req, res) => {
-    console.log("  >> Petición POST /api/auth/login recibida.");
+// --- Autenticación ---
+app.post('/api/auth/login', async (req, res) => {
+    console.log("  Ruta: POST /api/auth/login, Body:", req.body);
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email y pass requeridos." });
-    const normalizedEmail = email.toLowerCase();
-    db.get("SELECT * FROM usuarios WHERE email = ?", [normalizedEmail], async (err, user) => {
-        if (err) { console.error("DB error login:", err.message); return res.status(500).json({ error: "Error interno." }); }
-        if (!user) return res.status(401).json({ error: "Credenciales incorrectas (email no encontrado)." });
+    if (!email || !password) return res.status(400).json({ error: "Email y contraseña son requeridos." });
+    try {
+        const normalizedEmail = email.toLowerCase();
+        const user = await dbGetAsync("SELECT * FROM usuarios WHERE email = ?", [normalizedEmail]);
+        if (!user) return res.status(401).json({ error: "Credenciales incorrectas (usuario)." });
         const passwordIsValid = await bcrypt.compare(password, user.password_hash);
         if (!passwordIsValid) return res.status(401).json({ error: "Credenciales incorrectas (contraseña)." });
+        
         let tokenPayload = { id: user.id, email: user.email, rol: user.rol, nombre_completo: user.nombre_completo };
         const expiresIn = '8h';
+
         if (user.rol === 'TUTOR') {
-            db.get("SELECT id, nombre_clase FROM clases WHERE tutor_id = ?", [user.id], (errCl, cl) => {
-                if (errCl) console.error("Error buscando clase tutor:", errCl.message);
-                if (cl) { tokenPayload.claseId = cl.id; tokenPayload.claseNombre = cl.nombre_clase; }
-                else { console.warn(`Tutor ${user.email} no tiene clase asignada como tutor_id.`); }
-                const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn });
-                console.log(`  Login exitoso para TUTOR: ${user.email}, Clase: ${cl ? cl.nombre_clase : 'N/A'}`);
-                res.json({ token, user: tokenPayload, expiresIn });
-            });
-        } else {
-            const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn });
-            console.log(`  Login exitoso para: ${user.email}, Rol: ${user.rol}`);
-            res.json({ token, user: tokenPayload, expiresIn });
+            const claseRow = await dbGetAsync("SELECT id, nombre_clase FROM clases WHERE tutor_id = ?", [user.id]);
+            if (claseRow) {
+                tokenPayload.claseId = claseRow.id;
+                tokenPayload.claseNombre = claseRow.nombre_clase;
+            } else { console.warn(`Tutor ${user.email} no tiene clase asignada.`); }
         }
-    });
+        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn });
+        console.log(`  Login exitoso para: ${user.email}`);
+        res.json({ token, user: tokenPayload, expiresIn });
+    } catch (error) {
+        console.error("  Error en /api/auth/login:", error.message);
+        res.status(500).json({ error: "Error interno del servidor." });
+    }
 });
 app.get('/api/auth/me', authenticateToken, (req, res) => {
-    console.log("  >> Petición GET /api/auth/me para:", req.user.email);
+    console.log("  Ruta: GET /api/auth/me para:", req.user.email);
     res.json({ usuario: req.user });
 });
 
-// Usuarios (Solo Dirección)
-app.get('/api/usuarios', authenticateToken, (req, res) => {
+// --- Gestión de Usuarios (Solo Dirección) ---
+// (Pega aquí tus endpoints CRUD COMPLETOS para /api/usuarios que te di antes. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync)
+// Ejemplo para GET (asegúrate de que los demás (POST, PUT, DELETE) estén también):
+app.get('/api/usuarios', authenticateToken, async (req, res) => {
     if (req.user.rol !== 'DIRECCION') return res.status(403).json({ error: 'No autorizado.' });
-    db.all("SELECT u.id, u.email, u.nombre_completo, u.rol, c.id as clase_asignada_id, c.nombre_clase as clase_asignada_nombre FROM usuarios u LEFT JOIN clases c ON u.id = c.tutor_id ORDER BY u.nombre_completo", [], (err, usuarios) => {
-        if (err) return res.status(500).json({ error: err.message });
+    try {
+        const usuarios = await dbAllAsync("SELECT u.id, u.email, u.nombre_completo, u.rol, c.id as clase_asignada_id, c.nombre_clase as clase_asignada_nombre FROM usuarios u LEFT JOIN clases c ON u.id = c.tutor_id ORDER BY u.nombre_completo");
         res.json({ usuarios });
-    });
+    } catch (error) { res.status(500).json({ error: "Error obteniendo usuarios: " + error.message }); }
 });
-app.post('/api/usuarios', authenticateToken, (req, res) => { /* ... (tu código POST usuarios) ... */ });
-app.put('/api/usuarios/:idUsuario', authenticateToken, (req, res) => { /* ... (tu código PUT usuarios) ... */ });
-app.delete('/api/usuarios/:idUsuario', authenticateToken, (req, res) => { /* ... (tu código DELETE usuarios) ... */ });
+// ... RESTO DE CRUD PARA USUARIOS ...
 
-// Clases
-app.get('/api/clases', authenticateToken, (req, res) => { /* ... (tu código GET clases) ... */ });
-app.post('/api/clases', authenticateToken, (req, res) => { /* ... (tu código POST clases) ... */ });
-app.get('/api/clases/:idClase', authenticateToken, (req,res)=>{ /* ... (tu código GET clase por ID) ... */});
-app.put('/api/clases/:idClase', authenticateToken, (req,res)=>{ /* ... (tu código PUT clases) ... */});
-app.delete('/api/clases/:idClase', authenticateToken, (req,res)=>{ /* ... (tu código DELETE clases) ... */});
+// --- Gestión de Clases ---
+// (Pega aquí tus endpoints CRUD COMPLETOS para /api/clases. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync)
+// Ejemplo para GET:
+app.get('/api/clases', authenticateToken, async (req, res) => {
+    try {
+        const clases = await dbAllAsync(`SELECT c.id, c.nombre_clase, c.tutor_id, u.nombre_completo as nombre_tutor, u.email as email_tutor
+                                        FROM clases c LEFT JOIN usuarios u ON c.tutor_id = u.id ORDER BY c.nombre_clase ASC`);
+        res.json({ clases });
+    } catch (error) { res.status(500).json({ error: "Error obteniendo clases: " + error.message });}
+});
+// ... RESTO DE CRUD PARA CLASES ...
 
-// Alumnos
-app.post('/api/alumnos', authenticateToken, (req, res) => { /* ... (tu código POST alumnos) ... */ });
-app.get('/api/alumnos', authenticateToken, (req, res) => { /* ... (tu código GET alumnos) ... */ });
-app.get('/api/alumnos/:idAlumno', authenticateToken, (req, res) => { /* ... (tu código GET alumno por ID) ... */ });
-app.put('/api/alumnos/:idAlumno', authenticateToken, (req, res) => { /* ... (tu código PUT alumno) ... */ });
-app.delete('/api/alumnos/:idAlumno', authenticateToken, (req, res) => { /* ... (tu código DELETE alumno) ... */ });
+// --- Gestión de Alumnos ---
+// (Pega aquí tus endpoints CRUD COMPLETOS para /api/alumnos. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
+// ...
 
-// Excursiones
-app.post('/api/excursiones', authenticateToken, (req, res) => { /* ... (tu código POST excursiones) ... */ });
-app.get('/api/excursiones', authenticateToken, (req, res) => { /* ... (tu código GET excursiones) ... */ });
-app.get('/api/excursiones/:idExcursion', authenticateToken, (req, res) => { /* ... (tu código GET excursión por ID) ... */ });
-app.put('/api/excursiones/:idExcursion', authenticateToken, (req, res) => { /* ... (tu código PUT excursión) ... */ });
-app.delete('/api/excursiones/:idExcursion', authenticateToken, (req, res) => { /* ... (tu código DELETE excursión) ... */ });
+// --- Gestión de Excursiones ---
+// (Pega aquí tus endpoints CRUD COMPLETOS para /api/excursiones. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
+// ...
 
-// Participaciones
-app.post('/api/participaciones', authenticateToken, (req, res) => { /* ... (tu código POST participaciones) ... */ });
-app.get('/api/participaciones', authenticateToken, (req, res) => { /* ... (tu código GET participaciones) ... */ });
-app.get('/api/participaciones/:idParticipacion', authenticateToken, (req,res)=>{ /* ... (tu código GET participación por ID) ... */});
-app.put('/api/participaciones/:idParticipacion', authenticateToken, (req,res)=>{ /* ... (tu código PUT participación) ... */});
-app.delete('/api/participaciones/:idParticipacion', authenticateToken, (req,res)=>{ /* ... (tu código DELETE participación) ... */});
+// --- Gestión de Participaciones ---
+// (Pega aquí tus endpoints CRUD COMPLETOS para /api/participaciones. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
+// ...
 
-// Dashboard
-app.get('/api/dashboard/summary', authenticateToken, async (req, res) => { /* ... (tu código GET dashboard) ... */ });
+// --- Endpoint de Dashboard ---
+app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/dashboard/summary para:", req.user.email);
+    // ... (Pega aquí tu lógica completa del endpoint de Dashboard usando await dbGetAsyncP y dbAllAsyncP)
+    // Ejemplo simplificado:
+    try {
+        const totalClases = (await dbGetAsync("SELECT COUNT(*) as count FROM clases")).count;
+        res.json({ mensaje: "Resumen del dashboard", totalClases });
+    } catch (error) { res.status(500).json({error: "Error en dashboard: " + error.message});}
+});
 
-console.log("Paso 17: Todas las rutas de API definidas.");
+console.log("Paso 17: Todas las definiciones de rutas de API (o sus placeholders) completadas.");
 
-// --- Helpers de BD con Promesas (Defínelos aquí si los vas a usar en tus rutas de arriba) ---
-function dbGetAsyncP(sql, params = []) { return new Promise((resolve, reject) => { db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row))); }); }
-function dbRunAsyncP(sql, params = []) { return new Promise((resolve, reject) => { db.run(sql, params, function(err) { (err ? reject(err) : resolve(this)); }); }); }
-function dbAllAsyncP(sql, params = []) { return new Promise((resolve, reject) => { db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows))); }); }
-console.log("Paso Aux: Helpers de BD (AsyncP) definidos.");
+// --- Conexión a la Base de Datos e Inicio del Servidor ---
+const DB_FILE_PATH_FINAL = path.join(__dirname, "database.db"); // Usar un nombre diferente para no confundir con el DBSOURCE global
+console.log(`Paso 18: Intentando conectar a BD en: ${DB_FILE_PATH_FINAL} para iniciar servidor.`);
 
-
-// --- Conectar a la Base de Datos e Iniciar el Servidor ---
-const DB_FILE_PATH = path.join(__dirname, "database.db"); // Redefinido por si acaso, aunque DBSOURCE ya existe
-console.log(`Paso 18: Intentando conectar a BD en: ${DB_FILE_PATH}`);
-
-db = new sqlite3.Database(DB_FILE_PATH, (err) => { // Asigna a la variable 'db' global
+db = new sqlite3.Database(DB_FILE_PATH_FINAL, sqlite3.OPEN_READWRITE, (err) => { // Abrir en modo lectura/escritura
     if (err) {
-        console.error("Error FATAL al conectar con la base de datos:", err.message);
+        console.error("Error FATAL al conectar con la base de datos (dentro del bloque final):", err.message);
         process.exit(1);
     }
-    console.log('Paso 19: Conectado a la base de datos SQLite (database.db).');
+    console.log('Paso 19: Conectado a la base de datos SQLite (database.db) (dentro del bloque final).');
     db.run("PRAGMA foreign_keys = ON;", (fkErr) => {
         if (fkErr) {
-            console.error("Paso 20: Error habilitando claves foráneas en SQLite:", fkErr.message);
+            console.error("Paso 20: Error habilitando claves foráneas en SQLite (dentro del bloque final):", fkErr.message);
         } else {
-            console.log("Paso 20: Claves foráneas habilitadas en SQLite.");
+            console.log("Paso 20: Claves foráneas habilitadas en SQLite (dentro del bloque final).");
         }
 
-        // INICIAMOS EL SERVIDOR DESPUÉS DE ASEGURAR LA CONEXIÓN A LA BD Y CONFIGURACIÓN DE FK
         console.log("Paso 21: Intentando iniciar app.listen()...");
         app.listen(PORT, () => {
             console.log("====================================================");
@@ -191,11 +194,11 @@ db = new sqlite3.Database(DB_FILE_PATH, (err) => { // Asigna a la variable 'db' 
     });
 });
 
-console.log("Paso 23: Fin del script server.js (antes de que los callbacks asíncronos principales terminen).");
+console.log("Paso 23: Fin del script principal de server.js (antes de que el servidor esté completamente listo para escuchar o que los callbacks asíncronos terminen).");
 
 process.on('SIGINT', () => {
     console.log('\nSIGINT. Cerrando BD y servidor...');
-    if (db) { // Solo intentar cerrar si db está definida
+    if (db) {
         db.close(err => {
             if (err) console.error("Error cerrando BD:",err.message);
             else console.log('Conexión BD cerrada.');
