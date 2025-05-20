@@ -221,109 +221,245 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) { dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error cargando dashboard.</p>`; }
     }
 
-    // --- Gestión de Clases ---
+       // --- Gestión de Clases ---
     async function loadClases() {
         if (!clasesContentDiv || !currentToken) return;
-        clasesContentDiv.innerHTML = '<p>Cargando clases...</p>';
+        clasesContentDiv.innerHTML = '<p>Cargando listado de clases...</p>'; // Mensaje de carga
         try {
-            const data = await apiFetch('/clases');
+            const data = await apiFetch('/clases'); // Llama a GET /api/clases
             let html = '<h3>Listado de Clases</h3>';
-            if (currentUser.rol === 'DIRECCION') html += `<button id="btnShowFormNuevaClase" class="success" style="margin-bottom:15px;">+ Añadir Clase</button>`;
-            html += `<table><thead><tr><th>Nombre</th><th>Tutor</th><th>Email Tutor</th><th>Acciones</th></tr></thead><tbody>`;
+
+            if (currentUser.rol === 'DIRECCION') {
+                html += `<button id="btnShowFormNuevaClase" class="success" style="margin-bottom:15px;">+ Añadir Nueva Clase</button>`;
+            }
+            html += `
+                <table class="tabla-datos">
+                    <thead>
+                        <tr>
+                            <th>Nombre Clase</th>
+                            <th>Tutor Asignado</th>
+                            <th>Email Tutor</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
             if (data.clases && data.clases.length > 0) {
-                data.clases.forEach(c => { html += `<tr><td>${c.nombre_clase}</td><td>${c.nombre_tutor||'--'}</td><td>${c.email_tutor||'--'}</td><td>
-                    <button class="view-alumnos-clase secondary" data-claseid="${c.id}" data-nclase="${c.nombre_clase}">Ver Alumnos</button>
-                    ${currentUser.rol==='DIRECCION' ? `<button class="edit-clase warning" data-id="${c.id}" data-nombre="${c.nombre_clase}" data-tutorid="${c.tutor_id || ''}">Editar</button> <button class="delete-clase danger" data-id="${c.id}" data-nombre="${c.nombre_clase}">Eliminar</button>` : ''}
-                    </td></tr>`;});
-            } else html += `<tr><td colspan="4">No hay clases.</td></tr>`;
-            html += '</tbody></table><div id="formClaseWrapper" style="margin-top:20px;"></div>';
+                data.clases.forEach(clase => {
+                    html += `
+                        <tr data-clase-id="${clase.id}">
+                            <td>${clase.nombre_clase}</td>
+                            <td>${clase.nombre_tutor || '<em>No asignado</em>'}</td>
+                            <td>${clase.email_tutor || '<em>N/A</em>'}</td>
+                            <td class="actions-cell">
+                                <button class="view-alumnos-clase secondary" data-claseid="${clase.id}" data-nclase="${clase.nombre_clase}">Ver Alumnos</button>
+                                ${currentUser.rol === 'DIRECCION' ? `
+                                    <button class="edit-clase warning" data-id="${clase.id}" data-nombre="${clase.nombre_clase}" data-tutorid="${clase.tutor_id || ''}">Editar</button>
+                                    <button class="delete-clase danger" data-id="${clase.id}" data-nombre="${clase.nombre_clase}">Eliminar</button>
+                                ` : ''}
+                            </td>
+                        </tr>`;
+                });
+            } else {
+                html += '<tr><td colspan="4" style="text-align:center;">No hay clases registradas.</td></tr>';
+            }
+            html += '</tbody></table><div id="formClaseWrapper" class="form-wrapper" style="margin-top:20px;"></div>'; // Contenedor para el form
             clasesContentDiv.innerHTML = html;
-            if(document.getElementById('btnShowFormNuevaClase')) document.getElementById('btnShowFormNuevaClase').onclick = () => showFormClase();
-            clasesContentDiv.querySelectorAll('.edit-clase').forEach(b => b.onclick=(e)=>showFormClase(e.target.dataset.id, e.target.dataset.nombre, e.target.dataset.tutorid));
-            clasesContentDiv.querySelectorAll('.delete-clase').forEach(b => b.onclick=(e)=>deleteClase(e.target.dataset.id, e.target.dataset.nombre));
-            clasesContentDiv.querySelectorAll('.view-alumnos-clase').forEach(b => b.onclick=(e)=>{ sessionStorage.setItem('filtroAlumnosClaseId',e.target.dataset.claseid); sessionStorage.setItem('filtroAlumnosNombreClase',e.target.dataset.nclase); navigateTo('alumnos'); });
-        } catch (error) { clasesContentDiv.innerHTML = `<p class="error-message">Error cargando clases.</p>`; }
-    }
-    async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') {
-        if (currentUser.rol !== 'DIRECCION') return;
-        const formWrapper = document.getElementById('formClaseWrapper'); if (!formWrapper) return;
-        const titulo = idClase ? 'Editar Clase' : 'Nueva Clase';
-        let tutoresOpt = '<option value="">-- Sin Asignar --</option>';
-        try {
-            const dataU = await apiFetch('/usuarios');
-            if (dataU.usuarios) dataU.usuarios.filter(u=>u.rol==='TUTOR').forEach(t => tutoresOpt += `<option value="${t.id}" ${parseInt(tutorIdExistente)===t.id?'selected':''}>${t.nombre_completo}</option>`);
-        } catch(e){ console.error("Error cargando tutores:", e); }
-        formWrapper.innerHTML = `<h4>${titulo}</h4><form id="claseFormDetalle"><input type="hidden" id="claseIdForm" value="${idClase||''}"/>
-            <div><label>Nombre Clase:</label><input type="text" id="nombreClaseForm" value="${nombreExistente}" required /></div>
-            <div><label>Tutor:</label><select id="tutorIdForm">${tutoresOpt}</select></div>
-            <div class="form-buttons"><button type="submit" class="success">${idClase?'Actualizar':'Crear'}</button><button type="button" onclick="document.getElementById('formClaseWrapper').innerHTML='';">Cancelar</button></div>
-        </form>`;
-        formWrapper.style.display='block'; document.getElementById('claseFormDetalle').onsubmit = saveClase;
-    }
-    async function saveClase(event) {
-        event.preventDefault(); if(currentUser.rol!=='DIRECCION')return;
-        const id = document.getElementById('claseIdForm').value;
-        const nombre_clase = document.getElementById('nombreClaseForm').value.trim();
-        let tutor_id = document.getElementById('tutorIdForm').value; tutor_id = tutor_id ? parseInt(tutor_id) : null;
-        if (!nombre_clase) { alert("Nombre obligatorio."); return; }
-        const method=id?'PUT':'POST', endpoint=id?`/clases/${id}`:'/clases';
-        try { await apiFetch(endpoint, method, {nombre_clase, tutor_id}); document.getElementById('formClaseWrapper').innerHTML=''; loadClases(); }
-        catch (error) { showGlobalError(`Error guardando clase: ${error.message}`); }
-    }
-    async function deleteClase(idClase, nombreClase) {
-        if (currentUser.rol!=='DIRECCION')return;
-        if (confirm(`¿Eliminar clase "${nombreClase}" (ID ${idClase})? Se borrarán sus alumnos y participaciones.`)) {
-            try { await apiFetch(`/clases/${idClase}`, 'DELETE'); loadClases(); }
-            catch (error) { showGlobalError(`Error eliminando: ${error.message}`); }
+            
+            // Añadir Event Listeners a los botones recién creados
+            if(document.getElementById('btnShowFormNuevaClase')) {
+                document.getElementById('btnShowFormNuevaClase').onclick = () => showFormClase();
+            }
+            clasesContentDiv.querySelectorAll('.edit-clase').forEach(btn => {
+                btn.onclick = (e) => showFormClase(e.target.dataset.id, e.target.dataset.nombre, e.target.dataset.tutorid);
+            });
+            clasesContentDiv.querySelectorAll('.delete-clase').forEach(btn => {
+                btn.onclick = (e) => deleteClase(e.target.dataset.id, e.target.dataset.nombre);
+            });
+            clasesContentDiv.querySelectorAll('.view-alumnos-clase').forEach(btn => {
+                btn.onclick = (e) => {
+                    sessionStorage.setItem('filtroAlumnosClaseId', e.target.dataset.claseid);
+                    sessionStorage.setItem('filtroAlumnosNombreClase', e.target.dataset.nclase);
+                    navigateTo('alumnos'); 
+                };
+            });
+        } catch (error) {
+            console.error("Error en loadClases:", error);
+            clasesContentDiv.innerHTML = `<p class="error-message">Error al cargar las clases: ${error.message}</p>`;
         }
     }
 
-    // --- Gestión de Alumnos ---
-    async function loadAlumnos(claseIdFiltro = null, nombreClaseFiltro = null) {
+    async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') {
+        if (!currentUser || currentUser.rol !== 'DIRECCION') {
+             showGlobalError("Acción no autorizada."); return;
+        }
+        const formWrapper = document.getElementById('formClaseWrapper');
+        if (!formWrapper) { console.error("formClaseWrapper no encontrado"); return; }
+
+        const tituloForm = idClase ? 'Editar Clase' : 'Añadir Nueva Clase';
+        let tutoresOptionsHtml = '<option value="">-- Sin Asignar --</option>';
+        
+        try {
+            // Cargar la lista de usuarios que son TUTORES para el desplegable
+            const dataUsuarios = await apiFetch('/usuarios'); // Asume que este endpoint devuelve todos los usuarios
+            if (dataUsuarios.usuarios) {
+                dataUsuarios.usuarios.filter(u => u.rol === 'TUTOR').forEach(tutor => {
+                    tutoresOptionsHtml += `<option value="${tutor.id}" ${parseInt(tutorIdExistente) === tutor.id ? 'selected' : ''}>
+                                              ${tutor.nombre_completo} (${tutor.email})
+                                           </option>`;
+                });
+                 // Si estamos editando y el tutor_id actual no está en la lista (ej. se eliminó el usuario tutor pero no la asignación)
+                 // o si el tutor_id es de un usuario que ya no es tutor.
+                if (idClase && tutorIdExistente && !dataUsuarios.usuarios.find(u => u.id === parseInt(tutorIdExistente) && u.rol === 'TUTOR')) {
+                    // Podríamos intentar obtener el nombre del tutor actual si es posible, o mostrar ID
+                    // Esta parte es compleja si los datos son inconsistentes. Por ahora, se mostrará el ID si no se encuentra el nombre.
+                    const tutorActualObj = dataUsuarios.usuarios.find(u => u.id === parseInt(tutorIdExistente));
+                    const nombreTutorActual = tutorActualObj ? tutorActualObj.nombre_completo : `ID ${tutorIdExistente} (Rol no Tutor o no encontrado)`;
+                    if (tutorIdExistente) { // Añadirlo si no está para que se muestre seleccionado pero no se pueda re-seleccionar si ya no es tutor
+                        tutoresOptionsHtml += `<option value="${tutorIdExistente}" selected disabled>${nombreTutorActual} (Asignación actual)</option>`;
+                    }
+                }
+            }
+        } catch(e){ 
+            console.error("Error cargando lista de tutores para el formulario:", e);
+            tutoresOptionsHtml += '<option value="" disabled>Error cargando tutores</option>';
+        }
+
+        formWrapper.innerHTML = `
+            <h4>${tituloForm}</h4>
+            <form id="claseFormDetalle" style="border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                <input type="hidden" id="claseIdForm" value="${idClase || ''}">
+                <div>
+                    <label for="nombreClaseForm">Nombre Clase:</label>
+                    <input type="text" id="nombreClaseForm" value="${nombreExistente || ''}" required>
+                </div>
+                <div>
+                    <label for="tutorIdForm">Tutor Asignado:</label>
+                    <select id="tutorIdForm">
+                        ${tutoresOptionsHtml}
+                    </select>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="success">${idClase ? 'Actualizar Clase' : 'Crear Clase'}</button>
+                    <button type="button" onclick="document.getElementById('formClaseWrapper').innerHTML=''; document.getElementById('formClaseWrapper').style.display='none';">Cancelar</button>
+                </div>
+            </form>`;
+        formWrapper.style.display = 'block';
+        
+        const detalleForm = document.getElementById('claseFormDetalle');
+        if (detalleForm) {
+            detalleForm.addEventListener('submit', saveClase);
+        }
+    }
+
+    async function saveClase(event) {
+        event.preventDefault();
+        if (!currentUser || currentUser.rol !== 'DIRECCION') { showGlobalError("Acción no autorizada."); return; }
+
+        const id = document.getElementById('claseIdForm').value;
+        const nombre_clase = document.getElementById('nombreClaseForm').value.trim();
+        let tutor_id_str = document.getElementById('tutorIdForm').value;
+        // Convertir a número o null. Si es cadena vacía, se convierte en null.
+        const tutor_id = tutor_id_str ? parseInt(tutor_id_str) : null;
+
+
+        if (!nombre_clase) {
+            alert("El nombre de la clase es obligatorio.");
+            return;
+        }
+
+        const method = id ? 'PUT' : 'POST';
+        const endpoint = id ? `/clases/${id}` : '/clases';
+        const body = { nombre_clase, tutor_id }; // tutor_id puede ser null aquí
+
+        console.log(`Guardando clase: ${method} ${endpoint}`, body);
+
+        try {
+            const resultado = await apiFetch(endpoint, method, body);
+            alert(resultado.message || (id ? "Clase actualizada correctamente." : "Clase creada correctamente."));
+            const formWrapper = document.getElementById('formClaseWrapper');
+            if(formWrapper) {
+                formWrapper.innerHTML = ''; // Limpiar el formulario
+                formWrapper.style.display = 'none';
+            }
+            loadClases(); // Recargar la lista de clases para ver los cambios
+        } catch (error) {
+            showGlobalError(`Error guardando clase: ${error.message}`);
+        }
+    }
+
+    async function deleteClase(idClase, nombreClase) {
+        if (!currentUser || currentUser.rol !== 'DIRECCION') { showGlobalError("Acción no autorizada."); return; }
+        if (!idClase) return;
+
+        const nombreParaConfirmar = nombreClase || `la clase con ID ${idClase}`;
+        if (confirm(`¿Estás seguro de que quieres eliminar ${nombreParaConfirmar}? Esto también eliminará a todos sus alumnos y sus participaciones en excursiones (si existen).`)) {
+            try {
+                const resultado = await apiFetch(`/clases/${idClase}`, 'DELETE');
+                alert(resultado.message || "Clase eliminada correctamente.");
+                loadClases(); // Recargar la lista
+            } catch (error) {
+                showGlobalError(`Error eliminando la clase: ${error.message}`);
+            }
+        }
+    }
+    // --- Fin de Gestión de Clases ---
+
+
+    // --- ESQUELETOS PARA OTRAS SECCIONES (A COMPLETAR) ---
+    async function loadAlumnos() {
         if (!alumnosContentDiv || !currentToken) return;
         alumnosContentDiv.innerHTML = "<p>Cargando alumnos...</p>";
-
+        const filtroClaseId = sessionStorage.getItem('filtroAlumnosClaseId');
+        const filtroNombreClase = sessionStorage.getItem('filtroAlumnosNombreClase');
+        // No limpiar sessionStorage aquí para que el filtro persista si el usuario navega y vuelve
+        
         let endpoint = '/alumnos';
         let queryParams = new URLSearchParams();
         let titulo = "Alumnos";
 
         if (currentUser.rol === 'TUTOR') {
-            if (!currentUser.claseId) { alumnosContentDiv.innerHTML = "<p>No tienes clase asignada.</p>"; return; }
+            if (!currentUser.claseId) { alumnosContentDiv.innerHTML = "<p>No tienes clase asignada para ver alumnos.</p>"; return; }
             queryParams.append('claseId', currentUser.claseId);
             titulo += ` de tu clase: ${currentUser.claseNombre}`;
         } else if (currentUser.rol === 'DIRECCION') {
-            const idClaseSesion = claseIdFiltro || sessionStorage.getItem('filtroAlumnosClaseId');
-            const nombreClaseSesion = nombreClaseFiltro || sessionStorage.getItem('filtroAlumnosNombreClase');
-            if (idClaseSesion) {
-                queryParams.append('claseId', idClaseSesion);
-                titulo += ` de la clase: ${nombreClaseSesion}`;
+            if (filtroClaseId) {
+                queryParams.append('claseId', filtroClaseId);
+                titulo += ` de la clase: ${filtroNombreClase}`;
             } else {
                 titulo += ` (Todas las Clases)`;
             }
         }
-        if (queryParams.toString()) endpoint += `?${queryParams.toString()}`;
+        if (queryParams.toString()) {
+            endpoint += `?${queryParams.toString()}`;
+        }
         
         try {
             const data = await apiFetch(endpoint);
-            const dataClases = (currentUser.rol === 'DIRECCION') ? await apiFetch('/clases') : null; // Para el form de Dirección
+            const dataClases = (currentUser.rol === 'DIRECCION') ? await apiFetch('/clases') : null;
             
             let html = `<h3>${titulo}</h3>`;
-            if (currentUser.rol === 'DIRECCION' && !sessionStorage.getItem('filtroAlumnosClaseId')) {
-                html += `<div style="margin-bottom:15px;">Filtrar por clase: <select id="selectFiltroClaseAlumnos"><option value="">Todas</option>`;
-                dataClases.clases.forEach(cl => html += `<option value="${cl.id}">${cl.nombre_clase}</option>`);
+            if (currentUser.rol === 'DIRECCION' && !filtroClaseId) { // Solo mostrar filtro general si no hay uno específico de "Ver Alumnos"
+                html += `<div style="margin-bottom:15px;">Filtrar por clase: <select id="selectFiltroClaseAlumnos"><option value="">Todas las clases</option>`;
+                if (dataClases && dataClases.clases) {
+                    dataClases.clases.forEach(cl => html += `<option value="${cl.id}">${cl.nombre_clase}</option>`);
+                }
                 html += `</select></div>`;
+            } else if (filtroClaseId && currentUser.rol === 'DIRECCION') {
+                 html += `<button onclick="sessionStorage.removeItem('filtroAlumnosClaseId'); sessionStorage.removeItem('filtroAlumnosNombreClase'); loadAlumnos();" class="secondary" style="margin-bottom:15px;">Mostrar Todos los Alumnos</button>`;
             }
+
             if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && currentUser.claseId)) {
-                html += `<button id="btnShowFormNuevoAlumno" class="success" style="margin-bottom:15px;">+ Añadir Alumno ${currentUser.rol==='TUTOR'?'a mi clase':''}</button>`;
+                html += `<button id="btnShowFormNuevoAlumno" class="success" style="margin-bottom:15px;">+ Añadir Alumno ${currentUser.rol === 'TUTOR' ? 'a mi clase' : ''}</button>`;
             }
-            html += `<table><thead><tr><th>Nombre Completo</th><th>Clase</th><th>Acciones</th></tr></thead><tbody>`;
+            html += `<table class="tabla-datos"><thead><tr><th>Nombre Completo</th><th>Clase</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.alumnos && data.alumnos.length > 0) {
                 data.alumnos.forEach(a => { html += `<tr><td>${a.nombre_completo}</td><td>${a.nombre_clase}</td><td>
                     <button class="edit-alumno warning" data-id="${a.id}" data-nombre="${a.nombre_completo}" data-claseid="${a.clase_id}">Editar</button>
                     <button class="delete-alumno danger" data-id="${a.id}" data-nombre="${a.nombre_completo}">Eliminar</button>
                     </td></tr>`; });
-            } else { html += `<tr><td colspan="3">No hay alumnos.</td></tr>`; }
-            html += `</tbody></table><div id="formAlumnoWrapper" style="margin-top:20px;"></div>`;
+            } else { html += `<tr><td colspan="3" style="text-align:center;">No hay alumnos para mostrar según el filtro actual.</td></tr>`; }
+            html += `</tbody></table><div id="formAlumnoWrapper" class="form-wrapper" style="margin-top:20px;"></div>`;
             alumnosContentDiv.innerHTML = html;
 
             if(document.getElementById('btnShowFormNuevoAlumno')) document.getElementById('btnShowFormNuevoAlumno').onclick = () => showFormAlumno(null, dataClases ? dataClases.clases : null);
@@ -331,7 +467,11 @@ document.addEventListener('DOMContentLoaded', () => {
             alumnosContentDiv.querySelectorAll('.delete-alumno').forEach(b=>b.onclick=(e)=>deleteAlumno(e.target.dataset.id, e.target.dataset.nombre));
             
             if (document.getElementById('selectFiltroClaseAlumnos')) {
-                document.getElementById('selectFiltroClaseAlumnos').onchange = (e) => {
+                const selectFiltro = document.getElementById('selectFiltroClaseAlumnos');
+                 if (sessionStorage.getItem('filtroAlumnosClaseId')) { // Mantener selección del filtro
+                    selectFiltro.value = sessionStorage.getItem('filtroAlumnosClaseId');
+                }
+                selectFiltro.onchange = (e) => {
                     if (e.target.value) {
                         sessionStorage.setItem('filtroAlumnosClaseId', e.target.value);
                         sessionStorage.setItem('filtroAlumnosNombreClase', e.target.options[e.target.selectedIndex].text);
@@ -339,62 +479,104 @@ document.addEventListener('DOMContentLoaded', () => {
                         sessionStorage.removeItem('filtroAlumnosClaseId');
                         sessionStorage.removeItem('filtroAlumnosNombreClase');
                     }
-                    loadAlumnos();
+                    loadAlumnos(); // Recargar alumnos con el nuevo filtro
                 };
-                // Setear el valor actual del filtro si existe
-                if (sessionStorage.getItem('filtroAlumnosClaseId')) {
-                    document.getElementById('selectFiltroClaseAlumnos').value = sessionStorage.getItem('filtroAlumnosClaseId');
-                }
             }
         } catch (e) { alumnosContentDiv.innerHTML = `<p class="error-message">Error cargando alumnos: ${e.message}</p>`;}
     }
     async function showFormAlumno(idAlumno = null, listaTodasClases = null, nombreExistente = '', claseIdExistente = '') {
-        const formWrapper = document.getElementById('formAlumnoWrapper'); if (!formWrapper) return;
-        const titulo = idAlumno ? 'Editar Alumno' : 'Nuevo Alumno';
-        let clasesOpt = '';
+         const formWrapper = document.getElementById('formAlumnoWrapper'); if (!formWrapper) return;
+         const titulo = idAlumno ? 'Editar Alumno' : 'Añadir Nuevo Alumno';
+         let claseAsignadaPorTutor = '';
+         if (currentUser.rol === 'TUTOR' && currentUser.claseId && currentUser.claseNombre) {
+             claseAsignadaPorTutor = `<p>Se añadirá/editará el alumno en tu clase: <strong>${currentUser.claseNombre}</strong>.</p>
+                                     <input type="hidden" id="claseIdAlumnoForm" value="${currentUser.claseId}">`;
+         }
+
+        let clasesOptHtml = '';
         if (currentUser.rol === 'DIRECCION') {
-            if (!listaTodasClases) { try { const dataC = await apiFetch('/clases'); listaTodasClases = dataC.clases; } catch(e) {console.error(e);}}
-            if(listaTodasClases) listaTodasClases.forEach(cl => clasesOpt += `<option value="${cl.id}" ${parseInt(claseIdExistente)===cl.id?'selected':''}>${cl.nombre_clase}</option>`);
+            if (!listaTodasClases) { // Si no se pasó la lista (ej. se llama desde botón general)
+                try { const dataC = await apiFetch('/clases'); listaTodasClases = dataC.clases; } catch(e){console.error(e);}
+            }
+            if(listaTodasClases) {
+                listaTodasClases.forEach(cl => {
+                    clasesOptHtml += `<option value="${cl.id}" ${parseInt(claseIdExistente) === cl.id ? 'selected' : ''}>${cl.nombre_clase}</option>`;
+                });
+            } else {
+                clasesOptHtml = '<option value="" disabled>No hay clases disponibles</option>';
+            }
         }
 
-        formWrapper.innerHTML = `<h4>${titulo}</h4><form id="alumnoFormDetalle"><input type="hidden" id="alumnoIdForm" value="${idAlumno||''}"/>
-            <div><label>Nombre Completo:</label><input type="text" id="nombreAlumnoForm" value="${nombreExistente}" required/></div>
-            ${currentUser.rol==='DIRECCION' ? `<div><label>Clase:</label><select id="claseIdAlumnoForm" required>${clasesOpt}</select></div>` : ''}
-            <div class="form-buttons"><button type="submit" class="success">${idAlumno?'Actualizar':'Crear'}</button><button type="button" onclick="document.getElementById('formAlumnoWrapper').innerHTML='';">Cancelar</button></div>
-        </form>`;
-        formWrapper.style.display = 'block'; document.getElementById('alumnoFormDetalle').onsubmit = saveAlumno;
+        formWrapper.innerHTML = `<h4>${titulo}</h4>
+            <form id="alumnoFormDetalle" style="border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                <input type="hidden" id="alumnoIdForm" value="${idAlumno||''}"/>
+                <div><label for="nombreAlumnoForm">Nombre Completo:</label><input type="text" id="nombreAlumnoForm" value="${nombreExistente||''}" required/></div>
+                ${currentUser.rol==='DIRECCION' ? `<div><label for="claseIdAlumnoForm">Clase:</label><select id="claseIdAlumnoForm" required>${clasesOptHtml}</select></div>` : claseAsignadaPorTutor}
+                <div class="form-buttons">
+                    <button type="submit" class="success">${idAlumno?'Actualizar Alumno':'Crear Alumno'}</button>
+                    <button type="button" onclick="document.getElementById('formAlumnoWrapper').innerHTML='';document.getElementById('formAlumnoWrapper').style.display='none';">Cancelar</button>
+                </div>
+            </form>`;
+        formWrapper.style.display='block';
+        document.getElementById('alumnoFormDetalle').onsubmit = saveAlumno;
     }
     async function saveAlumno(event) {
         event.preventDefault();
         const id = document.getElementById('alumnoIdForm').value;
         const nombre_completo = document.getElementById('nombreAlumnoForm').value.trim();
         let clase_id;
-        if (currentUser.rol === 'DIRECCION') clase_id = parseInt(document.getElementById('claseIdAlumnoForm').value);
-        else clase_id = currentUser.claseId; // Tutor asigna a su clase
-        if (!nombre_completo || !clase_id) { alert("Nombre y clase son obligatorios."); return; }
-        const method=id?'PUT':'POST', endpoint=id?`/alumnos/${id}`:'/alumnos';
-        try { await apiFetch(endpoint, method, {nombre_completo, clase_id}); document.getElementById('formAlumnoWrapper').innerHTML=''; loadAlumnos(); }
-        catch (error) { showGlobalError(`Error guardando alumno: ${error.message}`); }
+        if (currentUser.rol === 'DIRECCION') {
+            const selectClase = document.getElementById('claseIdAlumnoForm');
+            if (!selectClase || !selectClase.value) { alert("Debes seleccionar una clase para el alumno."); return; }
+            clase_id = parseInt(selectClase.value);
+        } else if (currentUser.rol === 'TUTOR' && currentUser.claseId) {
+            clase_id = currentUser.claseId; // Tutor asigna a su propia clase
+        } else {
+            showGlobalError("No se pudo determinar la clase para el alumno."); return;
+        }
+
+        if (!nombre_completo) { alert("Nombre del alumno es obligatorio."); return; }
+        
+        const method = id ? 'PUT' : 'POST';
+        const endpoint = id ? `/alumnos/${id}` : '/alumnos';
+        const body = { nombre_completo, clase_id };
+
+        try {
+            await apiFetch(endpoint, method, body);
+            document.getElementById('formAlumnoWrapper').innerHTML=''; 
+            document.getElementById('formAlumnoWrapper').style.display='none'; 
+            loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase')); // Recargar con el filtro actual
+        } catch (error) { showGlobalError(`Error guardando alumno: ${error.message}`); }
     }
     async function deleteAlumno(idAlumno, nombreAlumno) {
-        if (confirm(`¿Eliminar alumno "${nombreAlumno}" (ID ${idAlumno})?`)) {
-            try { await apiFetch(`/alumnos/${idAlumno}`, 'DELETE'); loadAlumnos(); }
-            catch (error) { showGlobalError(`Error eliminando alumno: ${error.message}`); }
+        if (confirm(`¿Estás seguro de eliminar al alumno "${nombreAlumno||`ID ${idAlumno}`}"? Esto también eliminará sus participaciones en excursiones.`)) {
+            try {
+                await apiFetch(`/alumnos/${idAlumno}`, 'DELETE');
+                loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase')); // Recargar con el filtro actual
+            } catch (error) { showGlobalError(`Error eliminando alumno: ${error.message}`); }
         }
     }
-    
+
+
     // --- Excursiones ---
-    async function loadExcursiones() { /* ... (similar a loadClases/loadAlumnos, con botones para crear/editar/eliminar según rol y para ver participantes) ... */ }
-    // showFormExcursion, saveExcursion, deleteExcursion
+    async function loadExcursiones() { /* TODO: Implementar similar a loadClases/loadAlumnos, con botones para crear/editar/eliminar y ver participantes */ }
+    // async function showFormExcursion(id = null) { /* ... */ }
+    // async function saveExcursion(event) { /* ... */ }
+    // async function deleteExcursion(id) { /* ... */ }
 
     // --- Participaciones ---
-    async function loadParticipaciones() { /* ... (renderizar tabla de participaciones, con filtros. Formulario para editar autorización/pago) ... */ }
-    // showFormParticipacion, saveParticipacion
+    async function loadParticipaciones() { /* TODO: Implementar filtros y tabla. La edición aquí es más compleja (inline o modal por participación) */ }
+    // async function showFormParticipacion(id = null) { /* ... */ } // Podría ser un modal para editar una línea
+    // async function saveParticipacion(eventOrData) { /* ... */ }
+
 
     // --- Admin Usuarios (Solo Dirección) ---
-    async function loadAdminUsuarios() { /* ... (como te lo di antes, con tabla y botones para forms) ... */ }
-    // showFormAdminUsuario, saveAdminUsuario, deleteAdminUsuario
+    async function loadAdminUsuarios() { /* TODO: Implementar similar a loadClases, usando /api/usuarios. Los formularios serán para email, nombre, rol, y opcionalmente clase_asignada_id para tutores */ }
+    // async function showFormAdminUsuario(id = null) { /* ... */ }
+    // async function saveAdminUsuario(event) { /* ... */ }
+    // async function deleteAdminUsuario(id) { /* ... */ }
 
-    // --- INICIALIZACIÓN ---
+
+    // --- INICIALIZACIÓN DE LA APP ---
     checkInitialLoginState();
-});
+}); // Fin de DOMContentLoaded
