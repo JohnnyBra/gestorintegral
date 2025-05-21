@@ -512,6 +512,17 @@ async function saveClase(event) {
             clasesContentDiv.querySelectorAll('.delete-clase').forEach(b => b.onclick=(e)=>deleteClase(e.target.dataset.id, e.target.dataset.nombre));
             clasesContentDiv.querySelectorAll('.view-alumnos-clase').forEach(b => b.onclick=(e)=>{ sessionStorage.setItem('filtroAlumnosClaseId',e.target.dataset.claseid); sessionStorage.setItem('filtroAlumnosNombreClase',e.target.dataset.nclase); navigateTo('alumnos'); });
         } catch (error) { clasesContentDiv.innerHTML = `<p class="error-message">Error al cargar clases: ${error.message}</p>`; }
+        const botonAnadirClase = document.getElementById('btnShowFormNuevaClase');
+console.log("Intentando encontrar el botón '+ Añadir Nueva Clase':", botonAnadirClase); // NUEVO LOG
+
+if(botonAnadirClase) {
+    botonAnadirClase.onclick = () => {
+        console.log("Botón '+ Añadir Nueva Clase' pulsado. Llamando a showFormClase..."); // NUEVO LOG
+        showFormClase();
+    };
+} else {
+    console.error("Botón '+ Añadir Nueva Clase' (btnShowFormNuevaClase) NO encontrado en el DOM."); // NUEVO LOG
+}
     }
     async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') { /* ... (como te la di antes, es bastante completa) ... */ }
     async function saveClase(event) { /* ... (como te la di antes) ... */ }
