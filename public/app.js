@@ -426,8 +426,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event Listeners para el formulario
     const formElement = document.getElementById('formGestionClase');
     if (formElement) {
+         console.log("Asignando listener 'submit' al formulario formGestionClase:", formElement); // LOG
         formElement.addEventListener('submit', saveClase);
-    }
+    } else {
+    console.error("Elemento de formulario formGestionClase NO encontrado para asignar listener."); // LOG
+}
     const btnCancelar = document.getElementById('btnCancelarFormClase');
     if (btnCancelar) {
         btnCancelar.onclick = () => { formClaseWrapper.innerHTML = ''; }; // Limpiar el formulario
