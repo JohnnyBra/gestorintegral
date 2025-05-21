@@ -308,17 +308,18 @@ console.log("Endpoint POST /api/alumnos/importar_csv definido.");
 // --- CRUD PARA ALUMNOS (PENDIENTE DE IMPLEMENTAR COMPLETAMENTE: POST, PUT, DELETE individual) ---
 // Ejemplo POST para crear un alumno individualmente (necesitarás esto para el formulario manual)
 app.post('/api/alumnos', authenticateToken, async (req, res) => {
-    const { nombre_completo, clase_id } = req.body;
+    const { nombre, apellidos, clase_id } = req.body; // NUEVO - Asume que el frontend envía esto
     console.log("  Ruta: POST /api/alumnos, Body:", req.body);
 
-    if (!nombre_completo || !clase_id) {
-        return res.status(400).json({ error: "Nombre completo y clase_id son requeridos." });
+   if (!nombre || !apellidos || !clase_id) { // NUEVA VALIDACIÓN
+    return res.status(400).json({ error: "Nombre, apellidos y clase_id son requeridos." });
     }
     const idClaseNum = parseInt(clase_id);
     if (isNaN(idClaseNum)) {
         return res.status(400).json({ error: "clase_id inválido." });
     }
-
+const nombre_completo_a_guardar = `${nombre} ${apellidos}`;
+const apellidos_para_ordenar_a_guardar = apellidos;
     // Lógica de permisos (similar a la importación CSV)
     if (req.user.rol === 'TUTOR') {
         if (!req.user.claseId || req.user.claseId !== idClaseNum) {
