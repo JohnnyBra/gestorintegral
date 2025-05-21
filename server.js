@@ -134,7 +134,170 @@ app.get('/api/clases', authenticateToken, async (req, res) => {
         res.json({ clases });
     } catch (error) { res.status(500).json({ error: "Error obteniendo clases: " + error.message });}
 });
-// ... RESTO DE CRUD PARA CLASES (POST, PUT, DELETE) ...
+app.post('/api/clases', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado.' });
+    }
+
+    const { nombre_clase, tutor_id } = req.body;
+    console.log("  Ruta: POST /api/clases, Body:", req.body);
+
+
+    if (!nombre_clase || typeof nombre_clase !== 'string' || nombre_clase.trim() === '') {
+        return res.status(400).json({ error: "El nombre de la clase es obligatorio y debe ser un texto." });
+    }
+    const nombreClaseNormalizado = nombre_clase.trim().toUpperCase();
+
+    try {
+        // Verificar si ya existe una clase con ese nombre (insensible a mayúsculas/minúsculas)
+        const claseExistente = await dbGetAsync("SELECT id FROM clases WHERE lower(nombre_clase) = lower(?)", [nombreClaseNormalizado]);
+        if (claseExistente) {
+            return res.status(409).json({ error: `La clase '${nombreClaseNormalizado}' ya existe.` });
+        }
+
+        let tutorValidoId = null;
+        if (tutor_id) {
+            const idTutorNum = parseInt(tutor_id);
+            if (isNaN(idTutorNum)) {
+                 return res.status(400).json({ error: "ID de tutor inválido." });
+            }
+            const tutor = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ? AND rol = 'TUTOR'", [idTutorNum]);
+            if (!tutor) {
+                return res.status(404).json({ error: "Tutor no encontrado o el usuario no es un tutor." });
+            }
+            // Verificar si este tutor ya está asignado a otra clase
+            const claseDelTutor = await dbGetAsync("SELECT id, nombre_clase FROM clases WHERE tutor_id = ?", [idTutorNum]);
+            if (claseDelTutor) {
+                return res.status(409).json({ error: `El tutor seleccionado ya está asignado a la clase '${claseDelTutor.nombre_clase}'.` });
+            }
+            tutorValidoId = idTutorNum;
+        }
+
+        const result = await dbRunAsync("INSERT INTO clases (nombre_clase, tutor_id) VALUES (?, ?)", [nombreClaseNormalizado, tutorValidoId]);
+        const nuevaClase = await dbGetAsync("SELECT c.id, c.nombre_clase, c.tutor_id, u.nombre_completo as nombre_tutor, u.email as email_tutor FROM clases c LEFT JOIN usuarios u ON c.tutor_id = u.id WHERE c.id = ?", [result.lastID]);
+        
+        console.log("  Clase creada con ID:", result.lastID);
+        res.status(201).json({ message: "Clase creada exitosamente", clase: nuevaClase });
+
+    } catch (error) {
+        console.error("  Error en POST /api/clases:", error.message);
+        if (error.message.includes("UNIQUE constraint failed: clases.nombre_clase")) { // Aunque ya lo validamos antes
+             return res.status(409).json({ error: `La clase '${nombreClaseNormalizado}' ya existe.` });
+        }
+        res.status(500).json({ error: "Error interno del servidor al crear la clase." });
+    }
+});
+console.log("Endpoint POST /api/clases definido.");
+
+
+// PUT /api/clases/:id - Actualizar una clase existente
+app.put('/api/clases/:id', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado.' });
+    }
+
+    const claseId = parseInt(req.params.id);
+    const { nombre_clase, tutor_id } = req.body;
+    console.log(`  Ruta: PUT /api/clases/${claseId}, Body:`, req.body);
+
+
+    if (isNaN(claseId)) {
+        return res.status(400).json({ error: "ID de clase inválido." });
+    }
+    if (!nombre_clase || typeof nombre_clase !== 'string' || nombre_clase.trim() === '') {
+        return res.status(400).json({ error: "El nombre de la clase es obligatorio." });
+    }
+    const nombreClaseNormalizado = nombre_clase.trim().toUpperCase();
+
+    try {
+        // Verificar que la clase a editar existe
+        const claseActual = await dbGetAsync("SELECT id, tutor_id FROM clases WHERE id = ?", [claseId]);
+        if (!claseActual) {
+            return res.status(404).json({ error: "Clase no encontrada para editar." });
+        }
+
+        // Verificar si el NUEVO nombre de clase ya existe en OTRA clase
+        const otraClaseConMismoNombre = await dbGetAsync("SELECT id FROM clases WHERE lower(nombre_clase) = lower(?) AND id != ?", [nombreClaseNormalizado, claseId]);
+        if (otraClaseConMismoNombre) {
+            return res.status(409).json({ error: `Ya existe otra clase con el nombre '${nombreClaseNormalizado}'.` });
+        }
+
+        let tutorValidoId = null;
+        if (tutor_id) {
+            const idTutorNum = parseInt(tutor_id);
+             if (isNaN(idTutorNum)) {
+                 return res.status(400).json({ error: "ID de tutor inválido." });
+            }
+            const tutor = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ? AND rol = 'TUTOR'", [idTutorNum]);
+            if (!tutor) {
+                return res.status(404).json({ error: "Tutor no encontrado o el usuario no es un tutor." });
+            }
+            // Verificar si este tutor ya está asignado a OTRA clase (que no sea la actual que estamos editando)
+            const claseDelTutor = await dbGetAsync("SELECT id, nombre_clase FROM clases WHERE tutor_id = ? AND id != ?", [idTutorNum, claseId]);
+            if (claseDelTutor) {
+                return res.status(409).json({ error: `El tutor seleccionado ya está asignado a la clase '${claseDelTutor.nombre_clase}'.` });
+            }
+            tutorValidoId = idTutorNum;
+        }
+        
+        // Si tutor_id es null o undefined en el body, se desasigna el tutor.
+        // Si es una string vacía del select, se convierte a null arriba.
+        // Si no se manda tutor_id en el body, no se actualiza el tutor? Depende de cómo lo mande el front.
+        // Asumimos que el front siempre manda tutor_id (aunque sea null/vacío).
+        
+        await dbRunAsync("UPDATE clases SET nombre_clase = ?, tutor_id = ? WHERE id = ?", [nombreClaseNormalizado, tutorValidoId, claseId]);
+        
+        const claseActualizada = await dbGetAsync("SELECT c.id, c.nombre_clase, c.tutor_id, u.nombre_completo as nombre_tutor, u.email as email_tutor FROM clases c LEFT JOIN usuarios u ON c.tutor_id = u.id WHERE c.id = ?", [claseId]);
+        
+        console.log("  Clase actualizada con ID:", claseId);
+        res.json({ message: "Clase actualizada exitosamente", clase: claseActualizada });
+
+    } catch (error) {
+        console.error(`  Error en PUT /api/clases/${claseId}:`, error.message);
+         if (error.message.includes("UNIQUE constraint failed: clases.nombre_clase")) { // Por si acaso
+             return res.status(409).json({ error: `Ya existe otra clase con el nombre '${nombreClaseNormalizado}'.` });
+        }
+        res.status(500).json({ error: "Error interno del servidor al actualizar la clase." });
+    }
+});
+console.log("Endpoint PUT /api/clases/:id definido.");
+
+// DELETE /api/clases/:id (Opcional, pero bueno para completar)
+app.delete('/api/clases/:id', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado.' });
+    }
+    const claseId = parseInt(req.params.id);
+    console.log(`  Ruta: DELETE /api/clases/${claseId}`);
+
+    if (isNaN(claseId)) {
+        return res.status(400).json({ error: "ID de clase inválido." });
+    }
+
+    try {
+        // Antes de eliminar la clase, necesitamos considerar los alumnos asociados.
+        // La BD tiene ON DELETE CASCADE para alumnos si se borra su clase_id de la tabla clases,
+        // y ON DELETE SET NULL para el tutor_id en la tabla clases si se borra el usuario.
+        // Aquí, al borrar una clase, los alumnos de esa clase se borrarán debido a la FK.
+        const alumnosEnClase = await dbGetAsync("SELECT COUNT(*) as count FROM alumnos WHERE clase_id = ?", [claseId]);
+        if (alumnosEnClase.count > 0) {
+            return res.status(409).json({ error: `No se puede eliminar la clase porque tiene ${alumnosEnClase.count} alumnos asignados. Elimine o reasigne los alumnos primero.`});
+            // Alternativamente, podrías permitir borrar la clase y sus alumnos, pero es una acción destructiva.
+            // O podrías desvincular a los alumnos (SET NULL), pero la FK actual es ON DELETE CASCADE.
+        }
+
+        const result = await dbRunAsync("DELETE FROM clases WHERE id = ?", [claseId]);
+        if (result.changes === 0) {
+            return res.status(404).json({ error: "Clase no encontrada para eliminar." });
+        }
+        console.log(`  Clase con ID ${claseId} eliminada.`);
+        res.status(200).json({ message: "Clase eliminada exitosamente." }); // 204 No Content también es una opción si no devuelves mensaje.
+    } catch (error) {
+        console.error(`  Error en DELETE /api/clases/${claseId}:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al eliminar la clase." });
+    }
+});
+console.log("Endpoint DELETE /api/clases/:id definido.");
 
 // --- Gestión de Alumnos ---
 
