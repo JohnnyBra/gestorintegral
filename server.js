@@ -169,7 +169,7 @@ app.get('/api/alumnos', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: "Acceso no autorizado a la lista de alumnos." });
         }
 
-        sql += " ORDER BY c.nombre_clase ASC, a.nombre_completo ASC";
+            sql += " ORDER BY c.nombre_clase ASC, a.apellidos_para_ordenar ASC, a.nombre_completo ASC"; 
         
         const alumnos = await dbAllAsync(sql, params);
         console.log(`  Alumnos encontrados: ${alumnos.length}`);
