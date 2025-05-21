@@ -532,66 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-        if (currentUser.rol === 'TUTOR') {
-            if (!currentUser.claseId) { alumnosContentDiv.innerHTML = "<p>No tienes clase asignada para ver alumnos.</p>"; return; }
-            queryParams.append('claseId', currentUser.claseId);
-            titulo += ` de tu clase: ${currentUser.claseNombre}`;
-        } else if (currentUser.rol === 'DIRECCION') {
-            if (filtroClaseId) {
-                queryParams.append('claseId', filtroClaseId);
-                titulo += ` de la clase: ${filtroNombreClase}`;
-            } else { titulo += ` (Todas las Clases)`; }
-        }
-        if (queryParams.toString()) endpoint += `?${queryParams.toString()}`;
-        
-        try {
-            const data = await apiFetch(endpoint);
-            const dataClases = (currentUser.rol === 'DIRECCION') ? await apiFetch('/clases') : null;
-            listaDeClasesGlobal = dataClases ? dataClases.clases : []; // Cachear para el form
-            
-            let html = `<h3>${titulo}</h3>`;
-            if (currentUser.rol === 'DIRECCION' && !filtroClaseId) {
-                html += `<div style="margin-bottom:15px;">Filtrar por clase: <select id="selectFiltroClaseAlumnos"><option value="">Todas</option>`;
-                listaDeClasesGlobal.forEach(cl => html += `<option value="${cl.id}">${cl.nombre_clase}</option>`);
-                html += `</select></div>`;
-            } else if (filtroClaseId && currentUser.rol === 'DIRECCION') {
-                 html += `<button onclick="sessionStorage.removeItem('filtroAlumnosClaseId'); sessionStorage.removeItem('filtroAlumnosNombreClase'); loadAlumnos();" class="secondary" style="margin-bottom:15px;">Mostrar Todos</button>`;
-            }
-
-            if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && currentUser.claseId)) {
-                html += `<button id="btnShowFormNuevoAlumno" class="success" style="margin-bottom:15px;">+ Añadir Alumno ${currentUser.rol === 'TUTOR' ? 'a mi clase' : ''}</button>`;
-            }
-            html += `<table class="tabla-datos"><thead><tr><th>Nombre Completo</th><th>Clase</th><th>Acciones</th></tr></thead><tbody>`;
-            if (data.alumnos && data.alumnos.length > 0) {
-                data.alumnos.forEach(a => { html += `<tr data-alumno-id="${a.id}"><td>${a.nombre_completo}</td><td>${a.nombre_clase}</td><td>
-                    <button class="edit-alumno warning" data-id="${a.id}">Editar</button>
-                    <button class="delete-alumno danger" data-id="${a.id}" data-nombre="${a.nombre_completo}">Eliminar</button>
-                    </td></tr>`; });
-            } else { html += `<tr><td colspan="3" style="text-align:center;">No hay alumnos.</td></tr>`; }
-            html += `</tbody></table><div id="formAlumnoWrapper" class="form-wrapper" style="margin-top:20px;"></div>`;
-            alumnosContentDiv.innerHTML = html;
-
-            if(document.getElementById('btnShowFormNuevoAlumno')) document.getElementById('btnShowFormNuevoAlumno').onclick = () => showFormAlumno();
-            alumnosContentDiv.querySelectorAll('.edit-alumno').forEach(b => b.onclick = async (e) => {
-                const alumnoId = e.target.dataset.id;
-                try { const dataAlumno = await apiFetch(`/alumnos/${alumnoId}`); showFormAlumno(alumnoId, dataAlumno.alumno);} // Pasar alumnoData
-                catch(err){showGlobalError("Error cargando alumno para editar.");}
-            });
-            alumnosContentDiv.querySelectorAll('.delete-alumno').forEach(b => b.onclick = (e) => deleteAlumno(e.target.dataset.id, e.target.dataset.nombre));
-            
-            if (document.getElementById('selectFiltroClaseAlumnos')) {
-                const selectFiltro = document.getElementById('selectFiltroClaseAlumnos');
-                if (sessionStorage.getItem('filtroAlumnosClaseId')) selectFiltro.value = sessionStorage.getItem('filtroAlumnosClaseId');
-                selectFiltro.onchange = (e) => {
-                    if (e.target.value) {
-                        sessionStorage.setItem('filtroAlumnosClaseId', e.target.value);
-                        sessionStorage.setItem('filtroAlumnosNombreClase', e.target.options[e.target.selectedIndex].text);
-                    } else { sessionStorage.removeItem('filtroAlumnosClaseId'); sessionStorage.removeItem('filtroAlumnosNombreClase');}
-                    loadAlumnos();
-                };
-            }
-        } catch (e) { alumnosContentDiv.innerHTML = `<p class="error-message">Error cargando alumnos: ${e.message}</p>`;}
-    }
+  
         // --- Funciones Específicas para la Importación CSV de Alumnos ---
 
     async function poblarSelectorClaseDestinoCSV(selectElementId = 'csvClaseDestino') {
