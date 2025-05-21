@@ -359,6 +359,137 @@ document.addEventListener('DOMContentLoaded', () => {
  // Variable global para cachear la lista de clases, útil para varios selectores
     let listaDeClasesGlobal = []; 
     // --- Gestión de Clases --- (Renderizado y lógica de formularios completa)
+    async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') {
+    const formClaseWrapper = document.getElementById('formClaseWrapper');
+    if (!formClaseWrapper) {
+        console.error("Elemento formClaseWrapper no encontrado.");
+        return;
+    }
+
+    // Obtener lista de posibles tutores (usuarios con rol TUTOR)
+    let tutoresDisponibles = [];
+    try {
+        const dataUsuarios = await apiFetch('/usuarios'); // Asume que este endpoint devuelve todos los usuarios
+        if (dataUsuarios && dataUsuarios.usuarios) {
+            tutoresDisponibles = dataUsuarios.usuarios.filter(u => u.rol === 'TUTOR');
+        }
+    } catch (error) {
+        console.error("Error obteniendo lista de tutores:", error);
+        // Continuar para mostrar el formulario, aunque sea sin tutores o con un mensaje.
+    }
+
+    let optionsTutoresHtml = '<option value="">-- Sin asignar --</option>';
+    tutoresDisponibles.forEach(tutor => {
+        // Solo incluir tutores que no tengan ya una clase asignada, O el tutor actualmente asignado a esta clase (si se está editando)
+        const estaAsignadoAOtraClase = tutor.clase_asignada_id && tutor.clase_asignada_id !== idClase;
+        const esTutorActual = tutor.id === parseInt(tutorIdExistente);
+
+        if (!estaAsignadoAOtraClase || esTutorActual) {
+            optionsTutoresHtml += `<option value="${tutor.id}" ${esTutorActual ? 'selected' : ''}>
+                                      ${tutor.nombre_completo} (${tutor.email})
+                                  </option>`;
+        } else {
+             // Opcional: mostrar tutores ya asignados pero deshabilitados o con un sufijo
+            optionsTutoresHtml += `<option value="${tutor.id}" disabled>
+                                      ${tutor.nombre_completo} (Asignado a: ${tutor.clase_asignada_nombre || 'otra clase'})
+                                   </option>`;
+        }
+    });
+
+
+    const formHtml = `
+        <div class="form-container" style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin-top: 15px; border: 1px solid #e0e0e0;">
+            <h3>${idClase ? 'Editar Clase' : 'Añadir Nueva Clase'}</h3>
+            <form id="formGestionClase">
+                <input type="hidden" id="claseId" name="claseId" value="${idClase || ''}">
+                <div>
+                    <label for="nombreClase">Nombre de la Clase:</label>
+                    <input type="text" id="nombreClase" name="nombreClase" value="${nombreExistente}" required>
+                </div>
+                <div>
+                    <label for="tutorClase">Tutor Asignado:</label>
+                    <select id="tutorClase" name="tutorClase">
+                        ${optionsTutoresHtml}
+                    </select>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="success">${idClase ? 'Guardar Cambios' : 'Crear Clase'}</button>
+                    <button type="button" id="btnCancelarFormClase" class="secondary">Cancelar</button>
+                </div>
+                <p id="formClaseError" class="error-message"></p>
+            </form>
+        </div>
+    `;
+    formClaseWrapper.innerHTML = formHtml;
+
+    // Event Listeners para el formulario
+    const formElement = document.getElementById('formGestionClase');
+    if (formElement) {
+        formElement.addEventListener('submit', saveClase);
+    }
+    const btnCancelar = document.getElementById('btnCancelarFormClase');
+    if (btnCancelar) {
+        btnCancelar.onclick = () => { formClaseWrapper.innerHTML = ''; }; // Limpiar el formulario
+    }
+}
+
+async function saveClase(event) {
+    event.preventDefault();
+    const formClaseError = document.getElementById('formClaseError');
+    if (formClaseError) formClaseError.textContent = '';
+
+    const claseIdInput = document.getElementById('claseId');
+    const nombreClaseInput = document.getElementById('nombreClase');
+    const tutorClaseSelect = document.getElementById('tutorClase');
+
+    if (!nombreClaseInput || !tutorClaseSelect || !claseIdInput) {
+        if (formClaseError) formClaseError.textContent = 'Error: Elementos del formulario no encontrados.';
+        return;
+    }
+
+    const idClase = claseIdInput.value;
+    const nombre_clase = nombreClaseInput.value.trim().toUpperCase();
+    const tutor_id = tutorClaseSelect.value ? parseInt(tutorClaseSelect.value) : null;
+
+    if (!nombre_clase) {
+        if (formClaseError) formClaseError.textContent = 'El nombre de la clase es obligatorio.';
+        return;
+    }
+
+    const claseData = { nombre_clase, tutor_id };
+    let method = 'POST';
+    let endpoint = '/clases';
+
+    if (idClase) { // Si hay ID, es una edición (PUT)
+        method = 'PUT';
+        endpoint = `/clases/${idClase}`;
+    }
+
+    try {
+        const resultado = await apiFetch(endpoint, method, claseData);
+        console.log("Respuesta de guardar clase:", resultado);
+        
+        // Limpiar formulario y recargar lista de clases
+        const formClaseWrapper = document.getElementById('formClaseWrapper');
+        if (formClaseWrapper) formClaseWrapper.innerHTML = ''; // Limpiar
+        
+        loadClases(); // Recargar la tabla de clases para ver los cambios
+
+        // Actualizar la lista global de clases si es que la usas en otros sitios
+        // y el selector de importación de alumnos
+        const dataClasesActualizadas = await apiFetch('/clases');
+        listaDeClasesGlobal = dataClasesActualizadas.clases || [];
+        // Si la sección de alumnos está activa, y el selector de CSV está presente, repoblarlo.
+        if (document.getElementById('alumnos-section') && document.getElementById('alumnos-section').style.display === 'block' && document.getElementById('csvClaseDestino')) {
+            poblarSelectorClaseDestinoCSV();
+        }
+
+
+    } catch (error) {
+        console.error(`Error guardando clase (${method} ${endpoint}):`, error);
+        if (formClaseError) formClaseError.textContent = error.message || 'Error desconocido al guardar la clase.';
+    }
+}
     async function loadClases() {
         if (!clasesContentDiv || !currentToken) return;
         clasesContentDiv.innerHTML = '<p>Cargando clases...</p>';
@@ -391,9 +522,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function showFormAlumno(idAlumno = null, listaTodasClases = null, nombreExistente = '', claseIdExistente = '') { /* ... (necesitas implementarla) ... */ }
     async function saveAlumno(event) { /* ... (necesitas implementarla) ... */ }
     async function deleteAlumno(idAlumno, nombreAlumno) { /* ... (necesitas implementarla) ... */ }
-    // --- DENTRO de public/app.js, dentro del addEventListener('DOMContentLoaded', ...) ---
-
-// ... (tus otras funciones: apiFetch, loadClases, loadDashboardData, etc.)
 
     // --- Funciones Específicas para la Importación CSV de Alumnos ---
 
