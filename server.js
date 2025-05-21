@@ -1,4 +1,4 @@
-// --- server.js (Enfoque en Arranque Estable y Completitud) ---
+// --- server.js (CORREGIDO) ---
 console.log("==================================================");
 console.log(" Iniciando server.js (Versión para Arranque Estable)");
 console.log("==================================================");
@@ -117,8 +117,6 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 });
 
 // --- Gestión de Usuarios (Solo Dirección) ---
-// (Pega aquí tus endpoints CRUD COMPLETOS para /api/usuarios que te di antes. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync)
-// Ejemplo para GET (asegúrate de que los demás (POST, PUT, DELETE) estén también):
 app.get('/api/usuarios', authenticateToken, async (req, res) => {
     if (req.user.rol !== 'DIRECCION') return res.status(403).json({ error: 'No autorizado.' });
     try {
@@ -126,11 +124,9 @@ app.get('/api/usuarios', authenticateToken, async (req, res) => {
         res.json({ usuarios });
     } catch (error) { res.status(500).json({ error: "Error obteniendo usuarios: " + error.message }); }
 });
-// ... RESTO DE CRUD PARA USUARIOS ...
+// ... RESTO DE CRUD PARA USUARIOS (POST, PUT, DELETE) ...
 
 // --- Gestión de Clases ---
-// (Pega aquí tus endpoints CRUD COMPLETOS para /api/clases. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync)
-// Ejemplo para GET:
 app.get('/api/clases', authenticateToken, async (req, res) => {
     try {
         const clases = await dbAllAsync(`SELECT c.id, c.nombre_clase, c.tutor_id, u.nombre_completo as nombre_tutor, u.email as email_tutor
@@ -138,17 +134,59 @@ app.get('/api/clases', authenticateToken, async (req, res) => {
         res.json({ clases });
     } catch (error) { res.status(500).json({ error: "Error obteniendo clases: " + error.message });}
 });
-// ... RESTO DE CRUD PARA CLASES ...
+// ... RESTO DE CRUD PARA CLASES (POST, PUT, DELETE) ...
 
 // --- Gestión de Alumnos ---
-// (Pega aquí tus endpoints CRUD COMPLETOS para /api/alumnos. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
-// --- En server.js, dentro de las rutas de API ---
 
-// ... (tus otros endpoints para alumnos) ...
+// GET /api/alumnos - Obtener todos los alumnos o filtrados por clase
+app.get('/api/alumnos', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/alumnos solicitada. Query params:", req.query);
+    const { claseId } = req.query;
+    const userRol = req.user.rol;
+    const userId = req.user.id; // ID del usuario que hace la petición (tutor)
+    const userClaseId = req.user.claseId; // ID de la clase del tutor (si es tutor)
+
+    let sql = `SELECT a.id, a.nombre_completo, a.clase_id, c.nombre_clase 
+               FROM alumnos a 
+               JOIN clases c ON a.clase_id = c.id`;
+    const params = [];
+
+    try {
+        if (userRol === 'TUTOR') {
+            if (!userClaseId) {
+                console.warn(`  Tutor ${req.user.email} (ID: ${userId}) no tiene clase asignada. Devolviendo lista vacía de alumnos.`);
+                return res.json({ alumnos: [] });
+            }
+            sql += " WHERE a.clase_id = ?";
+            params.push(userClaseId);
+        } else if (userRol === 'DIRECCION') {
+            if (claseId) {
+                sql += " WHERE a.clase_id = ?";
+                params.push(claseId);
+            }
+        } else {
+            // Otros roles no deberían tener acceso general, a menos que se defina específicamente
+            return res.status(403).json({ error: "Acceso no autorizado a la lista de alumnos." });
+        }
+
+        sql += " ORDER BY c.nombre_clase ASC, a.nombre_completo ASC";
+        
+        const alumnos = await dbAllAsync(sql, params);
+        console.log(`  Alumnos encontrados: ${alumnos.length}`);
+        res.json({ alumnos });
+
+    } catch (error) {
+        console.error("  Error en GET /api/alumnos:", error.message);
+        res.status(500).json({ error: "Error obteniendo alumnos: " + error.message });
+    }
+});
+console.log("Endpoint GET /api/alumnos definido.");
+
 
 // POST /api/alumnos/importar_csv - Importar alumnos desde un CSV a una clase
 app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
     const { clase_id, csv_data } = req.body; // Esperamos el ID de la clase y el contenido del CSV como string
+    console.log(`  Ruta: POST /api/alumnos/importar_csv para clase_id: ${clase_id}`);
     
     if (!clase_id || !csv_data) {
         return res.status(400).json({ error: "Se requiere clase_id y csv_data." });
@@ -170,11 +208,13 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
 
     // Verificar que la clase existe
     try {
-        const claseDb = await dbGetAsyncP("SELECT id FROM clases WHERE id = ?", [idClaseNum]);
+        // CORRECCIÓN AQUÍ: dbGetAsyncP -> dbGetAsync
+        const claseDb = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [idClaseNum]);
         if (!claseDb) {
             return res.status(404).json({ error: `La clase con ID ${idClaseNum} no existe.` });
         }
     } catch (e) {
+        console.error("  Error verificando la clase en POST /api/alumnos/importar_csv:", e.message);
         return res.status(500).json({ error: "Error verificando la clase: " + e.message });
     }
 
@@ -184,7 +224,6 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
     let erroresEnLineas = [];
     const promesasDeInsercion = [];
 
-    // Función para limpiar comillas envolventes (la que ya tienes)
     function limpiarComillasEnvolventes(textoStr) {
         let texto = String(textoStr).trim();
         if (texto.length >= 2 && texto.startsWith('"') && texto.endsWith('"')) {
@@ -198,16 +237,13 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
         let lineaParaProcesar = lineaOriginal.trim();
         if (lineaParaProcesar === '') continue;
 
-        // 1. Limpiar comillas envolventes de TODA la línea si el formato es así
         let contenidoCampo = limpiarComillasEnvolventes(lineaParaProcesar);
 
-        // 2. Ignorar cabecera (ej. "Alumno" o "Apellidos, Nombre")
         if (i === 0 && (contenidoCampo.toLowerCase().includes('alumno') || contenidoCampo.toLowerCase().includes('apellido'))) {
-            console.log("Cabecera CSV omitida en importación:", lineaOriginal);
+            console.log("  Cabecera CSV omitida en importación:", lineaOriginal);
             continue; 
         }
 
-        // 3. Dividir el contenido del campo interno "Apellidos, Nombre"
         let apellidos = "";
         let nombre = "";
         const indiceUltimaComa = contenidoCampo.lastIndexOf(',');
@@ -216,9 +252,8 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
             apellidos = contenidoCampo.substring(0, indiceUltimaComa).trim();
             nombre = contenidoCampo.substring(indiceUltimaComa + 1).trim();
         } else {
-            // Si no sigue el patrón, se marca como error de formato para esa línea
-            if (contenidoCampo) { // Solo si hay contenido después de quitar comillas
-                console.warn(`Línea ${i + 1} en CSV no sigue el formato "Apellidos, Nombre": "${contenidoCampo}"`);
+            if (contenidoCampo) {
+                console.warn(`  Línea ${i + 1} en CSV no sigue el formato "Apellidos, Nombre": "${contenidoCampo}"`);
                 erroresEnLineas.push({ linea: i + 1, dato: contenidoCampo, error: "Formato incorrecto (se esperaba 'Apellidos, Nombre')" });
             }
             continue; 
@@ -227,23 +262,24 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
         if (nombre && apellidos) {
             const nombreCompletoFinal = `${nombre} ${apellidos}`; // Formato: Nombre Apellidos
             
-            // Añadir a la lista de promesas para inserción
             promesasDeInsercion.push(
-                dbGetAsyncP("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombreCompletoFinal.toLowerCase(), idClaseNum])
+                // CORRECCIÓN AQUÍ: dbGetAsyncP -> dbGetAsync
+                dbGetAsync("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombreCompletoFinal.toLowerCase(), idClaseNum])
                 .then(alumnoExistente => {
                     if (alumnoExistente) {
                         alumnosOmitidos++;
-                        console.log(`Alumno omitido (duplicado): ${nombreCompletoFinal} en clase ID ${idClaseNum}`);
+                        console.log(`  Alumno omitido (duplicado): ${nombreCompletoFinal} en clase ID ${idClaseNum}`);
                     } else {
-                        return dbRunAsyncP("INSERT INTO alumnos (nombre_completo, clase_id) VALUES (?, ?)", [nombreCompletoFinal, idClaseNum])
+                        // CORRECCIÓN AQUÍ: dbRunAsyncP -> dbRunAsync
+                        return dbRunAsync("INSERT INTO alumnos (nombre_completo, clase_id) VALUES (?, ?)", [nombreCompletoFinal, idClaseNum])
                             .then(() => {
                                 alumnosImportados++;
-                                console.log(`Alumno importado: ${nombreCompletoFinal} a clase ID ${idClaseNum}`);
+                                console.log(`  Alumno importado: ${nombreCompletoFinal} a clase ID ${idClaseNum}`);
                             });
                     }
                 })
                 .catch(errIns => {
-                    console.error(`Error procesando alumno ${nombreCompletoFinal}: ${errIns.message}`);
+                    console.error(`  Error procesando alumno ${nombreCompletoFinal}: ${errIns.message}`);
                     erroresEnLineas.push({ linea: i + 1, dato: contenidoCampo, error: errIns.message });
                 })
             );
@@ -253,7 +289,8 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
     }
 
     try {
-        await Promise.all(promesasDeInsercion); // Esperar a que todas las inserciones (o verificaciones) terminen
+        await Promise.all(promesasDeInsercion);
+        console.log("  Proceso de importación CSV completado.");
         res.json({
             message: "Proceso de importación CSV completado.",
             importados: alumnosImportados,
@@ -262,12 +299,62 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
             detalles_errores: erroresEnLineas
         });
     } catch (errorGeneral) {
-        // Este catch es por si Promise.all falla por alguna razón no capturada antes
-        console.error("Error general durante el proceso de importación CSV:", errorGeneral);
+        console.error("  Error general durante el proceso de importación CSV:", errorGeneral);
         res.status(500).json({ error: "Error interno durante la importación masiva." });
     }
 });
 console.log("Endpoint POST /api/alumnos/importar_csv definido.");
+
+// --- CRUD PARA ALUMNOS (PENDIENTE DE IMPLEMENTAR COMPLETAMENTE: POST, PUT, DELETE individual) ---
+// Ejemplo POST para crear un alumno individualmente (necesitarás esto para el formulario manual)
+app.post('/api/alumnos', authenticateToken, async (req, res) => {
+    const { nombre_completo, clase_id } = req.body;
+    console.log("  Ruta: POST /api/alumnos, Body:", req.body);
+
+    if (!nombre_completo || !clase_id) {
+        return res.status(400).json({ error: "Nombre completo y clase_id son requeridos." });
+    }
+    const idClaseNum = parseInt(clase_id);
+    if (isNaN(idClaseNum)) {
+        return res.status(400).json({ error: "clase_id inválido." });
+    }
+
+    // Lógica de permisos (similar a la importación CSV)
+    if (req.user.rol === 'TUTOR') {
+        if (!req.user.claseId || req.user.claseId !== idClaseNum) {
+            return res.status(403).json({ error: "Tutor solo puede añadir alumnos a su clase asignada." });
+        }
+    } else if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: "Acción no autorizada." });
+    }
+    
+    try {
+        // Verificar si la clase existe
+        const claseDb = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [idClaseNum]);
+        if (!claseDb) {
+            return res.status(404).json({ error: `La clase con ID ${idClaseNum} no existe.` });
+        }
+
+        // Verificar si el alumno ya existe en esa clase
+        const alumnoExistente = await dbGetAsync("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombre_completo.toLowerCase(), idClaseNum]);
+        if (alumnoExistente) {
+            return res.status(409).json({ error: `El alumno '${nombre_completo}' ya existe en la clase seleccionada.`});
+        }
+
+        const result = await dbRunAsync("INSERT INTO alumnos (nombre_completo, clase_id) VALUES (?, ?)", [nombre_completo, idClaseNum]);
+        const nuevoAlumno = await dbGetAsync("SELECT a.id, a.nombre_completo, a.clase_id, c.nombre_clase FROM alumnos a JOIN clases c ON a.clase_id = c.id WHERE a.id = ?", [result.lastID]);
+        console.log("  Alumno creado con ID:", result.lastID);
+        res.status(201).json({ message: "Alumno creado exitosamente", alumno: nuevoAlumno });
+    } catch (error) {
+        console.error("  Error en POST /api/alumnos:", error.message);
+        res.status(500).json({ error: "Error creando alumno: " + error.message });
+    }
+});
+console.log("Endpoint POST /api/alumnos (crear individual) definido.");
+
+// ... (PUT /api/alumnos/:id y DELETE /api/alumnos/:id PENDIENTES) ...
+
+
 // --- Gestión de Excursiones ---
 // (Pega aquí tus endpoints CRUD COMPLETOS para /api/excursiones. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
 // ...
@@ -279,21 +366,21 @@ console.log("Endpoint POST /api/alumnos/importar_csv definido.");
 // --- Endpoint de Dashboard ---
 app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
     console.log("  Ruta: GET /api/dashboard/summary para:", req.user.email);
-    // ... (Pega aquí tu lógica completa del endpoint de Dashboard usando await dbGetAsyncP y dbAllAsyncP)
-    // Ejemplo simplificado:
     try {
         const totalClases = (await dbGetAsync("SELECT COUNT(*) as count FROM clases")).count;
-        res.json({ mensaje: "Resumen del dashboard", totalClases });
+        // Aquí deberías expandir para obtener más datos como en tu app.js
+        // Por ahora, solo devolvemos totalClases para que el log original no falle.
+        res.json({ mensaje: "Resumen del dashboard", totalClases /* , otros datos... */ });
     } catch (error) { res.status(500).json({error: "Error en dashboard: " + error.message});}
 });
 
 console.log("Paso 17: Todas las definiciones de rutas de API (o sus placeholders) completadas.");
 
 // --- Conexión a la Base de Datos e Inicio del Servidor ---
-const DB_FILE_PATH_FINAL = path.join(__dirname, "database.db"); // Usar un nombre diferente para no confundir con el DBSOURCE global
+const DB_FILE_PATH_FINAL = path.join(__dirname, "database.db");
 console.log(`Paso 18: Intentando conectar a BD en: ${DB_FILE_PATH_FINAL} para iniciar servidor.`);
 
-db = new sqlite3.Database(DB_FILE_PATH_FINAL, sqlite3.OPEN_READWRITE, (err) => { // Abrir en modo lectura/escritura
+db = new sqlite3.Database(DB_FILE_PATH_FINAL, sqlite3.OPEN_READWRITE, (err) => {
     if (err) {
         console.error("Error FATAL al conectar con la base de datos (dentro del bloque final):", err.message);
         process.exit(1);
