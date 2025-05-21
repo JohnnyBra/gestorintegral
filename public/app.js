@@ -367,17 +367,41 @@ document.addEventListener('DOMContentLoaded', () => {
             html += `<table class="tabla-datos"><thead><tr><th>Nombre Clase</th><th>Tutor Asignado</th><th>Email Tutor</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.clases && data.clases.length > 0) {
                 data.clases.forEach(clase => {
-                    html += `<tr data-clase-id="${clase.id}"><td>${clase.nombre_clase}</td><td>${clase.nombre_tutor || '<em>No asignado</em>'}</td><td>${clase.email_tutor || '<em>N/A</em>'}</td><td class="actions-cell">
-                        <button class="view-alumnos-clase secondary" data-claseid="${clase.id}" data-nclase="${clase.nombre_clase}">Ver Alumnos</button>
-                        ${currentUser.rol === 'DIRECCION' ? `<button class="edit-clase warning" data-id="${clase.id}" data-nombre="${clase.nombre_clase}" data-tutorid="${clase.tutor_id || ''}">Editar</button> <button class="delete-clase danger" data-id="${clase.id}" data-nombre="${clase.nombre_clase}">Eliminar</button>` : ''}
-                        </td></tr>`;});
+                    let actionsHtml = `<button class="view-alumnos-clase secondary" data-claseid="${clase.id}" data-nclase="${clase.nombre_clase}">Ver Alumnos</button>`;
+                    if (currentUser.rol === 'DIRECCION') {
+                        actionsHtml += ` <button class="edit-clase warning" data-id="${clase.id}" data-nombre="${clase.nombre_clase}" data-tutorid="${clase.tutor_id || ''}">Editar</button>`;
+                        actionsHtml += ` <button class="delete-clase danger" data-id="${clase.id}" data-nombre="${clase.nombre_clase}">Eliminar</button>`;
+                        actionsHtml += ` <button class="import-csv-alumnos success" data-claseid="${clase.id}" data-nclase="${clase.nombre_clase}" style="margin-left: 5px;">Importar CSV</button>`;
+                    }
+                    html += `<tr data-clase-id="${clase.id}"><td>${clase.nombre_clase}</td><td>${clase.nombre_tutor || '<em>No asignado</em>'}</td><td>${clase.email_tutor || '<em>N/A</em>'}</td><td class="actions-cell">${actionsHtml}</td></tr>`;
+                });
             } else html += '<tr><td colspan="4" style="text-align:center;">No hay clases registradas.</td></tr>';
-            html += '</tbody></table><div id="formClaseWrapper" class="form-wrapper" style="margin-top:20px;"></div>';
+            html += '</tbody></table>';
+            html += '<div id="csv-import-status" style="margin-top: 10px;"></div>'; // Status div for CSV import
+            html += '<div id="formClaseWrapper" class="form-wrapper" style="margin-top:20px;"></div>';
             clasesContentDiv.innerHTML = html;
             if(document.getElementById('btnShowFormNuevaClase')) document.getElementById('btnShowFormNuevaClase').onclick = () => showFormClase();
             clasesContentDiv.querySelectorAll('.edit-clase').forEach(b => b.onclick=(e)=>showFormClase(e.target.dataset.id, e.target.dataset.nombre, e.target.dataset.tutorid));
             clasesContentDiv.querySelectorAll('.delete-clase').forEach(b => b.onclick=(e)=>deleteClase(e.target.dataset.id, e.target.dataset.nombre));
             clasesContentDiv.querySelectorAll('.view-alumnos-clase').forEach(b => b.onclick=(e)=>{ sessionStorage.setItem('filtroAlumnosClaseId',e.target.dataset.claseid); sessionStorage.setItem('filtroAlumnosNombreClase',e.target.dataset.nclase); navigateTo('alumnos'); });
+            
+            clasesContentDiv.querySelectorAll('.import-csv-alumnos').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const claseId = e.target.dataset.claseid;
+                    const nombreClase = e.target.dataset.nclase;
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.accept = '.csv'; 
+                    fileInput.onchange = (event) => {
+                        const file = event.target.files[0];
+                        if (file) {
+                            showCsvImportConfirmation(claseId, nombreClase, file);
+                        }
+                    };
+                    fileInput.click(); 
+                });
+            });
+
         } catch (error) { clasesContentDiv.innerHTML = `<p class="error-message">Error al cargar clases: ${error.message}</p>`; }
     }
     async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') { /* ... (como te la di antes, es bastante completa) ... */ }

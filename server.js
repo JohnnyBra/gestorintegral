@@ -10,6 +10,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const path = require('path');
+const multer = require('multer');
+const csv = require('csv-parser');
+const stream = require('stream');
 require('dotenv').config(); // Carga variables desde el archivo .env
 
 console.log(" Paso 1: Módulos principales importados.");
@@ -25,6 +28,10 @@ if (JWT_SECRET === "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV") {
 console.log(` Paso 2: Express app creada. Puerto: ${PORT}. JWT_SECRET ${JWT_SECRET === "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV" ? "es el por defecto (INSEGURO)" : "cargado (esperemos que seguro)"}.`);
 
 // --- Middlewares Globales de Express ---
+// Multer config
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -137,6 +144,86 @@ app.get('/api/clases', authenticateToken, async (req, res) => {
                                         FROM clases c LEFT JOIN usuarios u ON c.tutor_id = u.id ORDER BY c.nombre_clase ASC`);
         res.json({ clases });
     } catch (error) { res.status(500).json({ error: "Error obteniendo clases: " + error.message });}
+});
+
+app.post('/api/clases/:claseId/import-alumnos-csv', authenticateToken, upload.single('csvfile'), async (req, res) => {
+    console.log(`  Ruta: POST /api/clases/${req.params.claseId}/import-alumnos-csv`);
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado. Solo DIRECCION puede importar alumnos.' });
+    }
+
+    if (!req.file) {
+        return res.status(400).json({ error: "No se proporcionó ningún archivo CSV." });
+    }
+
+    const claseId = parseInt(req.params.claseId, 10);
+    if (isNaN(claseId)) {
+        return res.status(400).json({ error: "ID de clase inválido." });
+    }
+
+    try {
+        const clase = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [claseId]);
+        if (!clase) {
+            return res.status(404).json({ error: "Clase no encontrada." });
+        }
+
+        const results = [];
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(req.file.buffer);
+
+        let importados = 0;
+        let duplicados = 0;
+        let errores_validacion = 0;
+        let errores_insercion = 0;
+
+        bufferStream
+            .pipe(csv({ headers: ['apellidos', 'nombre'], skipLines: 1 })) // Asume que la primera línea es cabecera y se salta.
+            .on('data', (data) => results.push(data))
+            .on('end', async () => {
+                console.log(`  CSV parseado. ${results.length} filas encontradas para clase ID: ${claseId}`);
+                for (const row of results) {
+                    const apellidos = row.apellidos ? row.apellidos.trim() : null;
+                    const nombre = row.nombre ? row.nombre.trim() : null;
+
+                    if (!apellidos || !nombre) {
+                        console.warn(`    Fila inválida (datos faltantes): ${JSON.stringify(row)}`);
+                        errores_validacion++;
+                        continue;
+                    }
+
+                    const nombre_completo = `${apellidos}, ${nombre}`;
+                    try {
+                        await dbRunAsync("INSERT INTO alumnos (nombre_completo, clase_id) VALUES (?, ?)", [nombre_completo, claseId]);
+                        importados++;
+                        // console.log(`    Alumno importado: ${nombre_completo} a clase ${claseId}`);
+                    } catch (error) {
+                        if (error.message && error.message.includes('UNIQUE constraint failed')) {
+                            // console.warn(`    Alumno duplicado: ${nombre_completo} en clase ${claseId}`);
+                            duplicados++;
+                        } else {
+                            console.error(`    Error insertando alumno ${nombre_completo}:`, error.message);
+                            errores_insercion++;
+                        }
+                    }
+                }
+                console.log(`  Importación finalizada para clase ${claseId}: ${importados} importados, ${duplicados} duplicados, ${errores_validacion} con datos inválidos, ${errores_insercion} errores de inserción.`);
+                res.status(201).json({
+                    message: "Importación completada.",
+                    importados: importados,
+                    duplicados: duplicados,
+                    errores_validacion: errores_validacion,
+                    errores_insercion: errores_insercion
+                });
+            })
+            .on('error', (error) => { // Error del stream de parseo
+                console.error("  Error parseando CSV:", error.message);
+                res.status(500).json({ error: "Error procesando el archivo CSV." });
+            });
+
+    } catch (error) { // Error general (ej. dbGetAsync para clase)
+        console.error("  Error en /api/clases/:claseId/import-alumnos-csv:", error.message);
+        res.status(500).json({ error: "Error interno del servidor durante la importación." });
+    }
 });
 // ... RESTO DE CRUD PARA CLASES ...
 
