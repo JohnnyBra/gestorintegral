@@ -437,8 +437,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 }
 
-async function saveClase(event) {
-    event.preventDefault();
+async function saveClase(event) { // 'event' es el parámetro que recibe del listener
+    console.log("saveClase INVOCADA. Evento:", event); // LOG 1: ¿Se llama la función?
+    
+    if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+        console.log("event.preventDefault() LLAMADO."); // LOG 2: ¿Se llama preventDefault?
+    } else {
+        console.error("El evento no es válido o no tiene preventDefault. Evento:", event); // LOG DE ERROR
+        // Si ves esto, el formulario se enviará de forma tradicional y recargará.
+        // Esto podría pasar si el listener no se adjuntó bien o el botón no es type="submit" dentro del form.
+        // Pero tu log anterior "Asignando listener 'submit'..." sugiere que el listener SÍ se asigna.
+    }
+
     const formClaseError = document.getElementById('formClaseError');
     if (formClaseError) formClaseError.textContent = '';
 
@@ -448,6 +459,7 @@ async function saveClase(event) {
 
     if (!nombreClaseInput || !tutorClaseSelect || !claseIdInput) {
         if (formClaseError) formClaseError.textContent = 'Error: Elementos del formulario no encontrados.';
+        console.error("Elementos del formulario no encontrados en saveClase."); // LOG
         return;
     }
 
@@ -455,8 +467,12 @@ async function saveClase(event) {
     const nombre_clase = nombreClaseInput.value.trim().toUpperCase();
     const tutor_id = tutorClaseSelect.value ? parseInt(tutorClaseSelect.value) : null;
 
+    console.log("Datos recogidos del formulario:", { idClase, nombre_clase, tutor_id }); // LOG 3: ¿Se recogen los datos?
+
+
     if (!nombre_clase) {
         if (formClaseError) formClaseError.textContent = 'El nombre de la clase es obligatorio.';
+        console.warn("Nombre de la clase vacío."); // LOG
         return;
     }
 
@@ -464,33 +480,29 @@ async function saveClase(event) {
     let method = 'POST';
     let endpoint = '/clases';
 
-    if (idClase) { // Si hay ID, es una edición (PUT)
+    if (idClase) {
         method = 'PUT';
         endpoint = `/clases/${idClase}`;
     }
 
-    try {
-        const resultado = await apiFetch(endpoint, method, claseData);
-        console.log("Respuesta de guardar clase:", resultado);
-        
-        // Limpiar formulario y recargar lista de clases
-        const formClaseWrapper = document.getElementById('formClaseWrapper');
-        if (formClaseWrapper) formClaseWrapper.innerHTML = ''; // Limpiar
-        
-        loadClases(); // Recargar la tabla de clases para ver los cambios
+    console.log(`Intentando apiFetch: Method=${method}, Endpoint=${endpoint}, Data=`, claseData); // LOG 4
 
-        // Actualizar la lista global de clases si es que la usas en otros sitios
-        // y el selector de importación de alumnos
+    try {
+        const resultado = await apiFetch(endpoint, method, claseData); // La llamada a la API
+        console.log("Respuesta de guardar clase (apiFetch):", resultado); // LOG 5
+
+        const formClaseWrapper = document.getElementById('formClaseWrapper');
+        if (formClaseWrapper) formClaseWrapper.innerHTML = '';
+        
+        loadClases(); // Recargar la tabla
+
         const dataClasesActualizadas = await apiFetch('/clases');
         listaDeClasesGlobal = dataClasesActualizadas.clases || [];
-        // Si la sección de alumnos está activa, y el selector de CSV está presente, repoblarlo.
         if (document.getElementById('alumnos-section') && document.getElementById('alumnos-section').style.display === 'block' && document.getElementById('csvClaseDestino')) {
             poblarSelectorClaseDestinoCSV();
         }
-
-
     } catch (error) {
-        console.error(`Error guardando clase (${method} ${endpoint}):`, error);
+        console.error(`Error guardando clase (${method} ${endpoint}):`, error); // LOG DE ERROR
         if (formClaseError) formClaseError.textContent = error.message || 'Error desconocido al guardar la clase.';
     }
 }
