@@ -389,6 +389,128 @@ document.addEventListener('DOMContentLoaded', () => {
     async function showFormAlumno(idAlumno = null, listaTodasClases = null, nombreExistente = '', claseIdExistente = '') { /* ... (necesitas implementarla) ... */ }
     async function saveAlumno(event) { /* ... (necesitas implementarla) ... */ }
     async function deleteAlumno(idAlumno, nombreAlumno) { /* ... (necesitas implementarla) ... */ }
+    // --- DENTRO de public/app.js, dentro del addEventListener('DOMContentLoaded', ...) ---
+
+// ... (tus otras funciones: apiFetch, loadClases, loadDashboardData, etc.)
+
+    // --- Funciones Específicas para la Importación CSV de Alumnos ---
+
+    async function poblarSelectorClaseDestinoCSV(selectElementId = 'csvClaseDestino') {
+        const selectClase = document.getElementById(selectElementId);
+        if (!selectClase) {
+            console.error(`Elemento select con id '${selectElementId}' no encontrado para importación CSV.`);
+            return;
+        }
+
+        selectClase.innerHTML = '<option value="">Cargando clases...</option>';
+        try {
+            // Reutilizamos listaDeClasesGlobal si ya está cargada (se carga en loadClases y loadAlumnos para Dirección)
+            if (currentUser.rol === 'DIRECCION' && listaDeClasesGlobal.length === 0) {
+                console.log("Poblando selector CSV: listaDeClasesGlobal vacía, recargando clases...");
+                const dataC = await apiFetch('/clases'); // Asegurar que tenemos la lista de clases
+                listaDeClasesGlobal = dataC.clases || [];
+            }
+
+            let optionsHtml = '';
+            if (currentUser.rol === 'TUTOR') {
+                if (currentUser.claseId && currentUser.claseNombre) {
+                    optionsHtml = `<option value="${currentUser.claseId}" selected>${currentUser.claseNombre} (Tu clase asignada)</option>`;
+                    selectClase.disabled = true;
+                } else {
+                    optionsHtml = '<option value="" disabled selected>No tienes una clase asignada</option>';
+                    selectClase.disabled = true;
+                }
+            } else if (currentUser.rol === 'DIRECCION') {
+                optionsHtml = '<option value="">-- Selecciona una clase de destino --</option>';
+                if (listaDeClasesGlobal.length > 0) {
+                    listaDeClasesGlobal.forEach(clase => {
+                        optionsHtml += `<option value="${clase.id}">${clase.nombre_clase}</option>`;
+                    });
+                } else {
+                    optionsHtml = '<option value="" disabled>No hay clases creadas para seleccionar</option>';
+                }
+                selectClase.disabled = false;
+            }
+            selectClase.innerHTML = optionsHtml;
+        } catch (error) {
+            console.error("Error poblando selector de clase para importación CSV:", error);
+            if (selectClase) selectClase.innerHTML = '<option value="">Error al cargar clases</option>';
+        }
+    }
+
+    async function handleImportAlumnosCSV(event) {
+        event.preventDefault();
+        const statusDiv = document.getElementById('importAlumnosStatus'); // Asume que este div existe
+        if (!statusDiv) {
+            console.error("Elemento 'importAlumnosStatus' no encontrado para mostrar mensajes.");
+            showGlobalError("Error interno: No se pudo mostrar el estado de la importación.");
+            return;
+        }
+        statusDiv.innerHTML = '<p><em>Procesando importación, por favor espera...</em></p>';
+
+        const claseIdInput = document.getElementById('csvClaseDestino');
+        const fileInput = document.getElementById('csvFileAlumnos');
+
+        if (!claseIdInput || !fileInput || !fileInput.files || fileInput.files.length === 0) {
+            statusDiv.innerHTML = '<p class="error-message">Por favor, selecciona una clase de destino y un archivo CSV.</p>';
+            return;
+        }
+
+        const clase_id = claseIdInput.value; // El valor del select ya es el ID de la clase
+        if (!clase_id && currentUser.rol === 'DIRECCION') {
+            statusDiv.innerHTML = '<p class="error-message">Dirección: Por favor, selecciona una clase de destino.</p>';
+            return;
+        }
+        if (!clase_id && currentUser.rol === 'TUTOR' && !currentUser.claseId){
+             statusDiv.innerHTML = '<p class="error-message">Tutor: No tienes una clase asignada para la importación.</p>';
+            return;
+        }
+
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = async function(e) {
+            const csv_data = e.target.result; // Contenido del archivo como texto
+            try {
+                // El clase_id para el tutor se toma de currentUser.claseId si el select está deshabilitado
+                const claseIdParaEnviar = currentUser.rol === 'TUTOR' ? currentUser.claseId : clase_id;
+
+                const resultado = await apiFetch('/alumnos/importar_csv', 'POST', { clase_id: claseIdParaEnviar, csv_data });
+                
+                let mensaje = `<p><strong>Resultado de la Importación:</strong></p>
+                               <p>${resultado.message || 'Proceso completado.'}</p><ul>`;
+                if (resultado.importados !== undefined) mensaje += `<li>Alumnos nuevos importados: ${resultado.importados}</li>`;
+                if (resultado.omitidos_duplicados !== undefined) mensaje += `<li>Alumnos omitidos (ya existían en la clase): ${resultado.omitidos_duplicados}</li>`;
+                if (resultado.lineas_con_error > 0) {
+                    mensaje += `<li style="color:red;">Líneas con error en el archivo CSV: ${resultado.lineas_con_error}</li>`;
+                    if (resultado.detalles_errores && resultado.detalles_errores.length > 0) {
+                        mensaje += `<li>Primeros errores detallados (revisa la consola del backend para más):<ul>`;
+                        resultado.detalles_errores.slice(0, 5).forEach(err => {
+                            mensaje += `<li style="font-size:0.8em; color:darkred;"> - L${err.linea}: ${err.error} (Dato: ${String(err.dato || '').substring(0,30)})</li>`;
+                        });
+                        mensaje += `</ul></li>`;
+                    }
+                }
+                mensaje += `</ul>`;
+                statusDiv.innerHTML = mensaje;
+                
+                // Recargar la lista de alumnos para ver los nuevos
+                // Si la importación fue a la clase que se está mostrando actualmente, la recarga la actualizará.
+                loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase')); 
+            } catch (error) {
+                statusDiv.innerHTML = `<p class="error-message">Error durante la importación: ${error.message}</p>`;
+            } finally {
+                if (fileInput) fileInput.value = ""; // Resetear el input de archivo para permitir re-seleccionar el mismo
+            }
+        };
+        reader.onerror = function() {
+            statusDiv.innerHTML = '<p class="error-message">Error al leer el archivo CSV.</p>';
+        };
+        // Leer como texto. El backend se encargará del parseo.
+        // Asegúrate que tu backend espera el CSV como un string.
+        reader.readAsText(file, "UTF-8"); // Especificar UTF-8 para la lectura
+    }
 
     // --- Excursiones --- (Esqueleto para completar)
     async function loadExcursiones() { if (!excursionesContentDiv) return; excursionesContentDiv.innerHTML = "<p>Cargando excursiones...</p>"; /* ... Fetch y render tabla ... */ }
