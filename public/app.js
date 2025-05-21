@@ -449,18 +449,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 }
 
-async function saveClase(event) { // 'event' es el parámetro que recibe del listener
+async function saveClase(event) {
     console.log("saveClase INVOCADA. Evento:", event); // LOG 1: ¿Se llama la función?
-    
-    if (event && typeof event.preventDefault === 'function') {
-        event.preventDefault();
-        console.log("event.preventDefault() LLAMADO."); // LOG 2: ¿Se llama preventDefault?
-    } else {
-        console.error("El evento no es válido o no tiene preventDefault. Evento:", event); // LOG DE ERROR
-        // Si ves esto, el formulario se enviará de forma tradicional y recargará.
-        // Esto podría pasar si el listener no se adjuntó bien o el botón no es type="submit" dentro del form.
-        // Pero tu log anterior "Asignando listener 'submit'..." sugiere que el listener SÍ se asigna.
-    }
+
+    // Ya no necesitamos el if(event && typeof event.preventDefault === 'function') aquí
+    // porque el preventDefault se hizo en el listener del formulario.
+    // Pero el evento se sigue pasando por si lo necesitas para otra cosa (aunque no es común en este caso).
 
     const formClaseError = document.getElementById('formClaseError');
     if (formClaseError) formClaseError.textContent = '';
@@ -471,21 +465,20 @@ async function saveClase(event) { // 'event' es el parámetro que recibe del lis
 
     if (!nombreClaseInput || !tutorClaseSelect || !claseIdInput) {
         if (formClaseError) formClaseError.textContent = 'Error: Elementos del formulario no encontrados.';
-        console.error("Elementos del formulario no encontrados en saveClase."); // LOG
-        return;
+        console.error("Elementos del formulario no encontrados en saveClase.");
+        return; // Salir si los elementos no existen
     }
 
     const idClase = claseIdInput.value;
     const nombre_clase = nombreClaseInput.value.trim().toUpperCase();
     const tutor_id = tutorClaseSelect.value ? parseInt(tutorClaseSelect.value) : null;
 
-    console.log("Datos recogidos del formulario:", { idClase, nombre_clase, tutor_id }); // LOG 3: ¿Se recogen los datos?
-
+    console.log("Datos recogidos del formulario:", { idClase, nombre_clase, tutor_id }); // LOG 2
 
     if (!nombre_clase) {
         if (formClaseError) formClaseError.textContent = 'El nombre de la clase es obligatorio.';
-        console.warn("Nombre de la clase vacío."); // LOG
-        return;
+        console.warn("Nombre de la clase vacío.");
+        return; // Salir si el nombre está vacío
     }
 
     const claseData = { nombre_clase, tutor_id };
@@ -497,16 +490,16 @@ async function saveClase(event) { // 'event' es el parámetro que recibe del lis
         endpoint = `/clases/${idClase}`;
     }
 
-    console.log(`Intentando apiFetch: Method=${method}, Endpoint=${endpoint}, Data=`, claseData); // LOG 4
+    console.log(`Intentando apiFetch: Method=<span class="math-inline">\{method\}, Endpoint\=</span>{endpoint}, Data=`, claseData); // LOG 3
 
     try {
-        const resultado = await apiFetch(endpoint, method, claseData); // La llamada a la API
-        console.log("Respuesta de guardar clase (apiFetch):", resultado); // LOG 5
+        const resultado = await apiFetch(endpoint, method, claseData);
+        console.log("Respuesta de guardar clase (apiFetch):", resultado); // LOG 4
 
         const formClaseWrapper = document.getElementById('formClaseWrapper');
         if (formClaseWrapper) formClaseWrapper.innerHTML = '';
-        
-        loadClases(); // Recargar la tabla
+
+        loadClases(); 
 
         const dataClasesActualizadas = await apiFetch('/clases');
         listaDeClasesGlobal = dataClasesActualizadas.clases || [];
@@ -514,7 +507,7 @@ async function saveClase(event) { // 'event' es el parámetro que recibe del lis
             poblarSelectorClaseDestinoCSV();
         }
     } catch (error) {
-        console.error(`Error guardando clase (${method} ${endpoint}):`, error); // LOG DE ERROR
+        console.error(`Error guardando clase (${method} ${endpoint}):`, error);
         if (formClaseError) formClaseError.textContent = error.message || 'Error desconocido al guardar la clase.';
     }
 }
