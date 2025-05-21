@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS clases (
 CREATE TABLE IF NOT EXISTS alumnos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre_completo TEXT NOT NULL,
+    apellidos_para_ordenar TEXT,
     clase_id INTEGER NOT NULL,
     FOREIGN KEY (clase_id) REFERENCES clases(id) ON DELETE CASCADE,
     UNIQUE (nombre_completo, clase_id)
