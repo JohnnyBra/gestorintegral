@@ -261,7 +261,7 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
 
         if (nombre && apellidos) {
             const nombreCompletoFinal = `${nombre} ${apellidos}`; // Formato: Nombre Apellidos
-            
+            const apellidosOrden = apellidos; // Usamos los apellidos parseados para ordenar
             promesasDeInsercion.push(
                 // CORRECCIÓN AQUÍ: dbGetAsyncP -> dbGetAsync
                 dbGetAsync("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombreCompletoFinal.toLowerCase(), idClaseNum])
@@ -271,10 +271,10 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
                         console.log(`  Alumno omitido (duplicado): ${nombreCompletoFinal} en clase ID ${idClaseNum}`);
                     } else {
                         // CORRECCIÓN AQUÍ: dbRunAsyncP -> dbRunAsync
-                        return dbRunAsync("INSERT INTO alumnos (nombre_completo, clase_id) VALUES (?, ?)", [nombreCompletoFinal, idClaseNum])
+                                  return dbRunAsync("INSERT INTO alumnos (nombre_completo, apellidos_para_ordenar, clase_id) VALUES (?, ?, ?)", [nombreCompletoFinal, apellidosOrden, idClaseNum])
                             .then(() => {
                                 alumnosImportados++;
-                                console.log(`  Alumno importado: ${nombreCompletoFinal} a clase ID ${idClaseNum}`);
+                                 console.log(`  Alumno importado: ${nombreCompletoFinal} (Orden: ${apellidosOrden}) a clase ID ${idClaseNum}`);
                             });
                     }
                 })
