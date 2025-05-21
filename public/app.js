@@ -426,14 +426,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event Listeners para el formulario
     const formElement = document.getElementById('formGestionClase');
     if (formElement) {
-         console.log("Asignando listener 'submit' al formulario formGestionClase:", formElement); // LOG
-        formElement.addEventListener('submit', saveClase);
+        console.log("Asignando listener 'submit' al formulario formGestionClase:", formElement);
+        
+        // formElement.addEventListener('submit', saveClase); // LÍNEA ORIGINAL COMENTADA
+
+        // NUEVO LISTENER SIMPLIFICADO PARA PRUEBA:
+        formElement.addEventListener('submit', function(event) {
+            console.log("Evento SUBMIT del formulario detectado. Evento:", event);
+            event.preventDefault();
+            console.log("event.preventDefault() llamado DENTRO del listener de prueba.");
+            
+            // Ahora llamamos a saveClase manualmente desde aquí, pasando el evento
+            saveClase(event); 
+        });
+
     } else {
-    console.error("Elemento de formulario formGestionClase NO encontrado para asignar listener."); // LOG
-}
+        console.error("Elemento de formulario formGestionClase NO encontrado para asignar listener.");
+    }
     const btnCancelar = document.getElementById('btnCancelarFormClase');
     if (btnCancelar) {
-        btnCancelar.onclick = () => { formClaseWrapper.innerHTML = ''; }; // Limpiar el formulario
+        btnCancelar.onclick = () => { formClaseWrapper.innerHTML = ''; }; 
     }
 }
 
