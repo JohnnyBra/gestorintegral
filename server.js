@@ -142,8 +142,132 @@ app.get('/api/clases', authenticateToken, async (req, res) => {
 
 // --- Gestión de Alumnos ---
 // (Pega aquí tus endpoints CRUD COMPLETOS para /api/alumnos. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
-// ...
+// --- En server.js, dentro de las rutas de API ---
 
+// ... (tus otros endpoints para alumnos) ...
+
+// POST /api/alumnos/importar_csv - Importar alumnos desde un CSV a una clase
+app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
+    const { clase_id, csv_data } = req.body; // Esperamos el ID de la clase y el contenido del CSV como string
+    
+    if (!clase_id || !csv_data) {
+        return res.status(400).json({ error: "Se requiere clase_id y csv_data." });
+    }
+
+    const idClaseNum = parseInt(clase_id);
+    if (isNaN(idClaseNum)) {
+        return res.status(400).json({ error: "clase_id inválido." });
+    }
+
+    // Verificar permisos
+    if (req.user.rol === 'TUTOR') {
+        if (!req.user.claseId || req.user.claseId !== idClaseNum) {
+            return res.status(403).json({ error: "Tutor solo puede importar alumnos a su clase asignada." });
+        }
+    } else if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: "Acción no autorizada." });
+    }
+
+    // Verificar que la clase existe
+    try {
+        const claseDb = await dbGetAsyncP("SELECT id FROM clases WHERE id = ?", [idClaseNum]);
+        if (!claseDb) {
+            return res.status(404).json({ error: `La clase con ID ${idClaseNum} no existe.` });
+        }
+    } catch (e) {
+        return res.status(500).json({ error: "Error verificando la clase: " + e.message });
+    }
+
+    const lineas = csv_data.split(/\r\n|\n/);
+    let alumnosImportados = 0;
+    let alumnosOmitidos = 0;
+    let erroresEnLineas = [];
+    const promesasDeInsercion = [];
+
+    // Función para limpiar comillas envolventes (la que ya tienes)
+    function limpiarComillasEnvolventes(textoStr) {
+        let texto = String(textoStr).trim();
+        if (texto.length >= 2 && texto.startsWith('"') && texto.endsWith('"')) {
+            texto = texto.substring(1, texto.length - 1).replace(/""/g, '"');
+        }
+        return texto;
+    }
+
+    for (let i = 0; i < lineas.length; i++) {
+        const lineaOriginal = lineas[i];
+        let lineaParaProcesar = lineaOriginal.trim();
+        if (lineaParaProcesar === '') continue;
+
+        // 1. Limpiar comillas envolventes de TODA la línea si el formato es así
+        let contenidoCampo = limpiarComillasEnvolventes(lineaParaProcesar);
+
+        // 2. Ignorar cabecera (ej. "Alumno" o "Apellidos, Nombre")
+        if (i === 0 && (contenidoCampo.toLowerCase().includes('alumno') || contenidoCampo.toLowerCase().includes('apellido'))) {
+            console.log("Cabecera CSV omitida en importación:", lineaOriginal);
+            continue; 
+        }
+
+        // 3. Dividir el contenido del campo interno "Apellidos, Nombre"
+        let apellidos = "";
+        let nombre = "";
+        const indiceUltimaComa = contenidoCampo.lastIndexOf(',');
+        
+        if (indiceUltimaComa > 0 && indiceUltimaComa < contenidoCampo.length - 1) {
+            apellidos = contenidoCampo.substring(0, indiceUltimaComa).trim();
+            nombre = contenidoCampo.substring(indiceUltimaComa + 1).trim();
+        } else {
+            // Si no sigue el patrón, se marca como error de formato para esa línea
+            if (contenidoCampo) { // Solo si hay contenido después de quitar comillas
+                console.warn(`Línea ${i + 1} en CSV no sigue el formato "Apellidos, Nombre": "${contenidoCampo}"`);
+                erroresEnLineas.push({ linea: i + 1, dato: contenidoCampo, error: "Formato incorrecto (se esperaba 'Apellidos, Nombre')" });
+            }
+            continue; 
+        }
+
+        if (nombre && apellidos) {
+            const nombreCompletoFinal = `${nombre} ${apellidos}`; // Formato: Nombre Apellidos
+            
+            // Añadir a la lista de promesas para inserción
+            promesasDeInsercion.push(
+                dbGetAsyncP("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombreCompletoFinal.toLowerCase(), idClaseNum])
+                .then(alumnoExistente => {
+                    if (alumnoExistente) {
+                        alumnosOmitidos++;
+                        console.log(`Alumno omitido (duplicado): ${nombreCompletoFinal} en clase ID ${idClaseNum}`);
+                    } else {
+                        return dbRunAsyncP("INSERT INTO alumnos (nombre_completo, clase_id) VALUES (?, ?)", [nombreCompletoFinal, idClaseNum])
+                            .then(() => {
+                                alumnosImportados++;
+                                console.log(`Alumno importado: ${nombreCompletoFinal} a clase ID ${idClaseNum}`);
+                            });
+                    }
+                })
+                .catch(errIns => {
+                    console.error(`Error procesando alumno ${nombreCompletoFinal}: ${errIns.message}`);
+                    erroresEnLineas.push({ linea: i + 1, dato: contenidoCampo, error: errIns.message });
+                })
+            );
+        } else {
+            erroresEnLineas.push({ linea: i + 1, dato: contenidoCampo, error: "Nombre o apellidos vacíos tras procesar." });
+        }
+    }
+
+    try {
+        await Promise.all(promesasDeInsercion); // Esperar a que todas las inserciones (o verificaciones) terminen
+        res.json({
+            message: "Proceso de importación CSV completado.",
+            importados: alumnosImportados,
+            omitidos_duplicados: alumnosOmitidos,
+            lineas_con_error: erroresEnLineas.length,
+            detalles_errores: erroresEnLineas
+        });
+    } catch (errorGeneral) {
+        // Este catch es por si Promise.all falla por alguna razón no capturada antes
+        console.error("Error general durante el proceso de importación CSV:", errorGeneral);
+        res.status(500).json({ error: "Error interno durante la importación masiva." });
+    }
+});
+console.log("Endpoint POST /api/alumnos/importar_csv definido.");
 // --- Gestión de Excursiones ---
 // (Pega aquí tus endpoints CRUD COMPLETOS para /api/excursiones. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
 // ...
