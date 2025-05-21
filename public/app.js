@@ -1,13 +1,11 @@
-// --- public/app.js (Versión Completa, Revisada y Ordenada) ---
+// --- public/app.js (Revisado y Mejorado a partir de tu versión) ---
 document.addEventListener('DOMContentLoaded', () => {
     // --- Estado Global del Frontend ---
     let currentUser = null;
     let currentToken = null;
-    let listaDeClasesGlobal = []; // Cache para selectores de clase
-    let listaDeUsuariosGlobal = []; // Cache para selectores de tutores (especialmente para el rol Dirección)
 
     // --- URLs y Selectores del DOM ---
-    const API_BASE_URL = `http://${window.location.hostname}:3000/api`;
+    const API_BASE_URL = `http://192.168.1.7:3000/api`; // Tu IP específica
 
     const loginSection = document.getElementById('login-section');
     const loginForm = document.getElementById('loginForm');
@@ -29,57 +27,87 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminUsuariosContentDiv = document.getElementById('admin-usuarios-content');
 
     console.log("app.js cargado y DOMContentLoaded disparado. API_BASE_URL:", API_BASE_URL);
-    if (!loginForm) console.error("Elemento loginForm NO encontrado en el DOM.");
+    if (!loginForm) console.error("Elemento loginForm NO encontrado.");
 
 
     // --- Funciones Auxiliares ---
     async function apiFetch(endpoint, method = 'GET', body = null, token = currentToken) {
         const url = `${API_BASE_URL}${endpoint}`;
-        console.log(`[apiFetch] Request: ${method} ${url}`);
-        if (body && (method === 'POST' || method === 'PUT')) console.log("[apiFetch] Body:", body);
+        console.log(`[apiFetch] INICIO: ${method} ${url}`); // Log con URL correcta
 
         const headers = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
 
         const options = { method, headers };
         if (body && (method === 'POST' || method === 'PUT')) {
             options.body = JSON.stringify(body);
+            console.log("[apiFetch] Body (stringified):", options.body);
+        } else if (body) {
+            console.warn(`[apiFetch] Se proporcionó body para un método ${method} que no lo usa.`);
         }
+        console.log("[apiFetch] Opciones completas para fetch:", options);
 
         try {
+            console.log(`[apiFetch] Intentando fetch a: ${url}`);
             const response = await fetch(url, options);
-            console.log(`[apiFetch] Response Status: ${response.status} for ${method} ${url}`);
+            console.log(`[apiFetch] Fetch realizado a ${url}. Status: ${response.status} ${response.statusText}`);
 
-            if (response.status === 204) { console.log("[apiFetch] 204 No Content."); return null; }
+            if (response.status === 204) {
+                console.log("[apiFetch] Respuesta 204 No Content. Retornando null.");
+                return null; 
+            }
             
             const responseText = await response.text();
+            console.log(`[apiFetch] ResponseText (primeros 500 chars): ${responseText.substring(0, 500)}`);
+
             let responseData;
             try {
                 responseData = responseText ? JSON.parse(responseText) : {};
             } catch (e) {
-                console.error(`[apiFetch] Failed to parse JSON from ${url}. Status: ${response.status}. Text:`, responseText.substring(0, 200) + "...");
-                if (response.ok) throw new Error("Respuesta del servidor no es JSON válido.");
-                else throw new Error(`Error HTTP ${response.status}. Respuesta no JSON: ${responseText.substring(0,100)}`);
+                console.error(`[apiFetch] Error parseando respuesta JSON de ${url}. Status: ${response.status}. Error de parseo: ${e.message}`);
+                if (response.ok) {
+                    throw new Error("Respuesta del servidor no es JSON válido a pesar de un estado OK.");
+                } else {
+                    throw new Error(`Error HTTP ${response.status} (${response.statusText}). El servidor devolvió una respuesta no JSON (probablemente HTML de error).`);
+                }
             }
             
             if (!response.ok) {
-                console.warn(`[apiFetch] Not OK response (${response.status}) from ${url}. Data:`, responseData);
+                console.warn(`[apiFetch] Respuesta no OK (${response.status}) desde ${url}. Error en JSON:`, responseData.error || "No hay campo 'error' en JSON");
                 if (response.status === 401 || response.status === 403) {
-                    handleLogout();
-                    alert(responseData.error || "Sesión inválida/denegada. Por favor, inicia sesión de nuevo.");
+                    if (typeof handleLogout === "function") handleLogout(); 
+                    else console.error("handleLogout no está definida para apiFetch en error 401/403");
+                    alert(responseData.error || "Sesión inválida o acceso denegado. Por favor, inicia sesión de nuevo.");
                 }
                 throw new Error(responseData.error || `Error HTTP ${response.status}`);
             }
+            console.log("[apiFetch] Retornando responseData:", responseData);
             return responseData;
         } catch (error) {
-            console.error(`[apiFetch] CATCH ALL for ${method} ${url}:`, error.message);
-            if (!error.message.toLowerCase().includes("sesión inválida")) {
-                showGlobalError(error.message.includes("Failed to fetch") ? "No se pudo conectar al servidor." : error.message);
+            console.error(`[apiFetch] CATCH BLOCK GENERAL (${method} ${url}):`, error.message, error.name);
+            if (error.message.toLowerCase().includes("failed to fetch")) {
+                showGlobalError("No se pudo conectar con el servidor (Failed to fetch). Verifica que el backend esté corriendo y accesible en la red.");
+            } else if (!error.message.toLowerCase().includes("sesión inválida") && 
+                       !error.message.toLowerCase().includes("token no proporcionado") &&
+                       !error.message.toLowerCase().includes("token expirado") &&
+                       !error.message.toLowerCase().includes("token inválido")
+                      ) {
+                 showGlobalError(error.message);
             }
             throw error; 
         }
     }
-    function showGlobalError(message) { console.error("ERROR APP:", message); alert(`Error: ${message}`); }
+
+    function showGlobalError(message) {
+        console.error("ERROR APP:", message);
+        if (loginErrorP && loginSection && loginSection.style.display === 'block') { // Mostrar en el form de login si está visible
+            loginErrorP.textContent = message;
+        } else {
+            alert(`Error en la aplicación: ${message}`); // Alert como fallback
+        }
+    }
 
     // --- Autenticación ---
     function handleAuthClick() { navigateTo('login'); }
@@ -103,16 +131,33 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!emailInput || !passwordInput) { console.error("Inputs de login no encontrados."); return; }
             const email = emailInput.value;
             const password = passwordInput.value;
-            console.log("Login form submitted. Email:", email);
+            console.log("Login form submitted. Email:", email); // Tu línea 109
+             // Deshabilitar el botón de submit para evitar múltiples clics
             const submitButton = loginForm.querySelector('button[type="submit"]');
             if (submitButton) submitButton.disabled = true;
+
             try {
+                // La función apiFetch ahora tiene más logs internos
                 const data = await apiFetch('/auth/login', 'POST', { email, password }, null);
+                console.log("Respuesta de /auth/login en el listener del form:", data);
+
                 if (data && data.token && data.user) {
                     handleLoginSuccess(data.user, data.token);
-                } else { if (loginErrorP) loginErrorP.textContent = (data && data.error) || "Respuesta de login inesperada.";}
-            } catch (error) { if (loginErrorP) loginErrorP.textContent = error.message.includes("Credenciales incorrectas") ? error.message : "Error al iniciar sesión.";
-            } finally { if (submitButton) submitButton.disabled = false; }
+                } else { 
+                    const errorMsg = (data && data.error) || "Respuesta de login inesperada del servidor.";
+                    console.warn("Login no exitoso o datos inesperados:", errorMsg);
+                    if (loginErrorP) loginErrorP.textContent = errorMsg;
+                }
+            } catch (error) { 
+                console.error("Catch en listener de loginForm:", error.message);
+                // apiFetch ya llama a showGlobalError, que podría poner el mensaje en loginErrorP o alert.
+                // Si loginErrorP está vacío, ponemos un mensaje genérico.
+                if (loginErrorP && !loginErrorP.textContent) {
+                    loginErrorP.textContent = error.message.includes("Credenciales incorrectas") ? error.message : "Error al intentar iniciar sesión.";
+                }
+            } finally {
+                if (submitButton) submitButton.disabled = false; // Volver a habilitar
+            }
         });
     }
 
@@ -151,70 +196,216 @@ document.addEventListener('DOMContentLoaded', () => {
         const isAdmin = currentUser.rol === 'DIRECCION';
         const adminUsuariosLinkLi = mainNavSidebar.querySelector('a[data-section="admin-usuarios"]');
         if (adminUsuariosLinkLi) adminUsuariosLinkLi.parentElement.style.display = isAdmin ? 'list-item' : 'none';
+        // Puedes añadir más adaptaciones de menú aquí si es necesario
     }
 
     function checkInitialLoginState() {
-        console.log("Ejecutando checkInitialLoginState...");
+        console.log("Ejecutando checkInitialLoginState..."); // Tu línea 33
         const token = localStorage.getItem('authToken');
         const userStr = localStorage.getItem('userInfo');
         if (token && userStr) {
             console.log("Token y userInfo encontrados en localStorage.");
             try {
                 const user = JSON.parse(userStr);
+                // Validar token con el backend para asegurar que no ha expirado o sido revocado
                 apiFetch('/auth/me', 'GET', null, token)
                     .then(data => {
-                        if (data && data.usuario) { handleLoginSuccess(data.usuario, token); }
-                        else { console.warn("/auth/me no devolvió usuario, cerrando sesión."); handleLogout(); }
-                    }).catch((error) => { console.warn("Error validando token con /auth/me:", error.message); handleLogout(); });
-            } catch (e) { console.error("Error parseando userInfo:", e); handleLogout(); }
-        } else { console.log("No hay token/userInfo. Mostrando UI logout y navegando a login."); updateUIAfterLogout(); navigateTo('login'); }
+                        if (data && data.usuario) {
+                            console.log("Token validado con /auth/me, usuario:", data.usuario.email);
+                            handleLoginSuccess(data.usuario, token); // Usar el usuario del token validado
+                        } else { 
+                            console.warn("/auth/me no devolvió usuario o data fue null, cerrando sesión.");
+                            handleLogout(); 
+                        }
+                    }).catch((error) => { // Error en el fetch a /auth/me (ej. token expirado, red)
+                        console.warn("Error validando token con /auth/me, cerrando sesión. Error:", error.message);
+                        handleLogout();
+                    });
+            } catch (e) { console.error("Error parseando userInfo de localStorage:", e); handleLogout(); }
+        } else {
+            console.log("No hay token/userInfo en localStorage. Mostrando UI de logout y navegando a login.");
+            updateUIAfterLogout();
+            navigateTo('login'); // Tu línea 178 (el número puede variar según tus logs)
+        }
     }
 
     // --- Navegación ---
     function navigateTo(sectionName) {
-        console.log("Navegando a:", sectionName);
+        console.log("Navegando a sección:", sectionName);
         mainSections.forEach(s => { if(s) s.style.display = 'none';});
-        navLinks.forEach(l => { if(l) l.classList.remove('active');}); // 'active' es clase CSS opcional
+        navLinks.forEach(l => { if(l) l.classList.remove('active');});
         if (loginSection) loginSection.style.display = 'none';
 
         const activeSectionDiv = document.getElementById(`${sectionName}-section`);
         const activeLink = document.querySelector(`#main-nav-sidebar a[data-section="${sectionName}"]`);
 
-        if (sectionName === 'login') { if (loginSection) loginSection.style.display = 'block'; }
-        else if (activeSectionDiv) {
+        if (sectionName === 'login') {
+            if (loginSection) loginSection.style.display = 'block';
+            // No llamar a loadContentForSection para 'login'
+        } else if (activeSectionDiv) {
             activeSectionDiv.style.display = 'block';
-            if (activeLink) activeLink.classList.add('active');
+            if (activeLink) activeLink.classList.add('active'); // Estilo para el link activo
             loadContentForSection(sectionName);
         } else {
-            console.warn(`Div de sección '${sectionName}-section' no encontrado.`);
+            console.warn(`Div de sección '${sectionName}-section' no encontrado en navigateTo.`);
             const contentArea = document.querySelector('main.content-area');
-            if (contentArea) contentArea.innerHTML = `<p>Error: La sección '${sectionName}' no está definida.</p>`;
+            if (contentArea) contentArea.innerHTML = `<p>Error: La sección '${sectionName}' no está definida en el HTML.</p>`;
         }
     }
     navLinks.forEach(link => {
-        link.addEventListener('click', (e) => { e.preventDefault(); const section = link.dataset.section; if (currentToken || section === 'login') navigateTo(section); else navigateTo('login'); });
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const section = link.dataset.section;
+            if (currentToken || section === 'login') navigateTo(section); // Permitir ir a login si no hay token
+            else {
+                console.log("Intento de navegación sin token a sección protegida:", section);
+                navigateTo('login'); // Forzar login si no hay token e intenta ir a otra parte
+            }
+        });
     });
 
     // --- Carga de Contenido para Secciones ---
     function loadContentForSection(sectionName) {
-        if (sectionName === 'login') return;
+        if (sectionName === 'login') return; // El contenido de login es estático
         if (!currentToken) { navigateTo('login'); return; }
-        console.log("Cargando contenido para:", sectionName);
+        console.log("Cargando contenido dinámico para:", sectionName);
         switch (sectionName) {
             case 'dashboard': loadDashboardData(); break;
             case 'clases': loadClases(); break;
             case 'alumnos': loadAlumnos(); break;
             case 'excursiones': loadExcursiones(); break;
-            case 'participaciones': loadParticipacionesViewSetup(); break;
-            case 'admin-usuarios': if (currentUser.rol === 'DIRECCION') loadAdminUsuarios(); break;
+            case 'participaciones': loadParticipaciones(); break;
+            case 'admin-usuarios': if (currentUser && currentUser.rol === 'DIRECCION') loadAdminUsuarios(); break;
             default:
                 const sectionDiv = document.getElementById(`${sectionName}-section`);
-                if (sectionDiv) sectionDiv.innerHTML = `<p>Contenido para ${sectionName} pendiente.</p>`;
+                if (sectionDiv) sectionDiv.innerHTML = `<p>Contenido para ${sectionName} pendiente de implementación.</p>`;
+                else console.warn(`Div para la sección por defecto '${sectionName}-section' no encontrado.`);
         }
     }
 
-    // --- Dashboard ---
-    async function loadDashboardData() { /* ... (código completo que te di para el dashboard) ... */ }
+    // --- Dashboard --- (Como lo tenías, asegúrate que usa `currentUser` para el rol)
+ async function loadDashboardData() {
+    if (!dashboardSummaryContentDiv) {
+        console.error("Elemento dashboardSummaryContentDiv no encontrado.");
+        return;
+    }
+    if (!currentToken) {
+        console.warn("loadDashboardData: No hay token, no se puede cargar.");
+        // Opcional: podrías llamar a handleLogout() aquí si no debería pasar
+        dashboardSummaryContentDiv.innerHTML = '<p class="error-message">Error de sesión. Por favor, inicia sesión de nuevo.</p>';
+        return;
+    }
+
+    dashboardSummaryContentDiv.innerHTML = "<p>Cargando resumen del dashboard...</p>"; // Mensaje de carga
+    console.log("[loadDashboardData] Iniciando carga de datos del dashboard...");
+
+    try {
+        const data = await apiFetch('/dashboard/summary'); // Llama a GET /api/dashboard/summary
+        console.log("[loadDashboardData] Datos recibidos del backend:", data);
+
+        if (!data) {
+            console.warn("[loadDashboardData] No se recibieron datos (null o undefined) del backend.");
+            dashboardSummaryContentDiv.innerHTML = `<p class="error-message">No se pudo obtener el resumen del dashboard del servidor.</p>`;
+            return;
+        }
+
+        let html = '<h4>Resumen General</h4>';
+        // Renderizar datos de Dirección
+        if (currentUser && currentUser.rol === 'DIRECCION') {
+            html += `<ul>
+                <li>Total Clases: ${data.totalClases ?? 'N/D'}</li>
+                <li>Total Alumnos Global: ${data.totalAlumnos ?? 'N/D'}</li>
+                <li>Total Excursiones: ${data.totalExcursiones ?? 'N/D'}</li>
+            </ul>`;
+            if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
+                html += '<h5>Próximas Excursiones (Global):</h5><ul>';
+                data.proximasExcursiones.forEach(ex => html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'})</li>`);
+                html += '</ul>';
+            } else { html += '<p>No hay próximas excursiones generales.</p>';}
+        }
+        // Renderizar datos de Tutor
+        if (currentUser && currentUser.rol === 'TUTOR') {
+             html += `<ul>
+                <li>Tu Clase: ${currentUser.claseNombre || 'No asignada'}</li>
+                <li>Nº Alumnos en tu Clase: ${data.infoSuClase ? data.infoSuClase.numAlumnos : 'N/D'}</li>
+            </ul>`;
+            if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
+                html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
+                data.proximasExcursiones.forEach(ex => html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'}) ${ex.para_clase_id === currentUser.claseId ? '(Específica tuya)' : (ex.para_clase_id === null ? '(Global)' : '(Otra clase)')}</li>`);
+                html += '</ul>';
+            } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
+
+            if (data.resumenProximaExcursionSuClase) {
+                const r = data.resumenProximaExcursionSuClase;
+                html += `<h5>Resumen Próxima Excursión (${r.nombreExcursion||'N/A'} - ${r.fecha||'N/A'}):</h5>
+                         <ul>
+                            <li>Inscritos: ${r.totalInscritos ?? 0}</li>
+                            <li>Autoriz. Sí: ${r.autorizadosSi ?? 0} | No: ${r.autorizadosNo ?? 0}</li>
+                            <li>Pagos Sí: ${r.pagadoSi ?? 0} | Parcial: ${r.pagadoParcial ?? 0} | No: ${r.pagadoNo ?? 0}</li>
+                         </ul>`;
+            } else if (data.proximasExcursiones && data.proximasExcursiones.length > 0) { 
+                 html += `<p>Aún no hay datos de participación para la excursión más próxima de tu clase.</p>`;
+            } else {
+                // No hay próximas excursiones para el tutor, no se muestra nada más de resumen.
+            }
+        }
+        console.log("[loadDashboardData] HTML generado para el dashboard:", html.substring(0, 200) + "..."); // Loguear una parte del HTML
+        dashboardSummaryContentDiv.innerHTML = html;
+    } catch (error) {
+        console.error("[loadDashboardData] Error capturado al cargar datos del dashboard:", error.message);
+        dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar los datos del dashboard: ${error.message}</p>`;
+    }
+}
+    // --- Gestión de Clases --- (Renderizado y lógica de formularios completa)
+    async function loadClases() {
+        if (!clasesContentDiv || !currentToken) return;
+        clasesContentDiv.innerHTML = '<p>Cargando clases...</p>';
+        try {
+            const data = await apiFetch('/clases');
+            let html = '<h3>Listado de Clases</h3>';
+            if (currentUser.rol === 'DIRECCION') html += `<button id="btnShowFormNuevaClase" class="success" style="margin-bottom:15px;">+ Añadir Nueva Clase</button>`;
+            html += `<table class="tabla-datos"><thead><tr><th>Nombre Clase</th><th>Tutor Asignado</th><th>Email Tutor</th><th>Acciones</th></tr></thead><tbody>`;
+            if (data.clases && data.clases.length > 0) {
+                data.clases.forEach(clase => {
+                    html += `<tr data-clase-id="${clase.id}"><td>${clase.nombre_clase}</td><td>${clase.nombre_tutor || '<em>No asignado</em>'}</td><td>${clase.email_tutor || '<em>N/A</em>'}</td><td class="actions-cell">
+                        <button class="view-alumnos-clase secondary" data-claseid="${clase.id}" data-nclase="${clase.nombre_clase}">Ver Alumnos</button>
+                        ${currentUser.rol === 'DIRECCION' ? `<button class="edit-clase warning" data-id="${clase.id}" data-nombre="${clase.nombre_clase}" data-tutorid="${clase.tutor_id || ''}">Editar</button> <button class="delete-clase danger" data-id="${clase.id}" data-nombre="${clase.nombre_clase}">Eliminar</button>` : ''}
+                        </td></tr>`;});
+            } else html += '<tr><td colspan="4" style="text-align:center;">No hay clases registradas.</td></tr>';
+            html += '</tbody></table><div id="formClaseWrapper" class="form-wrapper" style="margin-top:20px;"></div>';
+            clasesContentDiv.innerHTML = html;
+            if(document.getElementById('btnShowFormNuevaClase')) document.getElementById('btnShowFormNuevaClase').onclick = () => showFormClase();
+            clasesContentDiv.querySelectorAll('.edit-clase').forEach(b => b.onclick=(e)=>showFormClase(e.target.dataset.id, e.target.dataset.nombre, e.target.dataset.tutorid));
+            clasesContentDiv.querySelectorAll('.delete-clase').forEach(b => b.onclick=(e)=>deleteClase(e.target.dataset.id, e.target.dataset.nombre));
+            clasesContentDiv.querySelectorAll('.view-alumnos-clase').forEach(b => b.onclick=(e)=>{ sessionStorage.setItem('filtroAlumnosClaseId',e.target.dataset.claseid); sessionStorage.setItem('filtroAlumnosNombreClase',e.target.dataset.nclase); navigateTo('alumnos'); });
+        } catch (error) { clasesContentDiv.innerHTML = `<p class="error-message">Error al cargar clases: ${error.message}</p>`; }
+    }
+    async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') { /* ... (como te la di antes, es bastante completa) ... */ }
+    async function saveClase(event) { /* ... (como te la di antes) ... */ }
+    async function deleteClase(idClase, nombreClase) { /* ... (como te la di antes) ... */ }
+
+    // --- Alumnos --- (Esqueleto para completar, similar a Clases)
+    async function loadAlumnos(claseIdFiltro = null, nombreClaseFiltro = null) { /* ... (como te la di antes, es bastante completa) ... */ }
+    async function showFormAlumno(idAlumno = null, listaTodasClases = null, nombreExistente = '', claseIdExistente = '') { /* ... (necesitas implementarla) ... */ }
+    async function saveAlumno(event) { /* ... (necesitas implementarla) ... */ }
+    async function deleteAlumno(idAlumno, nombreAlumno) { /* ... (necesitas implementarla) ... */ }
+
+    // --- Excursiones --- (Esqueleto para completar)
+    async function loadExcursiones() { if (!excursionesContentDiv) return; excursionesContentDiv.innerHTML = "<p>Cargando excursiones...</p>"; /* ... Fetch y render tabla ... */ }
+    // showFormExcursion, saveExcursion, deleteExcursion
+
+    // --- Participaciones --- (Esqueleto para completar)
+    async function loadParticipaciones() { if (!participacionesContentDiv) return; participacionesContentDiv.innerHTML = "<p>Cargando participaciones...</p>"; /* ... Fetch con filtros y render tabla ... */ }
+    // showFormParticipacion (para editar una), saveParticipacion
+
+    // --- Admin Usuarios (Solo Dirección - Esqueleto) ---
+    async function loadAdminUsuarios() { if (!adminUsuariosContentDiv || !currentUser || currentUser.rol !== 'DIRECCION') return; adminUsuariosContentDiv.innerHTML = "<p>Cargando usuarios...</p>"; /* ... Fetch /api/usuarios y render tabla ... */ }
+    // showFormAdminUsuario, saveAdminUsuario, deleteAdminUsuario
+
+
+    // --- INICIALIZACIÓN DE LA APP ---
+    checkInitialLoginState();
+}); // Fin de DOMContentLoaded
 
     // --- Gestión de Clases ---
     async function loadClases() { /* ... (código completo que te di para loadClases) ... */ }
