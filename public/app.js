@@ -524,7 +524,9 @@ if(botonAnadirClase) {
     console.error("Botón '+ Añadir Nueva Clase' (btnShowFormNuevaClase) NO encontrado en el DOM."); // NUEVO LOG
 }
     }
-    async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') { /* ... (como te la di antes, es bastante completa) ... */ }
+    async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') {
+    console.log("Función showFormClase llamada con:", {idClase, nombreExistente, tutorIdExistente}); // NUEVO LOG
+    const formClaseWrapper = document.getElementById('formClaseWrapper');
     async function saveClase(event) { /* ... (como te la di antes) ... */ }
     async function deleteClase(idClase, nombreClase) { /* ... (como te la di antes) ... */ }
 
