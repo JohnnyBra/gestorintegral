@@ -907,7 +907,6 @@ async function saveClase(event) {
             return;
         }
         adminUsuariosContentDiv.innerHTML = "<p>Cargando usuarios...</p>";
-        // Asegurarse que el form wrapper está limpio si se vuelve a cargar
         if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = ''; 
 
         try {
@@ -938,7 +937,7 @@ async function saveClase(event) {
                                 <td>${usuario.rol === 'TUTOR' ? (usuario.clase_asignada_nombre || '<em>No asignada</em>') : 'N/A'}</td>
                                 <td class="actions-cell">
                                     ${usuario.rol !== 'DIRECCION' ? `
-                                    <button class="edit-usuario warning" data-id="${usuario.id}">Editar</button> 
+                                    <button class="edit-usuario warning" data-id="${usuario.id}" data-email="${usuario.email}" data-nombre="${usuario.nombre_completo}">Editar</button> 
                                     <button class="delete-usuario danger" data-id="${usuario.id}" data-nombre="${usuario.nombre_completo}">Eliminar</button>
                                     ` : '<em>(Admin no editable/eliminable aquí)</em>'}
                                 </td>
@@ -948,132 +947,166 @@ async function saveClase(event) {
                 html += '<tr><td colspan="6" style="text-align:center;">No hay usuarios registrados.</td></tr>';
             }
             html += '</tbody></table>';
-            // El formAdminUsuarioWrapper ya existe en el HTML, no es necesario añadirlo aquí.
-            // Solo actualizamos el contenido de adminUsuariosContentDiv con la tabla y el botón.
             adminUsuariosContentDiv.innerHTML = html; 
-
-            // Añadir event listener al nuevo botón
+            
             const btnShowForm = document.getElementById('btnShowFormNuevoUsuarioTutor');
             if (btnShowForm) {
-                btnShowForm.addEventListener('click', showFormAdminUsuario);
+                             // Pass nulls to indicate creation mode explicitly
+                btnShowForm.addEventListener('click', () => showFormAdminUsuario(null, null));
             }
-             // TODO: Add event listeners for edit/delete buttons if functionality is added later
-            // adminUsuariosContentDiv.querySelectorAll('.edit-usuario').forEach(b => b.onclick = (e) => showFormAdminUsuario(e.target.dataset.id));
-            // adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre));
-
-
-        } catch (error) {
+            
+            adminUsuariosContentDiv.querySelectorAll('.edit-usuario').forEach(b => {
+                b.onclick = (e) => {
+                    const userId = e.target.dataset.id;
+                    const userEmail = e.target.dataset.email;
+                    const userNombre = e.target.dataset.nombre;
+                    showFormAdminUsuario(userId, { email: userEmail, nombre_completo: userNombre });
+                };
+            });
+            adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => {
+                b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre);
+            });
+            
+            } catch (error) {
             showGlobalError(`Error al cargar usuarios: ${error.message}`, adminUsuariosContentDiv);
         }
     }
 
-    function showFormAdminUsuario(userId = null, userData = null) { // userData para futura edición
+       function showFormAdminUsuario(userId = null, initialUserData = null) {
         if (!formAdminUsuarioWrapper) {
             console.error("Elemento formAdminUsuarioWrapper no encontrado.");
             return;
         }
         
-        // Por ahora, solo implementamos la creación. Si userId está presente, sería para edición.
-        if (userId) {
-            // TODO: Lógica para poblar el formulario con userData para edición.
-            // Por ahora, solo mostraremos un mensaje.
-            formAdminUsuarioWrapper.innerHTML = `<p>La edición de usuarios aún no está implementada. Cancela para crear uno nuevo.</p>
-                                                 <button type="button" id="btnCancelarEditUsuario" class="secondary">Cancelar Edición</button>`;
-            const btnCancelEdit = document.getElementById('btnCancelarEditUsuario');
-            if (btnCancelEdit) {
-                btnCancelEdit.onclick = () => {
-                    formAdminUsuarioWrapper.innerHTML = ''; // Limpiar
-                    // Podríamos llamar a showFormAdminUsuario() sin argumentos para mostrar el form de creación
-                };
-            }
-            return;
+             const isEditMode = userId && initialUserData;
+        const formTitle = isEditMode ? "Editar Usuario Tutor" : "Crear Nuevo Usuario Tutor";
+        const submitButtonText = isEditMode ? "Guardar Cambios" : "Crear Usuario";
+
+        let formHtml = `
+            <div class="form-container" style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <h4>${formTitle}</h4>
+                <form id="formGestionUsuarioTutor">
+                    ${isEditMode ? `<input type="hidden" id="editUserId" value="${userId}">` : ''}
+                    <div>
+                        <label for="adminUserEmail">Email:</label>
+                        <input type="email" id="adminUserEmail" value="${isEditMode ? initialUserData.email : ''}" required>
+                    </div>
+                    <div>
+                        <label for="adminUserNombreCompleto">Nombre Completo:</label>
+                        <input type="text" id="adminUserNombreCompleto" value="${isEditMode ? initialUserData.nombre_completo : ''}" required>
+                    </div>
+        `;
+
+        if (!isEditMode) { // Solo mostrar campo de contraseña en modo creación
+            formHtml += `
+                    <div>
+                        <label for="adminUserPassword">Contraseña:</label>
+                        <input type="password" id="adminUserPassword" required minlength="8">
+                    </div>
+                    <input type="hidden" id="adminUserRol" value="TUTOR"> 
+            `;
         }
 
-        const formHtml = `
-            <div class="form-container" style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <h4>Crear Nuevo Usuario Tutor</h4>
-                <form id="formCrearUsuarioTutor">
-                    <div>
-                        <label for="newUserEmail">Email:</label>
-                        <input type="email" id="newUserEmail" required>
-                    </div>
-                    <div>
-                        <label for="newUserNombreCompleto">Nombre Completo:</label>
-                        <input type="text" id="newUserNombreCompleto" required>
-                    </div>
-                    <div>
-                        <label for="newUserPassword">Contraseña:</label>
-                        <input type="password" id="newUserPassword" required minlength="8">
-                    </div>
-                    <input type="hidden" id="newUserRol" value="TUTOR"> 
+        formHtml += `
                     <div class="form-buttons" style="margin-top: 15px;">
-                        <button type="submit" class="success">Guardar Usuario</button>
-                        <button type="button" id="btnCancelarCrearUsuario" class="secondary">Cancelar</button>
+                        <button type="submit" class="success">${submitButtonText}</button>
+                        <button type="button" id="btnCancelarGestionUsuario" class="secondary">Cancelar</button>
                     </div>
                     <p id="formAdminUsuarioError" class="error-message" style="margin-top:10px;"></p>
                 </form>
             </div>
         `;
         formAdminUsuarioWrapper.innerHTML = formHtml;
-        formAdminUsuarioWrapper.style.display = 'block'; // Asegurarse que es visible
+        formAdminUsuarioWrapper.style.display = 'block';
 
-        const formElement = document.getElementById('formCrearUsuarioTutor');
+        const formElement = document.getElementById('formGestionUsuarioTutor');
         if (formElement) {
             formElement.addEventListener('submit', saveAdminUsuario);
         }
-        const btnCancelar = document.getElementById('btnCancelarCrearUsuario');
+        const btnCancelar = document.getElementById('btnCancelarGestionUsuario');
         if (btnCancelar) {
             btnCancelar.onclick = () => {
-                formAdminUsuarioWrapper.innerHTML = ''; // Limpiar y ocultar
+                formAdminUsuarioWrapper.innerHTML = ''; 
                 formAdminUsuarioWrapper.style.display = 'none';
             };
         }
     }
 
-    async function saveAdminUsuario(event) {
+   async function saveAdminUsuario(event) {
         event.preventDefault();
         const errorP = document.getElementById('formAdminUsuarioError');
         if (errorP) errorP.textContent = '';
 
-        const email = document.getElementById('newUserEmail').value.trim();
-        const nombre_completo = document.getElementById('newUserNombreCompleto').value.trim();
-        const password = document.getElementById('newUserPassword').value;
-        const rol = document.getElementById('newUserRol').value; // Siempre TUTOR desde el form actual
+        const editUserIdInput = document.getElementById('editUserId');
+        const isEditMode = editUserIdInput && editUserIdInput.value;
 
-        if (!email || !nombre_completo || !password) {
-            if (errorP) errorP.textContent = "Todos los campos son requeridos (excepto Rol que es fijo).";
-            return;
+        const email = document.getElementById('adminUserEmail').value.trim();
+        const nombre_completo = document.getElementById('adminUserNombreCompleto').value.trim();
+        
+        let userData = { email, nombre_completo };
+        let method = 'POST';
+        let endpoint = '/usuarios';
+
+        if (isEditMode) {
+            method = 'PUT';
+            endpoint = `/usuarios/${editUserIdInput.value}`;
+            // Password no se envía en modo edición según los requisitos
+        } else {
+            const password = document.getElementById('adminUserPassword').value;
+            const rol = document.getElementById('adminUserRol').value; // Siempre TUTOR desde el form actual
+            if (!password) {
+                if (errorP) errorP.textContent = "La contraseña es requerida para crear un nuevo usuario.";
+                return;
+            }
+            if (password.length < 8) {
+                if (errorP) errorP.textContent = "La contraseña debe tener al menos 8 caracteres.";
+                return;
+            }
+            userData.password = password;
+            userData.rol = rol;
         }
-        if (password.length < 8) {
-            if (errorP) errorP.textContent = "La contraseña debe tener al menos 8 caracteres.";
+
+        if (!email || !nombre_completo) {
+            if (errorP) errorP.textContent = "Email y Nombre Completo son requeridos.";
             return;
         }
         
-        const userData = { email, nombre_completo, password, rol };
-
+        const submitButton = event.target.querySelector('button[type="submit"]');
         try {
-            const submitButton = event.target.querySelector('button[type="submit"]');
             if (submitButton) submitButton.disabled = true;
 
-            await apiFetch('/usuarios', 'POST', userData);
+            await apiFetch(endpoint, method, userData);
             
             if (formAdminUsuarioWrapper) {
-                 formAdminUsuarioWrapper.innerHTML = '<p class="success-message" style="padding:10px; background-color: #e8f5e9; border: 1px solid #4caf50; border-radius:4px;">Usuario Tutor creado exitosamente.</p>'; // Limpiar y mostrar mensaje
+                 formAdminUsuarioWrapper.innerHTML = `<p class="success-message" style="padding:10px; background-color: #e8f5e9; border: 1px solid #4caf50; border-radius:4px;">Usuario ${isEditMode ? 'actualizado' : 'creado'} exitosamente.</p>`;
                  setTimeout(() => {
-                    formAdminUsuarioWrapper.innerHTML = ''; // Limpiar mensaje después de unos segundos
-                    formAdminUsuarioWrapper.style.display = 'none'; // Ocultar
+                    formAdminUsuarioWrapper.innerHTML = ''; 
+                    formAdminUsuarioWrapper.style.display = 'none'; 
                  }, 3000);
             }
-            loadAdminUsuarios(); // Recargar la lista de usuarios
+            loadAdminUsuarios(); 
         } catch (error) {
-            console.error("Error guardando nuevo usuario:", error);
-            if (errorP) errorP.textContent = error.message || "Error desconocido al crear el usuario.";
+            console.error(`Error ${isEditMode ? 'actualizando' : 'guardando nuevo'} usuario:`, error);
+            if (errorP) errorP.textContent = error.message || `Error desconocido al ${isEditMode ? 'actualizar' : 'crear'} el usuario.`;
         } finally {
-            const submitButton = event.target.querySelector('button[type="submit"]');
             if (submitButton) submitButton.disabled = false;
         }
     }
 
+    async function deleteAdminUsuario(userId, userName) {
+        if (!confirm(`¿Estás seguro de que quieres eliminar al usuario "${userName}" (ID: ${userId})? Esta acción no se puede deshacer.`)) {
+            return;
+        }
+        console.log(`Intentando eliminar usuario ID: ${userId}, Nombre: ${userName}`);
+        try {
+            await apiFetch(`/usuarios/${userId}`, 'DELETE');
+            alert(`Usuario "${userName}" (ID: ${userId}) eliminado correctamente.`);
+            loadAdminUsuarios(); // Recargar la lista de usuarios
+        } catch (error) {
+            console.error(`Error eliminando usuario ${userId}:`, error);
+            showGlobalError(`Error al eliminar usuario: ${error.message || 'Error desconocido.'}`);
+        }
+    }
 
     // --- INICIALIZACIÓN DE LA APP ---
     checkInitialLoginState();
