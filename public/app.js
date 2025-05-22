@@ -490,7 +490,7 @@ async function saveClase(event) {
         endpoint = `/clases/${idClase}`;
     }
 
-    console.log(`Intentando apiFetch: Method=<span class="math-inline">\{method\}, Endpoint\=</span>{endpoint}, Data=`, claseData); // LOG 3
+    console.log(`Intentando apiFetch: Method=${method}, Endpoint=${endpoint}, Data=`, claseData); // LOG 3
 
     try {
         const resultado = await apiFetch(endpoint, method, claseData);
@@ -533,20 +533,9 @@ async function saveClase(event) {
             clasesContentDiv.querySelectorAll('.delete-clase').forEach(b => b.onclick=(e)=>deleteClase(e.target.dataset.id, e.target.dataset.nombre));
             clasesContentDiv.querySelectorAll('.view-alumnos-clase').forEach(b => b.onclick=(e)=>{ sessionStorage.setItem('filtroAlumnosClaseId',e.target.dataset.claseid); sessionStorage.setItem('filtroAlumnosNombreClase',e.target.dataset.nclase); navigateTo('alumnos'); });
         } catch (error) { clasesContentDiv.innerHTML = `<p class="error-message">Error al cargar clases: ${error.message}</p>`; }
-        const botonAnadirClase = document.getElementById('btnShowFormNuevaClase');
-console.log("Intentando encontrar el botón '+ Añadir Nueva Clase':", botonAnadirClase); // NUEVO LOG
-
-if(botonAnadirClase) {
-    botonAnadirClase.onclick = () => {
-        console.log("Botón '+ Añadir Nueva Clase' pulsado. Llamando a showFormClase..."); // NUEVO LOG
-        showFormClase();
-    };
-} else {
-    console.error("Botón '+ Añadir Nueva Clase' (btnShowFormNuevaClase) NO encontrado en el DOM."); // NUEVO LOG
-}
     }
-    async function saveClase(event) { /* ... (como te la di antes) ... */ }
-    async function deleteClase(idClase, nombreClase) { /* ... (como te la di antes) ... */ }
+    // async function saveClase(event) { /* ... (como te la di antes) ... */ }
+    // async function deleteClase(idClase, nombreClase) { /* ... (como te la di antes) ... */ }
 
     // --- Alumnos --- (Esqueleto para completar, similar a Clases)
     async function loadAlumnos(claseIdFiltro = null, nombreClaseFiltro = null) { /* ... (como te la di antes, es bastante completa) ... */ }
