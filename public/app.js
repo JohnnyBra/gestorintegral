@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const excursionesContentDiv = document.getElementById('excursiones-content');
     const participacionesContentDiv = document.getElementById('participaciones-content');
     const adminUsuariosContentDiv = document.getElementById('admin-usuarios-content');
+    const formAdminUsuarioWrapper = document.getElementById('formAdminUsuarioWrapper');
+
 
     console.log("app.js cargado y DOMContentLoaded disparado. API_BASE_URL:", API_BASE_URL);
     if (!loginForm) console.error("Elemento loginForm NO encontrado.");
@@ -100,9 +102,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function showGlobalError(message) {
+    function showGlobalError(message, targetDiv = null) {
         console.error("ERROR APP:", message);
-        if (loginErrorP && loginSection && loginSection.style.display === 'block') { // Mostrar en el form de login si está visible
+        if (targetDiv) {
+            targetDiv.innerHTML = `<p class="error-message">${message}</p>`;
+        } else if (loginErrorP && loginSection && loginSection.style.display === 'block') { // Mostrar en el form de login si está visible
             loginErrorP.textContent = message;
         } else {
             alert(`Error en la aplicación: ${message}`); // Alert como fallback
@@ -131,13 +135,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!emailInput || !passwordInput) { console.error("Inputs de login no encontrados."); return; }
             const email = emailInput.value;
             const password = passwordInput.value;
-            console.log("Login form submitted. Email:", email); // Tu línea 109
-             // Deshabilitar el botón de submit para evitar múltiples clics
+            console.log("Login form submitted. Email:", email); 
             const submitButton = loginForm.querySelector('button[type="submit"]');
             if (submitButton) submitButton.disabled = true;
 
             try {
-                // La función apiFetch ahora tiene más logs internos
                 const data = await apiFetch('/auth/login', 'POST', { email, password }, null);
                 console.log("Respuesta de /auth/login en el listener del form:", data);
 
@@ -150,13 +152,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) { 
                 console.error("Catch en listener de loginForm:", error.message);
-                // apiFetch ya llama a showGlobalError, que podría poner el mensaje en loginErrorP o alert.
-                // Si loginErrorP está vacío, ponemos un mensaje genérico.
                 if (loginErrorP && !loginErrorP.textContent) {
                     loginErrorP.textContent = error.message.includes("Credenciales incorrectas") ? error.message : "Error al intentar iniciar sesión.";
                 }
             } finally {
-                if (submitButton) submitButton.disabled = false; // Volver a habilitar
+                if (submitButton) submitButton.disabled = false; 
             }
         });
     }
@@ -196,28 +196,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const isAdmin = currentUser.rol === 'DIRECCION';
         const adminUsuariosLinkLi = mainNavSidebar.querySelector('a[data-section="admin-usuarios"]');
         if (adminUsuariosLinkLi) adminUsuariosLinkLi.parentElement.style.display = isAdmin ? 'list-item' : 'none';
-        // Puedes añadir más adaptaciones de menú aquí si es necesario
     }
 
     function checkInitialLoginState() {
-        console.log("Ejecutando checkInitialLoginState..."); // Tu línea 33
+        console.log("Ejecutando checkInitialLoginState...");
         const token = localStorage.getItem('authToken');
         const userStr = localStorage.getItem('userInfo');
         if (token && userStr) {
             console.log("Token y userInfo encontrados en localStorage.");
             try {
                 const user = JSON.parse(userStr);
-                // Validar token con el backend para asegurar que no ha expirado o sido revocado
                 apiFetch('/auth/me', 'GET', null, token)
                     .then(data => {
                         if (data && data.usuario) {
                             console.log("Token validado con /auth/me, usuario:", data.usuario.email);
-                            handleLoginSuccess(data.usuario, token); // Usar el usuario del token validado
+                            handleLoginSuccess(data.usuario, token); 
                         } else { 
                             console.warn("/auth/me no devolvió usuario o data fue null, cerrando sesión.");
                             handleLogout(); 
                         }
-                    }).catch((error) => { // Error en el fetch a /auth/me (ej. token expirado, red)
+                    }).catch((error) => { 
                         console.warn("Error validando token con /auth/me, cerrando sesión. Error:", error.message);
                         handleLogout();
                     });
@@ -225,7 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             console.log("No hay token/userInfo en localStorage. Mostrando UI de logout y navegando a login.");
             updateUIAfterLogout();
-            navigateTo('login'); // Tu línea 178 (el número puede variar según tus logs)
+            navigateTo('login'); 
         }
     }
 
@@ -241,10 +239,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (sectionName === 'login') {
             if (loginSection) loginSection.style.display = 'block';
-            // No llamar a loadContentForSection para 'login'
         } else if (activeSectionDiv) {
             activeSectionDiv.style.display = 'block';
-            if (activeLink) activeLink.classList.add('active'); // Estilo para el link activo
+            if (activeLink) activeLink.classList.add('active'); 
             loadContentForSection(sectionName);
         } else {
             console.warn(`Div de sección '${sectionName}-section' no encontrado en navigateTo.`);
@@ -256,17 +253,17 @@ document.addEventListener('DOMContentLoaded', () => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const section = link.dataset.section;
-            if (currentToken || section === 'login') navigateTo(section); // Permitir ir a login si no hay token
+            if (currentToken || section === 'login') navigateTo(section); 
             else {
                 console.log("Intento de navegación sin token a sección protegida:", section);
-                navigateTo('login'); // Forzar login si no hay token e intenta ir a otra parte
+                navigateTo('login'); 
             }
         });
     });
 
     // --- Carga de Contenido para Secciones ---
     function loadContentForSection(sectionName) {
-        if (sectionName === 'login') return; // El contenido de login es estático
+        if (sectionName === 'login') return; 
         if (!currentToken) { navigateTo('login'); return; }
         console.log("Cargando contenido dinámico para:", sectionName);
         switch (sectionName) {
@@ -283,7 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Dashboard --- (Como lo tenías, asegúrate que usa `currentUser` para el rol)
+    // --- Dashboard ---
  async function loadDashboardData() {
     if (!dashboardSummaryContentDiv) {
         console.error("Elemento dashboardSummaryContentDiv no encontrado.");
@@ -291,16 +288,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (!currentToken) {
         console.warn("loadDashboardData: No hay token, no se puede cargar.");
-        // Opcional: podrías llamar a handleLogout() aquí si no debería pasar
         dashboardSummaryContentDiv.innerHTML = '<p class="error-message">Error de sesión. Por favor, inicia sesión de nuevo.</p>';
         return;
     }
 
-    dashboardSummaryContentDiv.innerHTML = "<p>Cargando resumen del dashboard...</p>"; // Mensaje de carga
+    dashboardSummaryContentDiv.innerHTML = "<p>Cargando resumen del dashboard...</p>"; 
     console.log("[loadDashboardData] Iniciando carga de datos del dashboard...");
 
     try {
-        const data = await apiFetch('/dashboard/summary'); // Llama a GET /api/dashboard/summary
+        const data = await apiFetch('/dashboard/summary'); 
         console.log("[loadDashboardData] Datos recibidos del backend:", data);
 
         if (!data) {
@@ -310,7 +306,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let html = '<h4>Resumen General</h4>';
-        // Renderizar datos de Dirección
         if (currentUser && currentUser.rol === 'DIRECCION') {
             html += `<ul>
                 <li>Total Clases: ${data.totalClases ?? 'N/D'}</li>
@@ -323,7 +318,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 html += '</ul>';
             } else { html += '<p>No hay próximas excursiones generales.</p>';}
         }
-        // Renderizar datos de Tutor
         if (currentUser && currentUser.rol === 'TUTOR') {
              html += `<ul>
                 <li>Tu Clase: ${currentUser.claseNombre || 'No asignada'}</li>
@@ -345,43 +339,37 @@ document.addEventListener('DOMContentLoaded', () => {
                          </ul>`;
             } else if (data.proximasExcursiones && data.proximasExcursiones.length > 0) { 
                  html += `<p>Aún no hay datos de participación para la excursión más próxima de tu clase.</p>`;
-            } else {
-                // No hay próximas excursiones para el tutor, no se muestra nada más de resumen.
             }
         }
-        console.log("[loadDashboardData] HTML generado para el dashboard:", html.substring(0, 200) + "..."); // Loguear una parte del HTML
+        console.log("[loadDashboardData] HTML generado para el dashboard:", html.substring(0, 200) + "..."); 
         dashboardSummaryContentDiv.innerHTML = html;
     } catch (error) {
         console.error("[loadDashboardData] Error capturado al cargar datos del dashboard:", error.message);
         dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar los datos del dashboard: ${error.message}</p>`;
     }
 }
- // Variable global para cachear la lista de clases, útil para varios selectores
     let listaDeClasesGlobal = []; 
-    // --- Gestión de Clases --- (Renderizado y lógica de formularios completa)
+    // --- Gestión de Clases --- 
   async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') {
-    console.log("Función showFormClase llamada con:", {idClase, nombreExistente, tutorIdExistente}); // NUEVO LOG
+    console.log("Función showFormClase llamada con:", {idClase, nombreExistente, tutorIdExistente}); 
     const formClaseWrapper = document.getElementById('formClaseWrapper');
     if (!formClaseWrapper) {
         console.error("Elemento formClaseWrapper no encontrado.");
         return;
     }
 
-    // Obtener lista de posibles tutores (usuarios con rol TUTOR)
     let tutoresDisponibles = [];
     try {
-        const dataUsuarios = await apiFetch('/usuarios'); // Asume que este endpoint devuelve todos los usuarios
+        const dataUsuarios = await apiFetch('/usuarios'); 
         if (dataUsuarios && dataUsuarios.usuarios) {
             tutoresDisponibles = dataUsuarios.usuarios.filter(u => u.rol === 'TUTOR');
         }
     } catch (error) {
         console.error("Error obteniendo lista de tutores:", error);
-        // Continuar para mostrar el formulario, aunque sea sin tutores o con un mensaje.
     }
 
     let optionsTutoresHtml = '<option value="">-- Sin asignar --</option>';
     tutoresDisponibles.forEach(tutor => {
-        // Solo incluir tutores que no tengan ya una clase asignada, O el tutor actualmente asignado a esta clase (si se está editando)
         const estaAsignadoAOtraClase = tutor.clase_asignada_id && tutor.clase_asignada_id !== idClase;
         const esTutorActual = tutor.id === parseInt(tutorIdExistente);
 
@@ -390,13 +378,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                       ${tutor.nombre_completo} (${tutor.email})
                                   </option>`;
         } else {
-             // Opcional: mostrar tutores ya asignados pero deshabilitados o con un sufijo
             optionsTutoresHtml += `<option value="${tutor.id}" disabled>
                                       ${tutor.nombre_completo} (Asignado a: ${tutor.clase_asignada_nombre || 'otra clase'})
                                    </option>`;
         }
     });
-
 
     const formHtml = `
         <div class="form-container" style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin-top: 15px; border: 1px solid #e0e0e0;">
@@ -423,23 +409,15 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     formClaseWrapper.innerHTML = formHtml;
 
-    // Event Listeners para el formulario
     const formElement = document.getElementById('formGestionClase');
     if (formElement) {
         console.log("Asignando listener 'submit' al formulario formGestionClase:", formElement);
-        
-        // formElement.addEventListener('submit', saveClase); // LÍNEA ORIGINAL COMENTADA
-
-        // NUEVO LISTENER SIMPLIFICADO PARA PRUEBA:
         formElement.addEventListener('submit', function(event) {
             console.log("Evento SUBMIT del formulario detectado. Evento:", event);
             event.preventDefault();
             console.log("event.preventDefault() llamado DENTRO del listener de prueba.");
-            
-            // Ahora llamamos a saveClase manualmente desde aquí, pasando el evento
             saveClase(event); 
         });
-
     } else {
         console.error("Elemento de formulario formGestionClase NO encontrado para asignar listener.");
     }
@@ -450,12 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
 }
 
 async function saveClase(event) {
-    console.log("saveClase INVOCADA. Evento:", event); // LOG 1: ¿Se llama la función?
-
-    // Ya no necesitamos el if(event && typeof event.preventDefault === 'function') aquí
-    // porque el preventDefault se hizo en el listener del formulario.
-    // Pero el evento se sigue pasando por si lo necesitas para otra cosa (aunque no es común en este caso).
-
+    console.log("saveClase INVOCADA. Evento:", event); 
     const formClaseError = document.getElementById('formClaseError');
     if (formClaseError) formClaseError.textContent = '';
 
@@ -466,19 +439,19 @@ async function saveClase(event) {
     if (!nombreClaseInput || !tutorClaseSelect || !claseIdInput) {
         if (formClaseError) formClaseError.textContent = 'Error: Elementos del formulario no encontrados.';
         console.error("Elementos del formulario no encontrados en saveClase.");
-        return; // Salir si los elementos no existen
+        return; 
     }
 
     const idClase = claseIdInput.value;
     const nombre_clase = nombreClaseInput.value.trim().toUpperCase();
     const tutor_id = tutorClaseSelect.value ? parseInt(tutorClaseSelect.value) : null;
 
-    console.log("Datos recogidos del formulario:", { idClase, nombre_clase, tutor_id }); // LOG 2
+    console.log("Datos recogidos del formulario:", { idClase, nombre_clase, tutor_id }); 
 
     if (!nombre_clase) {
         if (formClaseError) formClaseError.textContent = 'El nombre de la clase es obligatorio.';
         console.warn("Nombre de la clase vacío.");
-        return; // Salir si el nombre está vacío
+        return; 
     }
 
     const claseData = { nombre_clase, tutor_id };
@@ -490,11 +463,11 @@ async function saveClase(event) {
         endpoint = `/clases/${idClase}`;
     }
 
-    console.log(`Intentando apiFetch: Method=${method}, Endpoint=${endpoint}, Data=`, claseData); // LOG 3
+    console.log(`Intentando apiFetch: Method=${method}, Endpoint=${endpoint}, Data=`, claseData); 
 
     try {
         const resultado = await apiFetch(endpoint, method, claseData);
-        console.log("Respuesta de guardar clase (apiFetch):", resultado); // LOG 4
+        console.log("Respuesta de guardar clase (apiFetch):", resultado); 
 
         const formClaseWrapper = document.getElementById('formClaseWrapper');
         if (formClaseWrapper) formClaseWrapper.innerHTML = '';
@@ -534,14 +507,145 @@ async function saveClase(event) {
             clasesContentDiv.querySelectorAll('.view-alumnos-clase').forEach(b => b.onclick=(e)=>{ sessionStorage.setItem('filtroAlumnosClaseId',e.target.dataset.claseid); sessionStorage.setItem('filtroAlumnosNombreClase',e.target.dataset.nclase); navigateTo('alumnos'); });
         } catch (error) { clasesContentDiv.innerHTML = `<p class="error-message">Error al cargar clases: ${error.message}</p>`; }
     }
-    // async function saveClase(event) { /* ... (como te la di antes) ... */ }
-    // async function deleteClase(idClase, nombreClase) { /* ... (como te la di antes) ... */ }
+    
+    async function deleteClase(idClase, nombreClase) {
+        if (!confirm(`¿Estás seguro de que quieres eliminar la clase "${nombreClase}"? Esta acción podría afectar a alumnos y otros datos asociados.`)) {
+            return;
+        }
+        try {
+            await apiFetch(`/clases/${idClase}`, 'DELETE');
+            alert("Clase eliminada correctamente.");
+            loadClases(); // Recargar la lista de clases
+            // Actualizar la lista global de clases por si se usa en otros selectores
+            const dataClasesActualizadas = await apiFetch('/clases');
+            listaDeClasesGlobal = dataClasesActualizadas.clases || [];
+            // Si el selector de importación CSV está visible, actualizarlo
+            if (document.getElementById('alumnos-section') && document.getElementById('alumnos-section').style.display === 'block' && document.getElementById('csvClaseDestino')) {
+                 poblarSelectorClaseDestinoCSV();
+            }
+        } catch (error) {
+            console.error(`Error eliminando clase ${idClase}:`, error);
+            showGlobalError(error.message || "Error al eliminar la clase.");
+        }
+    }
 
-    // --- Alumnos --- (Esqueleto para completar, similar a Clases)
-    async function loadAlumnos(claseIdFiltro = null, nombreClaseFiltro = null) { /* ... (como te la di antes, es bastante completa) ... */ }
-    async function showFormAlumno(idAlumno = null, listaTodasClases = null, nombreExistente = '', claseIdExistente = '') { /* ... (necesitas implementarla) ... */ }
-    async function saveAlumno(event) { /* ... (necesitas implementarla) ... */ }
-    async function deleteAlumno(idAlumno, nombreAlumno) { /* ... (necesitas implementarla) ... */ }
+    // --- Alumnos --- 
+    async function loadAlumnos(claseIdFiltroExterno = null, nombreClaseFiltroExterno = null) { /* ... (como te la di antes, es bastante completa) ... */ }
+    async function showFormAlumno(idAlumno = null, alumnoData = null, listaTodasClases = null) {
+        const formAlumnoWrapper = document.getElementById('formAlumnoWrapper');
+        if (!formAlumnoWrapper) {
+            console.error("Elemento formAlumnoWrapper no encontrado.");
+            return;
+        }
+
+        const nombreExistente = alumnoData ? alumnoData.nombre_completo : '';
+        const claseIdExistente = alumnoData ? alumnoData.clase_id : '';
+        const apellidosExistente = alumnoData && alumnoData.nombre_completo ? alumnoData.nombre_completo.split(' ').slice(1).join(' ') : '';
+        const soloNombreExistente = alumnoData && alumnoData.nombre_completo ? alumnoData.nombre_completo.split(' ')[0] : '';
+
+
+        let opcionesClasesHtml = '';
+        if (currentUser.rol === 'TUTOR') {
+            if (currentUser.claseId && currentUser.claseNombre) {
+                opcionesClasesHtml = `<option value="${currentUser.claseId}" selected>${currentUser.claseNombre} (Tu clase)</option>`;
+            } else {
+                opcionesClasesHtml = `<option value="" disabled selected>No tienes clase asignada</option>`;
+            }
+        } else if (currentUser.rol === 'DIRECCION') {
+            if (listaDeClasesGlobal.length === 0) { // Cargar si no está cacheada
+                try {
+                    const dataClases = await apiFetch('/clases');
+                    listaDeClasesGlobal = dataClases.clases || [];
+                } catch (error) {
+                    console.error("Error cargando lista de clases para formAlumno:", error);
+                    opcionesClasesHtml = `<option value="">Error cargando clases</option>`;
+                }
+            }
+            opcionesClasesHtml = '<option value="">-- Selecciona una clase --</option>';
+            listaDeClasesGlobal.forEach(clase => {
+                opcionesClasesHtml += `<option value="${clase.id}" ${clase.id === claseIdExistente ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+            });
+        }
+
+
+        const formHtml = `
+            <div class="form-container" style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin-top: 15px; border: 1px solid #e0e0e0;">
+                <h3>${idAlumno ? 'Editar Alumno' : 'Añadir Nuevo Alumno'}</h3>
+                <form id="formGestionAlumno">
+                    <input type="hidden" id="alumnoId" name="alumnoId" value="${idAlumno || ''}">
+                    <div>
+                        <label for="nombreAlumno">Nombre del Alumno:</label>
+                        <input type="text" id="nombreAlumno" name="nombreAlumno" value="${soloNombreExistente}" required placeholder="Ej: Juan">
+                    </div>
+                    <div>
+                        <label for="apellidosAlumno">Apellidos del Alumno:</label>
+                        <input type="text" id="apellidosAlumno" name="apellidosAlumno" value="${apellidosExistente}" required placeholder="Ej: Pérez Gómez">
+                    </div>
+                    <div>
+                        <label for="claseAlumno">Clase del Alumno:</label>
+                        <select id="claseAlumno" name="claseAlumno" ${currentUser.rol === 'TUTOR' ? 'disabled' : ''} required>
+                            ${opcionesClasesHtml}
+                        </select>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="submit" class="success">${idAlumno ? 'Guardar Cambios' : 'Crear Alumno'}</button>
+                        <button type="button" id="btnCancelarFormAlumno" class="secondary">Cancelar</button>
+                    </div>
+                    <p id="formAlumnoError" class="error-message"></p>
+                </form>
+            </div>
+        `;
+        formAlumnoWrapper.innerHTML = formHtml;
+
+        document.getElementById('formGestionAlumno').addEventListener('submit', saveAlumno);
+        document.getElementById('btnCancelarFormAlumno').onclick = () => { formAlumnoWrapper.innerHTML = ''; };
+    }
+    async function saveAlumno(event) {
+        event.preventDefault();
+        const formAlumnoError = document.getElementById('formAlumnoError');
+        if (formAlumnoError) formAlumnoError.textContent = '';
+
+        const alumnoId = document.getElementById('alumnoId').value;
+        const nombre = document.getElementById('nombreAlumno').value.trim();
+        const apellidos = document.getElementById('apellidosAlumno').value.trim();
+        const clase_id = document.getElementById('claseAlumno').value;
+
+        if (!nombre || !apellidos || !clase_id) {
+            if (formAlumnoError) formAlumnoError.textContent = 'Nombre, apellidos y clase son obligatorios.';
+            return;
+        }
+        
+        const alumnoData = {
+            nombre: nombre, // El backend espera "nombre" y "apellidos" separados
+            apellidos: apellidos,
+            clase_id: parseInt(clase_id)
+        };
+
+        let method = 'POST';
+        let endpoint = '/alumnos';
+        if (alumnoId) {
+            method = 'PUT';
+            endpoint = `/alumnos/${alumnoId}`;
+        }
+
+        try {
+            await apiFetch(endpoint, method, alumnoData);
+            document.getElementById('formAlumnoWrapper').innerHTML = ''; // Limpiar formulario
+            loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase')); // Recargar lista
+        } catch (error) {
+            if (formAlumnoError) formAlumnoError.textContent = error.message || 'Error guardando alumno.';
+        }
+    }
+    async function deleteAlumno(idAlumno, nombreAlumno) {
+        if (!confirm(`¿Estás seguro de que quieres eliminar al alumno "${nombreAlumno}"?`)) return;
+        try {
+            await apiFetch(`/alumnos/${idAlumno}`, 'DELETE');
+            alert("Alumno eliminado correctamente.");
+            loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase'));
+        } catch (error) {
+            showGlobalError(error.message || "Error al eliminar el alumno.");
+        }
+    }
 
     // --- Funciones Específicas para la Importación CSV de Alumnos ---
 
@@ -563,11 +667,9 @@ async function saveClase(event) {
                     selectClase.disabled = true;
                 }
             } else if (currentUser.rol === 'DIRECCION') {
-                // Si listaDeClasesGlobal está vacía, la cargamos.
-                // Esta variable también se podría poblar/actualizar cuando se visita la sección "Gestionar Clases".
                 if (listaDeClasesGlobal.length === 0) {
                     console.log("[poblarSelectorClaseDestinoCSV] listaDeClasesGlobal vacía, cargando clases del API...");
-                    const dataClases = await apiFetch('/clases'); // Llama a GET /api/clases
+                    const dataClases = await apiFetch('/clases'); 
                     listaDeClasesGlobal = dataClases.clases || [];
                 }
                 
@@ -609,8 +711,6 @@ async function saveClase(event) {
         }
 
         const clase_id_seleccionada = claseIdSelect.value;
-        
-        // Determinar el clase_id final para enviar al backend
         let clase_id_para_api;
         if (currentUser.rol === 'TUTOR') {
             if (!currentUser.claseId) {
@@ -667,12 +767,10 @@ async function saveClase(event) {
         reader.readAsText(file, "UTF-8");
     }
 
-    // --- Modificación de loadAlumnos() para incluir el formulario de importación ---
     async function loadAlumnos(claseIdFiltroExterno = null, nombreClaseFiltroExterno = null) {
         if (!alumnosContentDiv || !currentToken) return;
         alumnosContentDiv.innerHTML = "<p>Cargando alumnos...</p>";
 
-        // HTML para el formulario de importación CSV (lo generamos siempre)
         const importCsvHtml = `
             <div id="import-alumnos-csv-container" style="padding: 15px; border: 1px solid #eee; margin-bottom: 20px; background-color: #f9f9f9; border-radius: 5px;">
                 <h4>Importar Alumnos desde CSV</h4>
@@ -692,7 +790,6 @@ async function saveClase(event) {
             </div>
             <hr style="margin: 20px 0;">`;
         
-        // Lógica para el título y el endpoint de la lista de alumnos
         const filtroClaseIdActual = claseIdFiltroExterno || sessionStorage.getItem('filtroAlumnosClaseId');
         const filtroNombreClaseActual = nombreClaseFiltroExterno || sessionStorage.getItem('filtroAlumnosNombreClase');
         let endpoint = '/alumnos';
@@ -702,7 +799,7 @@ async function saveClase(event) {
         if (currentUser.rol === 'TUTOR') {
             if (!currentUser.claseId) { 
                 alumnosContentDiv.innerHTML = importCsvHtml + "<p>No tienes clase asignada para ver o importar alumnos.</p>"; 
-                poblarSelectorClaseDestinoCSV(); // Poblar el select (estará deshabilitado y mostrará mensaje)
+                poblarSelectorClaseDestinoCSV(); 
                 const formImp = document.getElementById('formImportarAlumnosCSV');
                 if(formImp) formImp.addEventListener('submit', handleImportAlumnosCSV);
                 return; 
@@ -744,7 +841,7 @@ async function saveClase(event) {
             if (dataAlumnos.alumnos && dataAlumnos.alumnos.length > 0) {
                 dataAlumnos.alumnos.forEach(a => { 
                     htmlTablaAlumnos += `<tr data-alumno-id="${a.id}"><td>${a.nombre_completo}</td><td>${a.nombre_clase}</td><td>
-                        <button class="edit-alumno warning" data-id="${a.id}">Editar</button>
+                        <button class="edit-alumno warning" data-id="${a.id}" data-nombre="${a.nombre_completo}" data-claseid="${a.clase_id}">Editar</button>
                         <button class="delete-alumno danger" data-id="${a.id}" data-nombre="${a.nombre_completo}">Eliminar</button>
                         </td></tr>`; 
                 });
@@ -755,20 +852,22 @@ async function saveClase(event) {
             
             alumnosContentDiv.innerHTML = importCsvHtml + htmlTablaAlumnos;
 
-            // Poblar select de importación y añadir listener al formulario de importación
             poblarSelectorClaseDestinoCSV(); 
             const formImp = document.getElementById('formImportarAlumnosCSV');
             if(formImp) formImp.addEventListener('submit', handleImportAlumnosCSV);
 
-            // Listeners para la tabla de alumnos y formulario de alumno individual
             if(document.getElementById('btnShowFormNuevoAlumno')) document.getElementById('btnShowFormNuevoAlumno').onclick = () => showFormAlumno();
-            alumnosContentDiv.querySelectorAll('.edit-alumno').forEach(b=>b.onclick = async (e)=>{
+            
+            alumnosContentDiv.querySelectorAll('.edit-alumno').forEach(b => b.onclick = async (e) => {
                 const alumnoId = e.target.dataset.id;
-                try { 
-                    const dataAlumnoUnico = await apiFetch(`/alumnos/${alumnoId}`); 
-                    showFormAlumno(alumnoId, dataAlumnoUnico.alumno);
-                } catch(err){showGlobalError("Error cargando alumno para editar.");}
+                // Para editar, necesitamos los datos actuales del alumno
+                // Podríamos hacer un fetch específico o si ya los tenemos, usarlos.
+                // Por simplicidad, asumimos que el backend de GET /alumnos/:id nos da nombre_completo y clase_id
+                // Si no, tendríamos que pasar más data attributes o hacer un fetch aquí.
+                const alumnoParaEditar = dataAlumnos.alumnos.find(a => a.id == alumnoId);
+                showFormAlumno(alumnoId, alumnoParaEditar); 
             });
+
             alumnosContentDiv.querySelectorAll('.delete-alumno').forEach(b=>b.onclick=(e)=>deleteAlumno(e.target.dataset.id, e.target.dataset.nombre));
             
             if (document.getElementById('selectFiltroClaseAlumnos')) {
@@ -795,17 +894,185 @@ async function saveClase(event) {
         }
     }
 
-    // --- Excursiones --- (Esqueleto para completar)
+    // --- Excursiones --- 
     async function loadExcursiones() { if (!excursionesContentDiv) return; excursionesContentDiv.innerHTML = "<p>Cargando excursiones...</p>"; /* ... Fetch y render tabla ... */ }
-    // showFormExcursion, saveExcursion, deleteExcursion
-
-    // --- Participaciones --- (Esqueleto para completar)
+    
+    // --- Participaciones --- 
     async function loadParticipaciones() { if (!participacionesContentDiv) return; participacionesContentDiv.innerHTML = "<p>Cargando participaciones...</p>"; /* ... Fetch con filtros y render tabla ... */ }
-    // showFormParticipacion (para editar una), saveParticipacion
 
-    // --- Admin Usuarios (Solo Dirección - Esqueleto) ---
-    async function loadAdminUsuarios() { if (!adminUsuariosContentDiv || !currentUser || currentUser.rol !== 'DIRECCION') return; adminUsuariosContentDiv.innerHTML = "<p>Cargando usuarios...</p>"; /* ... Fetch /api/usuarios y render tabla ... */ }
-    // showFormAdminUsuario, saveAdminUsuario, deleteAdminUsuario
+    // --- Admin Usuarios (Solo Dirección) ---
+    async function loadAdminUsuarios() {
+        if (!adminUsuariosContentDiv || !currentUser || currentUser.rol !== 'DIRECCION') {
+            if (adminUsuariosContentDiv) adminUsuariosContentDiv.innerHTML = "<p class="error-message">Acceso denegado.</p>";
+            return;
+        }
+        adminUsuariosContentDiv.innerHTML = "<p>Cargando usuarios...</p>";
+        // Asegurarse que el form wrapper está limpio si se vuelve a cargar
+        if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = ''; 
+
+        try {
+            const data = await apiFetch('/usuarios');
+            let html = '<h3>Listado de Usuarios del Sistema</h3>';
+            html += `<button id="btnShowFormNuevoUsuarioTutor" class="success" style="margin-bottom:15px;">+ Crear Nuevo Usuario Tutor</button>`;
+            
+            html += `<table class="tabla-datos">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Email</th>
+                                <th>Nombre Completo</th>
+                                <th>Rol</th>
+                                <th>Clase Asignada (Tutor)</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+            
+            if (data.usuarios && data.usuarios.length > 0) {
+                data.usuarios.forEach(usuario => {
+                    html += `<tr data-user-id="${usuario.id}">
+                                <td>${usuario.id}</td>
+                                <td>${usuario.email}</td>
+                                <td>${usuario.nombre_completo}</td>
+                                <td>${usuario.rol}</td>
+                                <td>${usuario.rol === 'TUTOR' ? (usuario.clase_asignada_nombre || '<em>No asignada</em>') : 'N/A'}</td>
+                                <td class="actions-cell">
+                                    ${usuario.rol !== 'DIRECCION' ? `
+                                    <button class="edit-usuario warning" data-id="${usuario.id}">Editar</button> 
+                                    <button class="delete-usuario danger" data-id="${usuario.id}" data-nombre="${usuario.nombre_completo}">Eliminar</button>
+                                    ` : '<em>(Admin no editable/eliminable aquí)</em>'}
+                                </td>
+                             </tr>`;
+                });
+            } else {
+                html += '<tr><td colspan="6" style="text-align:center;">No hay usuarios registrados.</td></tr>';
+            }
+            html += '</tbody></table>';
+            // El formAdminUsuarioWrapper ya existe en el HTML, no es necesario añadirlo aquí.
+            // Solo actualizamos el contenido de adminUsuariosContentDiv con la tabla y el botón.
+            adminUsuariosContentDiv.innerHTML = html; 
+
+            // Añadir event listener al nuevo botón
+            const btnShowForm = document.getElementById('btnShowFormNuevoUsuarioTutor');
+            if (btnShowForm) {
+                btnShowForm.addEventListener('click', showFormAdminUsuario);
+            }
+             // TODO: Add event listeners for edit/delete buttons if functionality is added later
+            // adminUsuariosContentDiv.querySelectorAll('.edit-usuario').forEach(b => b.onclick = (e) => showFormAdminUsuario(e.target.dataset.id));
+            // adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre));
+
+
+        } catch (error) {
+            showGlobalError(`Error al cargar usuarios: ${error.message}`, adminUsuariosContentDiv);
+        }
+    }
+
+    function showFormAdminUsuario(userId = null, userData = null) { // userData para futura edición
+        if (!formAdminUsuarioWrapper) {
+            console.error("Elemento formAdminUsuarioWrapper no encontrado.");
+            return;
+        }
+        
+        // Por ahora, solo implementamos la creación. Si userId está presente, sería para edición.
+        if (userId) {
+            // TODO: Lógica para poblar el formulario con userData para edición.
+            // Por ahora, solo mostraremos un mensaje.
+            formAdminUsuarioWrapper.innerHTML = `<p>La edición de usuarios aún no está implementada. Cancela para crear uno nuevo.</p>
+                                                 <button type="button" id="btnCancelarEditUsuario" class="secondary">Cancelar Edición</button>`;
+            const btnCancelEdit = document.getElementById('btnCancelarEditUsuario');
+            if (btnCancelEdit) {
+                btnCancelEdit.onclick = () => {
+                    formAdminUsuarioWrapper.innerHTML = ''; // Limpiar
+                    // Podríamos llamar a showFormAdminUsuario() sin argumentos para mostrar el form de creación
+                };
+            }
+            return;
+        }
+
+        const formHtml = `
+            <div class="form-container" style="background-color: #f0f0f0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <h4>Crear Nuevo Usuario Tutor</h4>
+                <form id="formCrearUsuarioTutor">
+                    <div>
+                        <label for="newUserEmail">Email:</label>
+                        <input type="email" id="newUserEmail" required>
+                    </div>
+                    <div>
+                        <label for="newUserNombreCompleto">Nombre Completo:</label>
+                        <input type="text" id="newUserNombreCompleto" required>
+                    </div>
+                    <div>
+                        <label for="newUserPassword">Contraseña:</label>
+                        <input type="password" id="newUserPassword" required minlength="8">
+                    </div>
+                    <input type="hidden" id="newUserRol" value="TUTOR"> 
+                    <div class="form-buttons" style="margin-top: 15px;">
+                        <button type="submit" class="success">Guardar Usuario</button>
+                        <button type="button" id="btnCancelarCrearUsuario" class="secondary">Cancelar</button>
+                    </div>
+                    <p id="formAdminUsuarioError" class="error-message" style="margin-top:10px;"></p>
+                </form>
+            </div>
+        `;
+        formAdminUsuarioWrapper.innerHTML = formHtml;
+        formAdminUsuarioWrapper.style.display = 'block'; // Asegurarse que es visible
+
+        const formElement = document.getElementById('formCrearUsuarioTutor');
+        if (formElement) {
+            formElement.addEventListener('submit', saveAdminUsuario);
+        }
+        const btnCancelar = document.getElementById('btnCancelarCrearUsuario');
+        if (btnCancelar) {
+            btnCancelar.onclick = () => {
+                formAdminUsuarioWrapper.innerHTML = ''; // Limpiar y ocultar
+                formAdminUsuarioWrapper.style.display = 'none';
+            };
+        }
+    }
+
+    async function saveAdminUsuario(event) {
+        event.preventDefault();
+        const errorP = document.getElementById('formAdminUsuarioError');
+        if (errorP) errorP.textContent = '';
+
+        const email = document.getElementById('newUserEmail').value.trim();
+        const nombre_completo = document.getElementById('newUserNombreCompleto').value.trim();
+        const password = document.getElementById('newUserPassword').value;
+        const rol = document.getElementById('newUserRol').value; // Siempre TUTOR desde el form actual
+
+        if (!email || !nombre_completo || !password) {
+            if (errorP) errorP.textContent = "Todos los campos son requeridos (excepto Rol que es fijo).";
+            return;
+        }
+        if (password.length < 8) {
+            if (errorP) errorP.textContent = "La contraseña debe tener al menos 8 caracteres.";
+            return;
+        }
+        
+        const userData = { email, nombre_completo, password, rol };
+
+        try {
+            const submitButton = event.target.querySelector('button[type="submit"]');
+            if (submitButton) submitButton.disabled = true;
+
+            await apiFetch('/usuarios', 'POST', userData);
+            
+            if (formAdminUsuarioWrapper) {
+                 formAdminUsuarioWrapper.innerHTML = '<p class="success-message" style="padding:10px; background-color: #e8f5e9; border: 1px solid #4caf50; border-radius:4px;">Usuario Tutor creado exitosamente.</p>'; // Limpiar y mostrar mensaje
+                 setTimeout(() => {
+                    formAdminUsuarioWrapper.innerHTML = ''; // Limpiar mensaje después de unos segundos
+                    formAdminUsuarioWrapper.style.display = 'none'; // Ocultar
+                 }, 3000);
+            }
+            loadAdminUsuarios(); // Recargar la lista de usuarios
+        } catch (error) {
+            console.error("Error guardando nuevo usuario:", error);
+            if (errorP) errorP.textContent = error.message || "Error desconocido al crear el usuario.";
+        } finally {
+            const submitButton = event.target.querySelector('button[type="submit"]');
+            if (submitButton) submitButton.disabled = false;
+        }
+    }
 
 
     // --- INICIALIZACIÓN DE LA APP ---
