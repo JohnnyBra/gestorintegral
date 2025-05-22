@@ -903,7 +903,7 @@ async function saveClase(event) {
     // --- Admin Usuarios (Solo Dirección) ---
     async function loadAdminUsuarios() {
         if (!adminUsuariosContentDiv || !currentUser || currentUser.rol !== 'DIRECCION') {
-            if (adminUsuariosContentDiv) adminUsuariosContentDiv.innerHTML = "<p class="error-message">Acceso denegado.</p>";
+                   if (adminUsuariosContentDiv) adminUsuariosContentDiv.innerHTML = "<p class='error-message'>Acceso denegado.</p>";
             return;
         }
         adminUsuariosContentDiv.innerHTML = "<p>Cargando usuarios...</p>";
