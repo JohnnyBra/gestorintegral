@@ -124,6 +124,68 @@ app.get('/api/usuarios', authenticateToken, async (req, res) => {
         res.json({ usuarios });
     } catch (error) { res.status(500).json({ error: "Error obteniendo usuarios: " + error.message }); }
 });
+
+// POST /api/usuarios - Crear un nuevo usuario (solo para TUTOR)
+app.post('/api/usuarios', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado. Solo el rol DIRECCION puede crear usuarios.' });
+    }
+
+    const { email, nombre_completo, password, rol } = req.body;
+    console.log("  Ruta: POST /api/usuarios, Body:", req.body);
+
+    if (!email || !nombre_completo || !password || !rol) {
+        return res.status(400).json({ error: "Email, nombre_completo, password y rol son requeridos." });
+    }
+
+    if (rol !== 'TUTOR') {
+        return res.status(400).json({ error: "Solo se pueden crear usuarios con rol TUTOR." });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!normalizedEmail) { 
+        return res.status(400).json({ error: "El email no puede estar vacío." });
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+        return res.status(400).json({ error: "Formato de email inválido." });
+    }
+    
+    if (password.length < 8) { 
+        return res.status(400).json({ error: "La contraseña debe tener al menos 8 caracteres." });
+    }
+
+    try {
+        const existingUser = await dbGetAsync("SELECT id FROM usuarios WHERE email = ?", [normalizedEmail]);
+        if (existingUser) {
+            return res.status(409).json({ error: "El email proporcionado ya está en uso." });
+        }
+
+        const saltRounds = 10;
+        const password_hash = await bcrypt.hash(password, saltRounds);
+
+        const result = await dbRunAsync(
+            "INSERT INTO usuarios (email, nombre_completo, password_hash, rol) VALUES (?, ?, ?, ?)",
+            [normalizedEmail, nombre_completo.trim(), password_hash, rol]
+        );
+
+        const nuevoUsuario = await dbGetAsync(
+            "SELECT id, email, nombre_completo, rol FROM usuarios WHERE id = ?",
+            [result.lastID]
+        );
+        
+        console.log(`  Usuario TUTOR creado con ID: ${result.lastID}, Email: ${normalizedEmail}`);
+        res.status(201).json(nuevoUsuario);
+
+    } catch (error) {
+        console.error("  Error en POST /api/usuarios:", error.message);
+        if (error.message.includes("UNIQUE constraint failed: usuarios.email")) {
+             return res.status(409).json({ error: "El email proporcionado ya está en uso (error de BD)." });
+        }
+        res.status(500).json({ error: "Error interno del servidor al crear el usuario." });
+    }
+});
 // ... RESTO DE CRUD PARA USUARIOS (POST, PUT, DELETE) ...
 
 // --- Gestión de Clases ---
@@ -500,12 +562,12 @@ const apellidos_para_ordenar_a_guardar = apellidos;
         }
 
         // Verificar si el alumno ya existe en esa clase
-        const alumnoExistente = await dbGetAsync("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombre_completo.toLowerCase(), idClaseNum]);
+        const alumnoExistente = await dbGetAsync("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombre_completo_a_guardar.toLowerCase(), idClaseNum]); // Corregido aquí
         if (alumnoExistente) {
-            return res.status(409).json({ error: `El alumno '${nombre_completo}' ya existe en la clase seleccionada.`});
+            return res.status(409).json({ error: `El alumno '${nombre_completo_a_guardar}' ya existe en la clase seleccionada.`}); // Corregido aquí
         }
 
-        const result = await dbRunAsync("INSERT INTO alumnos (nombre_completo, clase_id) VALUES (?, ?)", [nombre_completo, idClaseNum]);
+        const result = await dbRunAsync("INSERT INTO alumnos (nombre_completo, apellidos_para_ordenar, clase_id) VALUES (?, ?, ?)", [nombre_completo_a_guardar, apellidos_para_ordenar_a_guardar, idClaseNum]); // Corregido aquí
         const nuevoAlumno = await dbGetAsync("SELECT a.id, a.nombre_completo, a.clase_id, c.nombre_clase FROM alumnos a JOIN clases c ON a.clase_id = c.id WHERE a.id = ?", [result.lastID]);
         console.log("  Alumno creado con ID:", result.lastID);
         res.status(201).json({ message: "Alumno creado exitosamente", alumno: nuevoAlumno });
