@@ -948,15 +948,21 @@ async function saveClase(event) {
             }
             html += '</tbody></table>';
             adminUsuariosContentDiv.innerHTML = html; 
-            
+            console.log('Elemento btnShowFormNuevoUsuarioTutor después de innerHTML:', document.getElementById('btnShowFormNuevoUsuarioTutor'));
+
             const btnShowForm = document.getElementById('btnShowFormNuevoUsuarioTutor');
             if (btnShowForm) {
-                             // Pass nulls to indicate creation mode explicitly
-                btnShowForm.addEventListener('click', () => showFormAdminUsuario(null, null));
+                console.log('Añadiendo listener a btnShowFormNuevoUsuarioTutor');
+                btnShowForm.addEventListener('click', () => { 
+                    console.log('Clic en btnShowFormNuevoUsuarioTutor detectado'); 
+                    showFormAdminUsuario(null, null); 
+                });
             }
             
             adminUsuariosContentDiv.querySelectorAll('.edit-usuario').forEach(b => {
+                console.log('Añadiendo listener a botón editar:', b);
                 b.onclick = (e) => {
+                    console.log('Clic en botón editar detectado', e.target);
                     const userId = e.target.dataset.id;
                     const userEmail = e.target.dataset.email;
                     const userNombre = e.target.dataset.nombre;
@@ -966,19 +972,21 @@ async function saveClase(event) {
             adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => {
                 b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre);
             });
-            
-            } catch (error) {
+
+        } catch (error) {
             showGlobalError(`Error al cargar usuarios: ${error.message}`, adminUsuariosContentDiv);
         }
     }
 
-       function showFormAdminUsuario(userId = null, initialUserData = null) {
+    function showFormAdminUsuario(userId = null, initialUserData = null) {
+        console.log('showFormAdminUsuario llamada con:', { userId, initialUserData });
+        console.log('formAdminUsuarioWrapper al inicio de showFormAdminUsuario:', document.getElementById('formAdminUsuarioWrapper'));
         if (!formAdminUsuarioWrapper) {
             console.error("Elemento formAdminUsuarioWrapper no encontrado.");
             return;
         }
         
-             const isEditMode = userId && initialUserData;
+        const isEditMode = userId && initialUserData;
         const formTitle = isEditMode ? "Editar Usuario Tutor" : "Crear Nuevo Usuario Tutor";
         const submitButtonText = isEditMode ? "Guardar Cambios" : "Crear Usuario";
 
@@ -1032,7 +1040,7 @@ async function saveClase(event) {
         }
     }
 
-   async function saveAdminUsuario(event) {
+    async function saveAdminUsuario(event) {
         event.preventDefault();
         const errorP = document.getElementById('formAdminUsuarioError');
         if (errorP) errorP.textContent = '';
