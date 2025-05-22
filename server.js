@@ -186,7 +186,153 @@ app.post('/api/usuarios', authenticateToken, async (req, res) => {
         res.status(500).json({ error: "Error interno del servidor al crear el usuario." });
     }
 });
-// ... RESTO DE CRUD PARA USUARIOS (POST, PUT, DELETE) ...
+
+// PUT /api/usuarios/:id - Actualizar un usuario existente
+app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado. Solo el rol DIRECCION puede modificar usuarios.' });
+    }
+
+    const userIdToUpdate = parseInt(req.params.id);
+    if (isNaN(userIdToUpdate)) {
+        return res.status(400).json({ error: "ID de usuario inválido." });
+    }
+
+    const { email, nombre_completo } = req.body;
+    console.log(`  Ruta: PUT /api/usuarios/${userIdToUpdate}, Body:`, req.body);
+
+    if (email === undefined && nombre_completo === undefined) {
+        return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (email o nombre_completo)." });
+    }
+    
+    let normalizedEmail;
+    if (email !== undefined) {
+        if (typeof email !== 'string') {
+            return res.status(400).json({ error: "El email debe ser una cadena de texto." });
+        }
+        normalizedEmail = email.toLowerCase().trim();
+        if (normalizedEmail === "") { 
+            return res.status(400).json({ error: "El email no puede ser una cadena vacía si se proporciona." });
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(normalizedEmail)) {
+            return res.status(400).json({ error: "Formato de email inválido." });
+        }
+    }
+
+    let trimmedNombre;
+    if (nombre_completo !== undefined) {
+        if (typeof nombre_completo !== 'string') {
+            return res.status(400).json({ error: "El nombre_completo debe ser una cadena de texto." });
+        }
+        trimmedNombre = nombre_completo.trim();
+        if (trimmedNombre === "") { 
+            return res.status(400).json({ error: "El nombre_completo no puede ser una cadena vacía si se proporciona." });
+        }
+    }
+
+    try {
+        const userToUpdate = await dbGetAsync("SELECT id, email, nombre_completo, rol FROM usuarios WHERE id = ?", [userIdToUpdate]);
+        if (!userToUpdate) {
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        if (userToUpdate.rol === 'DIRECCION') {
+            return res.status(403).json({ error: "No se puede modificar un usuario con rol DIRECCION mediante esta vía." });
+        }
+        
+        if (userToUpdate.rol !== 'TUTOR') {
+            return res.status(403).json({ error: "Solo se pueden modificar usuarios con rol TUTOR mediante esta vía." });
+        }
+
+        let updateFields = [];
+        let updateParams = [];
+        
+        const newValues = {
+            email: userToUpdate.email, 
+            nombre_completo: userToUpdate.nombre_completo
+        };
+
+        if (normalizedEmail !== undefined && normalizedEmail !== userToUpdate.email) {
+            const existingUserWithNewEmail = await dbGetAsync("SELECT id FROM usuarios WHERE email = ? AND id != ?", [normalizedEmail, userIdToUpdate]);
+            if (existingUserWithNewEmail) {
+                return res.status(409).json({ error: "El email proporcionado ya está en uso por otro usuario." });
+            }
+            updateFields.push("email = ?");
+            updateParams.push(normalizedEmail);
+            newValues.email = normalizedEmail;
+        }
+
+        if (trimmedNombre !== undefined && trimmedNombre !== userToUpdate.nombre_completo) {
+            updateFields.push("nombre_completo = ?");
+            updateParams.push(trimmedNombre);
+            newValues.nombre_completo = trimmedNombre;
+        }
+
+        if (updateFields.length > 0) {
+            updateParams.push(userIdToUpdate);
+            const sqlUpdate = `UPDATE usuarios SET ${updateFields.join(", ")} WHERE id = ?`;
+            await dbRunAsync(sqlUpdate, updateParams);
+            console.log(`  Usuario ID ${userIdToUpdate} actualizado. Campos: ${updateFields.join(", ")}`);
+        } else {
+            console.log(`  Usuario ID ${userIdToUpdate} no requirió actualización, datos idénticos o no proporcionados para cambio.`);
+        }
+        
+        res.json({ 
+            id: userToUpdate.id, 
+            email: newValues.email, 
+            nombre_completo: newValues.nombre_completo, 
+            rol: userToUpdate.rol 
+        });
+
+    } catch (error) {
+        console.error(`  Error en PUT /api/usuarios/${userIdToUpdate}:`, error.message);
+        if (error.message.includes("UNIQUE constraint failed: usuarios.email")) {
+             return res.status(409).json({ error: "El email proporcionado ya está en uso (error de BD)." });
+        }
+        res.status(500).json({ error: "Error interno del servidor al actualizar el usuario." });
+    }
+});
+console.log("Endpoint PUT /api/usuarios/:id definido.");
+
+// DELETE /api/usuarios/:id - Eliminar un usuario
+app.delete('/api/usuarios/:id', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado. Solo el rol DIRECCION puede eliminar usuarios.' });
+    }
+
+    const userIdToDelete = parseInt(req.params.id);
+    if (isNaN(userIdToDelete)) {
+        return res.status(400).json({ error: "ID de usuario inválido." });
+    }
+    
+    console.log(`  Ruta: DELETE /api/usuarios/${userIdToDelete}`);
+
+    try {
+        const userToDelete = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [userIdToDelete]);
+        if (!userToDelete) {
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        if (userToDelete.rol === 'DIRECCION') {
+            return res.status(403).json({ error: "No se puede eliminar un usuario con rol DIRECCION." });
+        }
+        
+        const result = await dbRunAsync("DELETE FROM usuarios WHERE id = ?", [userIdToDelete]);
+
+        if (result.changes === 0) {
+            return res.status(404).json({ error: "Usuario no encontrado para eliminar (posiblemente ya eliminado)." });
+        }
+
+        console.log(`  Usuario ID ${userIdToDelete} eliminado.`);
+        res.status(200).json({ message: "Usuario eliminado exitosamente." }); 
+
+    } catch (error) {
+        console.error(`  Error en DELETE /api/usuarios/${userIdToDelete}:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al eliminar el usuario." });
+    }
+});
+console.log("Endpoint DELETE /api/usuarios/:id definido.");
 
 // --- Gestión de Clases ---
 app.get('/api/clases', authenticateToken, async (req, res) => {
