@@ -860,10 +860,6 @@ async function saveClase(event) {
             
             alumnosContentDiv.querySelectorAll('.edit-alumno').forEach(b => b.onclick = async (e) => {
                 const alumnoId = e.target.dataset.id;
-                // Para editar, necesitamos los datos actuales del alumno
-                // Podríamos hacer un fetch específico o si ya los tenemos, usarlos.
-                // Por simplicidad, asumimos que el backend de GET /alumnos/:id nos da nombre_completo y clase_id
-                // Si no, tendríamos que pasar más data attributes o hacer un fetch aquí.
                 const alumnoParaEditar = dataAlumnos.alumnos.find(a => a.id == alumnoId);
                 showFormAlumno(alumnoId, alumnoParaEditar); 
             });
@@ -895,10 +891,508 @@ async function saveClase(event) {
     }
 
     // --- Excursiones --- 
-    async function loadExcursiones() { if (!excursionesContentDiv) return; excursionesContentDiv.innerHTML = "<p>Cargando excursiones...</p>"; /* ... Fetch y render tabla ... */ }
+    async function showFormExcursion(idExcursion = null, excursionData = {}) {
+        const formExcursionWrapper = document.getElementById('formExcursionWrapper');
+        if (!formExcursionWrapper) { console.error("formExcursionWrapper no encontrado"); return; }
+
+        let opcionesClasesHtml = '<option value="">-- Global (para todas las clases) --</option>';
+        if (currentUser.rol === 'DIRECCION') {
+             if (listaDeClasesGlobal.length === 0) { // Cargar si no está cacheada
+                try {
+                    const dataClases = await apiFetch('/clases');
+                    listaDeClasesGlobal = dataClases.clases || [];
+                } catch (error) {
+                    console.error("Error cargando lista de clases para formExcursion:", error);
+                }
+            }
+            listaDeClasesGlobal.forEach(clase => {
+                opcionesClasesHtml += `<option value="${clase.id}" ${excursionData.para_clase_id === clase.id ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+            });
+        } else if (currentUser.rol === 'TUTOR') {
+            if (currentUser.claseId && currentUser.claseNombre) {
+                opcionesClasesHtml = `<option value="${currentUser.claseId}" selected>${currentUser.claseNombre} (Tu clase)</option>`;
+            } else {
+                opcionesClasesHtml = `<option value="" disabled selected>No tienes clase asignada (no puedes crear excursiones específicas)</option>`;
+            }
+        }
+        
+        const formHtml = `
+            <div class="form-container">
+                <h3>${idExcursion ? 'Editar Excursión' : 'Crear Nueva Excursión'}</h3>
+                <form id="formGestionExcursion">
+                    <input type="hidden" id="excursionId" value="${idExcursion || ''}">
+                    <div><label for="nombreExcursion">Nombre Excursión:</label><input type="text" id="nombreExcursion" value="${excursionData.nombre_excursion || ''}" required></div>
+                    <div><label for="actividadExcursion">Actividad (Descripción):</label><textarea id="actividadExcursion" required>${excursionData.actividad_descripcion || ''}</textarea></div>
+                    <div><label for="lugarExcursion">Lugar:</label><input type="text" id="lugarExcursion" value="${excursionData.lugar || ''}" required></div>
+                    <div><label for="fechaExcursion">Fecha (YYYY-MM-DD):</label><input type="date" id="fechaExcursion" value="${excursionData.fecha_excursion || ''}" required></div>
+                    <div><label for="horaSalidaExcursion">Hora Salida (HH:MM):</label><input type="time" id="horaSalidaExcursion" value="${excursionData.hora_salida || ''}" required></div>
+                    <div><label for="horaLlegadaExcursion">Hora Llegada (HH:MM):</label><input type="time" id="horaLlegadaExcursion" value="${excursionData.hora_llegada || ''}" required></div>
+                    <div><label for="costeExcursion">Coste por Alumno (€):</label><input type="number" id="costeExcursion" value="${excursionData.coste_excursion_alumno || 0}" min="0" step="0.01"></div>
+                    
+                    <div>
+                        <label for="vestimentaExcursion">Vestimenta:</label>
+                        <select id="vestimentaExcursion" name="vestimentaExcursion" required>
+                            <option value="">-- Selecciona --</option>
+                            <option value="Uniforme" ${excursionData.vestimenta === 'Uniforme' ? 'selected' : ''}>Uniforme</option>
+                            <option value="Chándal" ${excursionData.vestimenta === 'Chándal' ? 'selected' : ''}>Chándal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="transporteExcursion">Transporte:</label>
+                        <select id="transporteExcursion" name="transporteExcursion" required>
+                            <option value="">-- Selecciona --</option>
+                            <option value="Autobús" ${excursionData.transporte === 'Autobús' ? 'selected' : ''}>Autobús</option>
+                            <option value="Andando" ${excursionData.transporte === 'Andando' ? 'selected' : ''}>Andando</option>
+                        </select>
+                    </div>
+
+                    <div><label for="justificacionExcursion">Justificación (Pedagógica):</label><textarea id="justificacionExcursion" required>${excursionData.justificacion_texto || ''}</textarea></div>
+                    <div><label for="notasExcursion">Notas Adicionales:</label><textarea id="notasExcursion">${excursionData.notas_excursion || ''}</textarea></div>
+                    
+                    ${currentUser.rol === 'DIRECCION' ? `
+                    <div>
+                        <label for="paraClaseIdExcursion">Asignar a Clase Específica (opcional):</label>
+                        <select id="paraClaseIdExcursion" name="paraClaseIdExcursion">
+                            ${opcionesClasesHtml}
+                        </select>
+                    </div>` : ''}
+                    ${currentUser.rol === 'TUTOR' && currentUser.claseId ? `
+                    <input type="hidden" id="paraClaseIdExcursion" value="${currentUser.claseId}">
+                    <p><em>Esta excursión se creará para tu clase: ${currentUser.claseNombre}.</em></p>` : ''}
+                     ${currentUser.rol === 'TUTOR' && !currentUser.claseId ? `
+                    <p class="error-message"><em>No tienes una clase asignada. No puedes crear excursiones.</em></p>` : ''}
+
+
+                    <div class="form-buttons">
+                        <button type="submit" class="success" ${currentUser.rol === 'TUTOR' && !currentUser.claseId ? 'disabled' : ''}>${idExcursion ? 'Guardar Cambios' : 'Crear Excursión'}</button>
+                        <button type="button" id="btnCancelarFormExcursion" class="secondary">Cancelar</button>
+                    </div>
+                    <p id="formExcursionError" class="error-message"></p>
+                </form>
+            </div>
+        `;
+        formExcursionWrapper.innerHTML = formHtml;
+        formExcursionWrapper.style.display = 'block';
+        document.getElementById('formGestionExcursion').addEventListener('submit', saveExcursion);
+        document.getElementById('btnCancelarFormExcursion').onclick = () => { formExcursionWrapper.innerHTML = ''; formExcursionWrapper.style.display = 'none'; };
+    }
+
+    async function saveExcursion(event) {
+        event.preventDefault();
+        const errorP = document.getElementById('formExcursionError');
+        if(errorP) errorP.textContent = '';
+
+        const excursionId = document.getElementById('excursionId').value;
+        const paraClaseIdSelect = document.getElementById('paraClaseIdExcursion');
+
+        const excursionData = {
+            nombre_excursion: document.getElementById('nombreExcursion').value,
+            actividad_descripcion: document.getElementById('actividadExcursion').value,
+            lugar: document.getElementById('lugarExcursion').value,
+            fecha_excursion: document.getElementById('fechaExcursion').value,
+            hora_salida: document.getElementById('horaSalidaExcursion').value,
+            hora_llegada: document.getElementById('horaLlegadaExcursion').value,
+            coste_excursion_alumno: parseFloat(document.getElementById('costeExcursion').value) || 0,
+            vestimenta: document.getElementById('vestimentaExcursion').value,
+            transporte: document.getElementById('transporteExcursion').value,
+            justificacion_texto: document.getElementById('justificacionExcursion').value,
+            notas_excursion: document.getElementById('notasExcursion').value,
+            para_clase_id: paraClaseIdSelect ? (paraClaseIdSelect.value || null) : (currentUser.rol === 'TUTOR' ? currentUser.claseId : null)
+        };
+        
+        if (excursionData.para_clase_id === "") excursionData.para_clase_id = null;
+
+
+        let method = 'POST';
+        let endpoint = '/excursiones';
+        if (excursionId) {
+            method = 'PUT';
+            endpoint = `/excursiones/${excursionId}`;
+        }
+        
+        const submitButton = event.target.querySelector('button[type="submit"]');
+        try {
+            if(submitButton) submitButton.disabled = true;
+            await apiFetch(endpoint, method, excursionData);
+            document.getElementById('formExcursionWrapper').innerHTML = ''; // Limpiar form
+            loadExcursiones(); 
+        } catch (error) {
+            if(errorP) errorP.textContent = error.message || 'Error guardando excursión.';
+        } finally {
+            if(submitButton) submitButton.disabled = false;
+        }
+    }
+    
+    async function loadExcursiones() {
+        if (!excursionesContentDiv || !currentToken) return;
+        excursionesContentDiv.innerHTML = "<p>Cargando excursiones...</p>";
+        const formExcursionWrapper = document.createElement('div');
+        formExcursionWrapper.id = 'formExcursionWrapper';
+        formExcursionWrapper.classList.add('form-wrapper');
+        formExcursionWrapper.style.marginBottom = '20px';
+
+
+        try {
+            const data = await apiFetch('/excursiones');
+            let html = '<h3>Listado de Excursiones</h3>';
+             if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && currentUser.claseId) ){
+                html += `<button id="btnShowFormNuevaExcursion" class="success" style="margin-bottom:15px;">+ Crear Nueva Excursión</button>`;
+            }
+            
+            html += `<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Clase Destino</th><th>Creador</th><th>Acciones</th></tr></thead><tbody>`;
+            if (data.excursiones && data.excursiones.length > 0) {
+                data.excursiones.forEach(ex => {
+                    html += `<tr data-excursion-id="${ex.id}">
+                        <td>${ex.nombre_excursion}</td>
+                        <td>${ex.fecha_excursion}</td>
+                        <td>${ex.lugar}</td>
+                        <td>${ex.nombre_clase_destino || '<em>Global</em>'}</td>
+                        <td>${ex.nombre_creador}</td>
+                        <td class="actions-cell">
+                            <button class="view-participaciones secondary" data-excursionid="${ex.id}" data-excursionnombre="${ex.nombre_excursion}">Ver Participaciones</button>
+                            ${ (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && ex.creada_por_usuario_id === currentUser.id) || (currentUser.rol === 'TUTOR' && ex.para_clase_id === currentUser.claseId) ) ? 
+                                `<button class="edit-excursion warning" data-id="${ex.id}">Editar</button> 
+                                 <button class="delete-excursion danger" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}">Eliminar</button>` : ''}
+                        </td>
+                    </tr>`;
+                });
+            } else {
+                html += '<tr><td colspan="6" style="text-align:center;">No hay excursiones registradas.</td></tr>';
+            }
+            html += '</tbody></table>';
+            
+            excursionesContentDiv.innerHTML = html;
+            excursionesContentDiv.insertBefore(formExcursionWrapper, excursionesContentDiv.firstChild);
+
+
+            if(document.getElementById('btnShowFormNuevaExcursion')) {
+                document.getElementById('btnShowFormNuevaExcursion').onclick = () => showFormExcursion();
+            }
+            excursionesContentDiv.querySelectorAll('.edit-excursion').forEach(b => b.onclick = async (e) => {
+                const excursionId = e.target.dataset.id;
+                try {
+                    const excursionData = await apiFetch(`/excursiones/${excursionId}`);
+                    showFormExcursion(excursionId, excursionData);
+                } catch (error) {
+                    showGlobalError("Error al cargar datos de la excursión para editar: " + error.message, formExcursionWrapper);
+                }
+            });
+            excursionesContentDiv.querySelectorAll('.delete-excursion').forEach(b => b.onclick=(e)=>deleteExcursion(e.target.dataset.id, e.target.dataset.nombre));
+            excursionesContentDiv.querySelectorAll('.view-participaciones').forEach(b => b.onclick=(e)=>{ 
+                sessionStorage.setItem('filtroParticipacionesExcursionId',e.target.dataset.excursionid); 
+                sessionStorage.setItem('filtroParticipacionesNombreExcursion',e.target.dataset.excursionnombre); 
+                navigateTo('participaciones'); 
+            });
+
+        } catch (error) {
+            showGlobalError(`Error al cargar excursiones: ${error.message}`, excursionesContentDiv);
+             excursionesContentDiv.insertBefore(formExcursionWrapper, excursionesContentDiv.firstChild);
+             if(document.getElementById('btnShowFormNuevaExcursion')) {
+                document.getElementById('btnShowFormNuevaExcursion').onclick = () => showFormExcursion();
+            }
+        }
+    }
+    async function deleteExcursion(idExcursion, nombreExcursion){
+        if(!confirm(`¿Seguro que quieres eliminar la excursión "${nombreExcursion}"? Se borrarán también todas las participaciones asociadas.`)) return;
+        try {
+            await apiFetch(`/excursiones/${idExcursion}`, 'DELETE');
+            alert("Excursión eliminada.");
+            loadExcursiones();
+        } catch(error){
+            showGlobalError(error.message, document.getElementById('formExcursionWrapper'));
+        }
+    }
     
     // --- Participaciones --- 
-    async function loadParticipaciones() { if (!participacionesContentDiv) return; participacionesContentDiv.innerHTML = "<p>Cargando participaciones...</p>"; /* ... Fetch con filtros y render tabla ... */ }
+    async function loadParticipaciones(excursionIdFiltroExterno = null, nombreExcursionFiltroExterno = null) {
+        if (!participacionesContentDiv) return;
+        participacionesContentDiv.innerHTML = "<p>Cargando participaciones...</p>";
+    
+        const excursionIdActual = excursionIdFiltroExterno || sessionStorage.getItem('filtroParticipacionesExcursionId');
+        const nombreExcursionActual = nombreExcursionFiltroExterno || sessionStorage.getItem('filtroParticipacionesNombreExcursion');
+    
+        let selectExcursionesHtml = '<option value="">-- Selecciona una excursión --</option>';
+        let todasLasExcursiones = [];
+        try {
+            const dataExcursiones = await apiFetch('/excursiones');
+            todasLasExcursiones = dataExcursiones.excursiones || [];
+            todasLasExcursiones.forEach(ex => {
+                selectExcursionesHtml += `<option value="${ex.id}" ${excursionIdActual == ex.id ? 'selected' : ''}>${ex.nombre_excursion} (${ex.fecha_excursion})</option>`;
+            });
+        } catch (error) {
+            console.error("Error cargando lista de excursiones para filtro de participaciones:", error);
+            selectExcursionesHtml = '<option value="">Error al cargar excursiones</option>';
+        }
+    
+        let filtroClaseHtml = '';
+        if (currentUser.rol === 'DIRECCION') {
+            filtroClaseHtml = `
+                <label for="selectFiltroClaseParticipaciones">Filtrar por Clase (solo para excursiones globales):</label>
+                <select id="selectFiltroClaseParticipaciones">
+                    <option value="">-- Todas las clases --</option>`;
+            if (listaDeClasesGlobal.length === 0) {
+                 try {
+                    const dataClases = await apiFetch('/clases');
+                    listaDeClasesGlobal = dataClases.clases || [];
+                } catch (error) { console.error("Error cargando clases para filtro de participaciones", error); }
+            }
+            listaDeClasesGlobal.forEach(clase => {
+                filtroClaseHtml += `<option value="${clase.id}">${clase.nombre_clase}</option>`;
+            });
+            filtroClaseHtml += `</select>`;
+        }
+    
+        let html = `
+            <h3>Gestión de Participación en Excursiones</h3>
+            <div class="filtros-participaciones">
+                <label for="selectExcursionParticipaciones">Selecciona Excursión:</label>
+                <select id="selectExcursionParticipaciones">${selectExcursionesHtml}</select>
+                ${filtroClaseHtml}
+            </div>
+            <div id="resumenParticipacionesContainer" style="margin-top: 20px; padding: 15px; background-color: #eef; border-radius: 5px;"></div>
+            <div id="tablaParticipacionesContainer"></div>`;
+        participacionesContentDiv.innerHTML = html;
+    
+        const selectExcursion = document.getElementById('selectExcursionParticipaciones');
+        if (selectExcursion) {
+            selectExcursion.onchange = (e) => {
+                const selectedExId = e.target.value;
+                const selectedExNombre = e.target.options[e.target.selectedIndex].text;
+                sessionStorage.setItem('filtroParticipacionesExcursionId', selectedExId);
+                sessionStorage.setItem('filtroParticipacionesNombreExcursion', selectedExNombre);
+                if (selectedExId) {
+                    renderTablaParticipaciones(selectedExId, selectedExNombre);
+                } else {
+                    document.getElementById('tablaParticipacionesContainer').innerHTML = '<p>Por favor, selecciona una excursión para ver las participaciones.</p>';
+                    document.getElementById('resumenParticipacionesContainer').innerHTML = '';
+                }
+            };
+        }
+    
+        if (document.getElementById('selectFiltroClaseParticipaciones')) {
+            document.getElementById('selectFiltroClaseParticipaciones').onchange = () => {
+                if (excursionIdActual) renderTablaParticipaciones(excursionIdActual, nombreExcursionActual);
+            };
+        }
+    
+        if (excursionIdActual) {
+            renderTablaParticipaciones(excursionIdActual, nombreExcursionActual);
+        } else {
+            document.getElementById('tablaParticipacionesContainer').innerHTML = '<p>Por favor, selecciona una excursión para ver las participaciones.</p>';
+            document.getElementById('resumenParticipacionesContainer').innerHTML = '';
+        }
+    }
+    
+    async function renderTablaParticipaciones(excursionId, excursionNombre) {
+        const container = document.getElementById('tablaParticipacionesContainer');
+        const resumenContainer = document.getElementById('resumenParticipacionesContainer');
+        if (!container || !resumenContainer) return;
+    
+        container.innerHTML = `<p>Cargando participaciones para "${excursionNombre}"...</p>`;
+        resumenContainer.innerHTML = ''; 
+    
+        let endpoint = `/excursiones/${excursionId}/participaciones`;
+        const filtroClaseSelect = document.getElementById('selectFiltroClaseParticipaciones');
+        let viewClaseId = null;
+        if (currentUser.rol === 'DIRECCION' && filtroClaseSelect && filtroClaseSelect.value) {
+            viewClaseId = filtroClaseSelect.value;
+            endpoint += `?view_clase_id=${viewClaseId}`;
+        }
+    
+        try {
+            const data = await apiFetch(endpoint);
+            if (!data || !data.alumnosParticipaciones) {
+                container.innerHTML = `<p class="error-message">No se pudieron cargar los datos de participación.</p>`;
+                return;
+            }
+
+            const r = data.resumen;
+            let resumenHtml = `<h4>Resumen de Participación: "${excursionNombre}"</h4>
+                <div class="resumen-grid">
+                    <div><strong>Total Alumnos Listados:</strong> ${r.totalAlumnos}</div>
+                    <div><strong>Autorización Firmada:</strong> Sí: ${r.totalConAutorizacionFirmadaSi} | No: ${r.totalConAutorizacionFirmadaNo}</div>
+                    <div><strong>Estado Pago (Global):</strong> Pagado: ${r.totalAlumnosPagadoGlobal} | Parcial: ${r.totalConPagoRealizadoParcial} | No Pagado: ${r.totalConPagoRealizadoNo}</div>
+                    <div><strong>Total Recaudado (Global):</strong> ${r.sumaTotalCantidadPagadaGlobal.toFixed(2)} €</div>
+                </div>`;
+            if (r.resumenPorClase && r.resumenPorClase.length > 0) {
+                resumenHtml += `<h5>Detalle por Clase:</h5><table class="tabla-datos tabla-resumen-clase">
+                                <thead><tr><th>Clase</th><th>Nº Alumnos</th><th>Total Pagado Sí</th><th>Recaudado (€)</th></tr></thead><tbody>`;
+                r.resumenPorClase.forEach(rc => {
+                    resumenHtml += `<tr><td>${rc.nombre_clase}</td><td>${rc.alumnosEnClase}</td><td>${rc.totalAlumnosPagadoEnClase}</td><td>${rc.sumaTotalCantidadPagadaEnClase.toFixed(2)}</td></tr>`;
+                });
+                resumenHtml += `</tbody></table>`;
+            }
+            resumenContainer.innerHTML = resumenHtml;
+    
+            let html = `<h4>Participantes para: ${excursionNombre}</h4>
+                        <p style="font-size:0.9em; color: #555;">(Total alumnos listados: ${data.alumnosParticipaciones.length})</p>
+                        <table class="tabla-datos tabla-participaciones">
+                            <thead>
+                                <tr>
+                                    <th>Alumno</th>
+                                    <th>Clase</th>
+                                    <th>Autorización</th>
+                                    <th>Fecha Autoriz.</th>
+                                    <th>Pago</th>
+                                    <th>Cantidad Pagada (€)</th>
+                                    <th>Fecha Pago</th>
+                                    <th>Notas</th>
+                                    <th class="status-column">Estado</th> 
+                                </tr>
+                            </thead>
+                            <tbody>`;
+            
+            if (data.alumnosParticipaciones.length > 0) {
+                data.alumnosParticipaciones.forEach(ap => {
+                    const esCampoDeshabilitado = ap.autorizacion_firmada === 'Sí' && ap.fecha_autorizacion;
+                    html += `<tr data-participacion-id="${ap.participacion_id || ''}" data-alumno-id="${ap.alumno_id}">
+                                <td>${ap.nombre_completo}</td>
+                                <td>${ap.nombre_clase}</td>
+                                <td><select class="participacion-field-edit" data-field="autorizacion_firmada" data-alumnoid="${ap.alumno_id}" ${esCampoDeshabilitado ? 'disabled' : ''}>
+                                    <option value="No" ${ap.autorizacion_firmada === 'No' ? 'selected' : ''}>No</option>
+                                    <option value="Sí" ${ap.autorizacion_firmada === 'Sí' ? 'selected' : ''}>Sí</option>
+                                </select></td>
+                                <td><input type="date" class="participacion-field-edit" data-field="fecha_autorizacion" data-alumnoid="${ap.alumno_id}" value="${ap.fecha_autorizacion || ''}" ${esCampoDeshabilitado ? 'disabled' : ''}></td>
+                                <td><select class="participacion-field-edit" data-field="pago_realizado" data-alumnoid="${ap.alumno_id}">
+                                    <option value="No" ${ap.pago_realizado === 'No' ? 'selected' : ''}>No</option>
+                                    <option value="Parcial" ${ap.pago_realizado === 'Parcial' ? 'selected' : ''}>Parcial</option>
+                                    <option value="Sí" ${ap.pago_realizado === 'Sí' ? 'selected' : ''}>Sí</option>
+                                </select></td>
+                                <td><input type="number" step="0.01" class="participacion-field-edit" data-field="cantidad_pagada" data-alumnoid="${ap.alumno_id}" value="${ap.cantidad_pagada || 0}" min="0" style="width:70px;"></td>
+                                <td><input type="date" class="participacion-field-edit" data-field="fecha_pago" data-alumnoid="${ap.alumno_id}" value="${ap.fecha_pago || ''}"></td>
+                                <td><textarea class="participacion-field-edit" data-field="notas_participacion" data-alumnoid="${ap.alumno_id}" rows="1" style="width:150px; min-height:2em;">${ap.notas_participacion || ''}</textarea></td>
+                                <td class="status-message-cell"></td>
+                             </tr>`;
+                });
+            } else {
+                html += `<tr><td colspan="9" style="text-align:center;">No hay alumnos para mostrar para esta excursión ${filtroClaseSelect && filtroClaseSelect.value ? 'en la clase seleccionada' : '' }.</td></tr>`;
+            }
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+                
+            container.querySelectorAll('.participacion-field-edit').forEach(input => {
+                const eventType = (input.tagName === 'SELECT' || input.type === 'date') ? 'change' : 'blur';
+                input.addEventListener(eventType, (e) => saveParticipacionOnFieldChange(e.target, excursionId));
+            });
+    
+        } catch (error) {
+            container.innerHTML = `<p class="error-message">Error al cargar participaciones: ${error.message}</p>`;
+            resumenContainer.innerHTML = '';
+        }
+    }
+
+    async function saveParticipacionOnFieldChange(changedElement, excursionId) {
+        const trElement = changedElement.closest('tr');
+        const alumnoId = trElement.dataset.alumnoId;
+        const statusCell = trElement.querySelector('.status-message-cell');
+        if(statusCell) statusCell.textContent = '';
+    
+        const participacionData = {
+            excursion_id: parseInt(excursionId),
+            alumno_id: parseInt(alumnoId),
+            autorizacion_firmada: trElement.querySelector('[data-field="autorizacion_firmada"]').value,
+            fecha_autorizacion: trElement.querySelector('[data-field="fecha_autorizacion"]').value || null,
+            pago_realizado: trElement.querySelector('[data-field="pago_realizado"]').value,
+            cantidad_pagada: parseFloat(trElement.querySelector('[data-field="cantidad_pagada"]').value) || 0,
+            fecha_pago: trElement.querySelector('[data-field="fecha_pago"]').value || null,
+            notas_participacion: trElement.querySelector('[data-field="notas_participacion"]').value.trim() || null
+        };
+    
+        if (participacionData.autorizacion_firmada === 'Sí' && !participacionData.fecha_autorizacion) {
+            showTemporaryStatusInCell(statusCell, "Fecha autorización requerida.", true);
+            return;
+        }
+        if ((participacionData.pago_realizado === 'Sí' || participacionData.pago_realizado === 'Parcial') && !participacionData.fecha_pago) {
+             showTemporaryStatusInCell(statusCell, "Fecha de pago requerida.", true);
+            return;
+        }
+         if (participacionData.pago_realizado === 'Parcial' && participacionData.cantidad_pagada <= 0) {
+            showTemporaryStatusInCell(statusCell, "Pago parcial > 0€.", true);
+            return;
+        }
+
+        const originalBackgroundColor = changedElement.style.backgroundColor;
+        changedElement.style.backgroundColor = "#fff9c4"; 
+    
+        try {
+            const resultado = await apiFetch('/participaciones', 'POST', participacionData);
+            trElement.dataset.participacionId = resultado.id; 
+
+            const autorizacionSelect = trElement.querySelector('[data-field="autorizacion_firmada"]');
+            const fechaAutorizacionInput = trElement.querySelector('[data-field="fecha_autorizacion"]');
+            if (resultado.autorizacion_firmada === 'Sí' && resultado.fecha_autorizacion) {
+                if(autorizacionSelect) autorizacionSelect.disabled = true;
+                if(fechaAutorizacionInput) fechaAutorizacionInput.disabled = true;
+            } else {
+                if(autorizacionSelect) autorizacionSelect.disabled = false;
+                if(fechaAutorizacionInput) fechaAutorizacionInput.disabled = false;
+            }
+            
+            changedElement.style.backgroundColor = "#c8e6c9"; 
+            showTemporaryStatusInCell(statusCell, "Guardado!", false, 2000);
+            setTimeout(() => { changedElement.style.backgroundColor = originalBackgroundColor; }, 2000);
+    
+            const currentExcursionId = sessionStorage.getItem('filtroParticipacionesExcursionId');
+            const currentExcursionNombre = sessionStorage.getItem('filtroParticipacionesNombreExcursion');
+            if (currentExcursionId && currentExcursionNombre) {
+                updateParticipacionesSummary(currentExcursionId, currentExcursionNombre);
+            }
+    
+        } catch (error) {
+            console.error("Error guardando participación:", error);
+            changedElement.style.backgroundColor = "#ffcdd2"; 
+            showTemporaryStatusInCell(statusCell, error.message || "Error", true, 5000);
+            setTimeout(() => { changedElement.style.backgroundColor = originalBackgroundColor; }, 3000);
+        }
+    }
+    
+    async function updateParticipacionesSummary(excursionId, excursionNombre) {
+        const resumenContainer = document.getElementById('resumenParticipacionesContainer');
+        if (!resumenContainer) return;
+    
+        let endpoint = `/excursiones/${excursionId}/participaciones`;
+        const filtroClaseSelect = document.getElementById('selectFiltroClaseParticipaciones');
+        if (currentUser.rol === 'DIRECCION' && filtroClaseSelect && filtroClaseSelect.value) {
+            endpoint += `?view_clase_id=${filtroClaseSelect.value}`;
+        }
+    
+        try {
+            const data = await apiFetch(endpoint); 
+            if (data && data.resumen) {
+                const r = data.resumen;
+                let resumenHtml = `<h4>Resumen de Participación: "${excursionNombre}"</h4>
+                    <div class="resumen-grid">
+                        <div><strong>Total Alumnos Listados:</strong> ${r.totalAlumnos}</div>
+                        <div><strong>Autorización Firmada:</strong> Sí: ${r.totalConAutorizacionFirmadaSi} | No: ${r.totalConAutorizacionFirmadaNo}</div>
+                        <div><strong>Estado Pago (Global):</strong> Pagado: ${r.totalAlumnosPagadoGlobal} | Parcial: ${r.totalConPagoRealizadoParcial} | No Pagado: ${r.totalConPagoRealizadoNo}</div>
+                        <div><strong>Total Recaudado (Global):</strong> ${r.sumaTotalCantidadPagadaGlobal.toFixed(2)} €</div>
+                    </div>`;
+                if (r.resumenPorClase && r.resumenPorClase.length > 0) {
+                    resumenHtml += `<h5>Detalle por Clase:</h5><table class="tabla-datos tabla-resumen-clase">
+                                    <thead><tr><th>Clase</th><th>Nº Alumnos</th><th>Total Pagado Sí</th><th>Recaudado (€)</th></tr></thead><tbody>`; 
+                    r.resumenPorClase.forEach(rc => {
+                        resumenHtml += `<tr><td>${rc.nombre_clase}</td><td>${rc.alumnosEnClase}</td><td>${rc.totalAlumnosPagadoEnClase}</td><td>${rc.sumaTotalCantidadPagadaEnClase.toFixed(2)}</td></tr>`;
+                    });
+                    resumenHtml += `</tbody></table>`;
+                }
+                resumenContainer.innerHTML = resumenHtml;
+            }
+        } catch (error) {
+            console.error("Error actualizando resumen de participaciones:", error);
+            if (resumenContainer) resumenContainer.innerHTML = `<p class="error-message">Error actualizando resumen: ${error.message}</p>`;
+        }
+    }
+
+    function showTemporaryStatusInCell(cellElement, message, isError, duration = 3000) {
+        if (!cellElement) return;
+        cellElement.textContent = message;
+        cellElement.style.color = isError ? 'red' : 'green';
+        cellElement.style.fontSize = '0.8em';
+        setTimeout(() => {
+            cellElement.textContent = '';
+        }, duration);
+    }
+    
 
     // --- Admin Usuarios (Solo Dirección) ---
     async function loadAdminUsuarios() {
