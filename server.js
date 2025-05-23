@@ -738,37 +738,75 @@ console.log("Endpoint POST /api/alumnos (crear individual) definido.");
 // --- Gestión de Excursiones ---
 app.post('/api/excursiones', authenticateToken, async (req, res) => {
     console.log("  Ruta: POST /api/excursiones, Body:", req.body);
+    // Destructure with _raw suffix to indicate pre-trimmed values
     const { 
-        nombre_excursion, actividad_descripcion, lugar, fecha_excursion, 
-        hora_salida, hora_llegada, vestimenta, transporte, 
-        justificacion_texto, // Este es ahora obligatorio según la tarea
+        nombre_excursion: nombre_excursion_raw, 
+        actividad_descripcion: actividad_descripcion_raw, 
+        lugar: lugar_raw, 
+        fecha_excursion: fecha_excursion_raw, 
+        hora_salida: hora_salida_raw, 
+        hora_llegada: hora_llegada_raw, 
+        vestimenta: vestimenta_raw, 
+        transporte: transporte_raw, 
+        justificacion_texto: justificacion_texto_raw,
         coste_excursion_alumno = 0 // Default si no se provee
     } = req.body;
-    let { para_clase_id, notas_excursion } = req.body; // para_clase_id es opcional en body, notas_excursion también
+    let { para_clase_id, notas_excursion: notas_excursion_raw } = req.body; 
 
     const creada_por_usuario_id = req.user.id;
 
-    // Validación de campos obligatorios según la tarea
-    const requiredFields = { nombre_excursion, actividad_descripcion, lugar, fecha_excursion, hora_salida, hora_llegada, vestimenta, transporte, justificacion_texto };
-    for (const [field, value] of Object.entries(requiredFields)) {
-        if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
-            return res.status(400).json({ error: `El campo '${field}' es obligatorio y no puede estar vacío.` });
+    // Trim string inputs
+    const nombre_excursion = typeof nombre_excursion_raw === 'string' ? nombre_excursion_raw.trim() : nombre_excursion_raw;
+    const actividad_descripcion = typeof actividad_descripcion_raw === 'string' ? actividad_descripcion_raw.trim() : actividad_descripcion_raw;
+    const lugar = typeof lugar_raw === 'string' ? lugar_raw.trim() : lugar_raw;
+    const fecha_excursion = typeof fecha_excursion_raw === 'string' ? fecha_excursion_raw.trim() : fecha_excursion_raw;
+    const hora_salida = typeof hora_salida_raw === 'string' ? hora_salida_raw.trim() : hora_salida_raw;
+    const hora_llegada = typeof hora_llegada_raw === 'string' ? hora_llegada_raw.trim() : hora_llegada_raw;
+    const vestimenta = typeof vestimenta_raw === 'string' ? vestimenta_raw.trim() : vestimenta_raw;
+    const transporte = typeof transporte_raw === 'string' ? transporte_raw.trim() : transporte_raw;
+    const justificacion_texto = typeof justificacion_texto_raw === 'string' ? justificacion_texto_raw.trim() : justificacion_texto_raw;
+    const notas_excursion = typeof notas_excursion_raw === 'string' ? notas_excursion_raw.trim() : notas_excursion_raw;
+
+    // Validación de campos obligatorios (después de trim)
+    const requiredFieldsData = [
+        { name: 'nombre_excursion', value: nombre_excursion },
+        { name: 'actividad_descripcion', value: actividad_descripcion },
+        { name: 'lugar', value: lugar },
+        { name: 'fecha_excursion', value: fecha_excursion },
+        { name: 'hora_salida', value: hora_salida },
+        { name: 'hora_llegada', value: hora_llegada },
+        { name: 'vestimenta', value: vestimenta },
+        { name: 'transporte', value: transporte },
+        { name: 'justificacion_texto', value: justificacion_texto }
+    ];
+
+    for (const field of requiredFieldsData) {
+        if (field.value === undefined || field.value === null || field.value === '') { // Check for empty string after trim
+            return res.status(400).json({ error: `El campo '${field.name}' es obligatorio y no puede estar vacío.` });
         }
+    }
+
+    // Validaciones específicas para vestimenta y transporte (valores ya trimeados)
+    if (vestimenta !== 'Uniforme' && vestimenta !== 'Chándal') {
+        return res.status(400).json({ error: "El campo 'vestimenta' debe ser 'Uniforme' o 'Chándal'." });
+    }
+    if (transporte !== 'Autobús' && transporte !== 'Andando') {
+        return res.status(400).json({ error: "El campo 'transporte' debe ser 'Autobús' o 'Andando'." });
     }
     
     // Validación de formato de fecha (YYYY-MM-DD)
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(fecha_excursion)) {
+    if (!dateRegex.test(fecha_excursion)) { // fecha_excursion ya está trimeada
         return res.status(400).json({ error: "Formato de fecha_excursion inválido. Use YYYY-MM-DD." });
     }
 
-    // Validación de formato de hora (HH:MM)
+    // Validación de formato de hora (HH:MM) (valores ya trimeados)
     const timeRegex = /^\d{2}:\d{2}$/;
     if (!timeRegex.test(hora_salida) || !timeRegex.test(hora_llegada)) {
         return res.status(400).json({ error: "Formato de hora_salida o hora_llegada inválido. Use HH:MM." });
     }
     
-    if (coste_excursion_alumno !== undefined && (typeof coste_excursion_alumno !== 'number' || coste_excursion_alumno < 0)) {
+    if (coste_excursion_alumno !== undefined && (typeof coste_excursion_alumno !== 'number' || coste_excursion_alumno < 0)) { // No es string
         return res.status(400).json({ error: "coste_excursion_alumno debe ser un número no negativo." });
     }
 
@@ -815,9 +853,9 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
     `;
     
     const paramsInsert = [
-        nombre_excursion.trim(), fecha_excursion, lugar.trim(), hora_salida, hora_llegada,
-        coste_excursion_alumno, vestimenta.trim(), transporte.trim(), justificacion_texto.trim(),
-        actividad_descripcion.trim(), notas_excursion ? notas_excursion.trim() : null, 
+        nombre_excursion, fecha_excursion, lugar, hora_salida, hora_llegada, // Ya trimeados
+        coste_excursion_alumno, vestimenta, transporte, justificacion_texto, // Ya trimeados
+        actividad_descripcion, notas_excursion ? notas_excursion : null, // Ya trimeados (notas_excursion puede ser null si era cadena vacía)
         creada_por_usuario_id, finalParaClaseId
     ];
 
@@ -952,7 +990,6 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
         if (req.user.rol === 'DIRECCION') {
             puedeEditar = true;
         } else if (req.user.rol === 'TUTOR') {
-            // Tutor puede editar si la creó o si es para su clase
             if (excursionActual.creada_por_usuario_id === req.user.id || 
                 (excursionActual.para_clase_id === req.user.claseId && req.user.claseId)) {
                 puedeEditar = true;
@@ -962,38 +999,72 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: "No tiene permisos para modificar esta excursión." });
         }
 
-        // Construcción dinámica del UPDATE
+        const processedBody = {};
+        for (const key in req.body) {
+            if (req.body.hasOwnProperty(key)) {
+                let value = req.body[key];
+                if (typeof value === 'string') {
+                    value = value.trim();
+                }
+                processedBody[key] = value;
+            }
+        }
+
         const camposActualizables = [
             'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 
             'hora_llegada', 'coste_excursion_alumno', 'vestimenta', 'transporte',
             'justificacion_texto', 'actividad_descripcion', 'notas_excursion', 'para_clase_id'
         ];
         let setClauses = [];
-        let params = [];
+        let paramsForUpdate = []; 
+
+        const stringFieldsThatMustNotBeEmptyWhenProvided = [
+            'nombre_excursion', 'actividad_descripcion', 'lugar', 'fecha_excursion', 
+            'hora_salida', 'hora_llegada', 'vestimenta', 'transporte', 'justificacion_texto'
+        ];
 
         for (const campo of camposActualizables) {
-            if (req.body[campo] !== undefined) {
-                // Validaciones específicas antes de añadir al SET
+            if (processedBody[campo] !== undefined) {
+                let valueToUpdate = processedBody[campo];
+
+                if (stringFieldsThatMustNotBeEmptyWhenProvided.includes(campo) && valueToUpdate === '') {
+                    return res.status(400).json({ error: `El campo '${campo}' es obligatorio y no puede estar vacío si se proporciona para actualizar.` });
+                }
+                
+                if (campo === 'vestimenta' && valueToUpdate !== '') { 
+                    if (valueToUpdate !== 'Uniforme' && valueToUpdate !== 'Chándal') {
+                        return res.status(400).json({ error: "El campo 'vestimenta' debe ser 'Uniforme' o 'Chándal' si se proporciona." });
+                    }
+                }
+                if (campo === 'transporte' && valueToUpdate !== '') { 
+                    if (valueToUpdate !== 'Autobús' && valueToUpdate !== 'Andando') {
+                        return res.status(400).json({ error: "El campo 'transporte' debe ser 'Autobús' o 'Andando' si se proporciona." });
+                    }
+                }
+
                 if (campo === 'fecha_excursion') {
                     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-                    if (!dateRegex.test(req.body[campo])) return res.status(400).json({ error: "Formato de fecha_excursion inválido. Use YYYY-MM-DD." });
+                    if (valueToUpdate !== '' && !dateRegex.test(valueToUpdate)) return res.status(400).json({ error: "Formato de fecha_excursion inválido. Use YYYY-MM-DD." });
                 }
                 if (campo === 'hora_salida' || campo === 'hora_llegada') {
                     const timeRegex = /^\d{2}:\d{2}$/;
-                    if (!timeRegex.test(req.body[campo])) return res.status(400).json({ error: `Formato de ${campo} inválido. Use HH:MM.` });
+                    if (valueToUpdate !== '' && !timeRegex.test(valueToUpdate)) return res.status(400).json({ error: `Formato de ${campo} inválido. Use HH:MM.` });
                 }
-                if (campo === 'coste_excursion_alumno' && (typeof req.body[campo] !== 'number' || req.body[campo] < 0)) {
+                if (campo === 'coste_excursion_alumno' && (typeof valueToUpdate !== 'number' || valueToUpdate < 0)) {
                      return res.status(400).json({ error: "coste_excursion_alumno debe ser un número no negativo." });
                 }
-                 if (campo === 'para_clase_id' && req.body[campo] !== null && isNaN(parseInt(req.body[campo]))) {
-                    return res.status(400).json({ error: "para_clase_id debe ser un número (ID de clase) o null." });
+                if (campo === 'para_clase_id') {
+                    if (valueToUpdate === '') { 
+                       return res.status(400).json({ error: "para_clase_id no puede ser una cadena vacía; use null si no aplica o un ID de clase."});
+                    }
+                    if (valueToUpdate !== null && isNaN(parseInt(valueToUpdate))) {
+                       return res.status(400).json({ error: "para_clase_id debe ser un número (ID de clase) o null." });
+                   }
                 }
 
-
-                // Restricción para TUTOR en para_clase_id
                 if (req.user.rol === 'TUTOR' && campo === 'para_clase_id') {
-                    const nuevoParaClaseId = req.body[campo] === null ? null : parseInt(req.body[campo]);
-                    if (nuevoParaClaseId !== req.user.claseId && nuevoParaClaseId !== null) { // Tutor puede hacerla global si la creó él
+                    const nuevoParaClaseId = valueToUpdate === null ? null : parseInt(valueToUpdate);
+                    if (nuevoParaClaseId !== req.user.claseId && nuevoParaClaseId !== null) { 
                          if(excursionActual.creada_por_usuario_id !== req.user.id){
                             return res.status(403).json({ error: "Tutores solo pueden asignar excursiones a su propia clase o hacerlas globales si las crearon." });
                          }
@@ -1002,16 +1073,19 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
                          return res.status(403).json({ error: "Tutor no puede asignar excursión a una clase si no tiene clase asignada." });
                      }
                 }
-                 // Dirección puede cambiar para_clase_id, pero si lo pone, debe existir
-                if (req.user.rol === 'DIRECCION' && campo === 'para_clase_id' && req.body[campo] !== null) {
-                    const claseDestino = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [parseInt(req.body[campo])]);
+                if (req.user.rol === 'DIRECCION' && campo === 'para_clase_id' && valueToUpdate !== null) {
+                    const claseDestino = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [parseInt(valueToUpdate)]);
                     if (!claseDestino) {
-                        return res.status(400).json({ error: `La clase de destino con ID ${req.body[campo]} no existe.` });
+                        return res.status(400).json({ error: `La clase de destino con ID ${valueToUpdate} no existe.` });
                     }
                 }
                 
                 setClauses.push(`${campo} = ?`);
-                params.push(req.body[campo] === '' && (campo === 'notas_excursion' || campo === 'para_clase_id') ? null : req.body[campo]);
+                if (campo === 'notas_excursion' && valueToUpdate === '') {
+                    paramsForUpdate.push(null);
+                } else {
+                    paramsForUpdate.push(valueToUpdate);
+                }
             }
         }
 
@@ -1020,9 +1094,9 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
         }
 
         const sqlUpdate = `UPDATE excursiones SET ${setClauses.join(", ")} WHERE id = ?`;
-        params.push(excursionId);
+        paramsForUpdate.push(excursionId);
 
-        await dbRunAsync(sqlUpdate, params);
+        await dbRunAsync(sqlUpdate, paramsForUpdate);
         
         const excursionActualizada = await dbGetAsync(
              `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
@@ -1147,20 +1221,14 @@ app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, asy
                                       WHERE a.clase_id = ?`;
                     baseAlumnosParams.push(viewClaseId);
                 } else {
-                    // Dirección, global, sin view_clase_id: todos los alumnos que ya participan + los de cualquier clase que tenga al menos un alumno participando.
-                    // O más simple: todos los alumnos de todas las clases si no hay participaciones, o todos los que participan.
-                    // La especificación dice "Fetch all students who ALREADY have a participation record for this excursion."
-                    // This simplifies to only showing students who have interacted with the excursion.
                      baseAlumnosSql = `SELECT DISTINCT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
                                       FROM alumnos a 
                                       JOIN clases c ON a.clase_id = c.id 
                                       JOIN participaciones_excursion pe ON a.id = pe.alumno_id 
                                       WHERE pe.excursion_id = ?`;
                     baseAlumnosParams.push(excursionId);
-                    // If no participations yet, this will be empty. Consider if all students from all classes should be shown instead.
-                    // For now, sticking to the spec.
                 }
-            } else { // Otro rol
+            } else { 
                  return res.status(403).json({ error: "Rol no autorizado." });
             }
         }
@@ -1169,9 +1237,6 @@ app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, asy
         const alumnosBase = await dbAllAsync(baseAlumnosSql, baseAlumnosParams);
 
         if (alumnosBase.length === 0 && currentExcursion.para_clase_id === null && req.user.rol === 'DIRECCION' && !req.query.view_clase_id) {
-            // Caso especial: Dirección, excursión global, sin filtro de clase y NADIE ha participado aún.
-            // En este caso, para que la tabla no aparezca vacía y se puedan añadir participaciones,
-            // se listarán todos los alumnos de todas las clases.
             const todosLosAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
                                        FROM alumnos a JOIN clases c ON a.clase_id = c.id
                                        ORDER BY c.nombre_clase ASC, a.apellidos_para_ordenar ASC, a.nombre_completo ASC`;
@@ -1206,10 +1271,10 @@ app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, asy
             totalAlumnos: alumnosParticipaciones.length,
             totalConAutorizacionFirmadaSi: alumnosParticipaciones.filter(p => p.autorizacion_firmada === 'Sí').length,
             totalConAutorizacionFirmadaNo: alumnosParticipaciones.filter(p => p.autorizacion_firmada === 'No').length,
-            totalConPagoRealizadoSi: alumnosParticipaciones.filter(p => p.pago_realizado === 'Sí').length,
+            totalAlumnosPagadoGlobal: alumnosParticipaciones.filter(p => p.pago_realizado === 'Sí').length,
             totalConPagoRealizadoNo: alumnosParticipaciones.filter(p => p.pago_realizado === 'No').length,
             totalConPagoRealizadoParcial: alumnosParticipaciones.filter(p => p.pago_realizado === 'Parcial').length,
-            sumaTotalCantidadPagada: alumnosParticipaciones.reduce((sum, p) => sum + (parseFloat(p.cantidad_pagada) || 0), 0),
+            sumaTotalCantidadPagadaGlobal: alumnosParticipaciones.reduce((sum, p) => sum + (parseFloat(p.cantidad_pagada) || 0), 0),
             resumenPorClase: {}
         };
 
@@ -1218,13 +1283,15 @@ app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, asy
                 resumen.resumenPorClase[p.clase_id] = {
                     nombre_clase: p.nombre_clase,
                     alumnosEnClase: 0,
-                    pagadoSiEnClase: 0,
-                    totalPagadoEnClase: 0
+                    totalAlumnosPagadoEnClase: 0, 
+                    sumaTotalCantidadPagadaEnClase: 0 
                 };
             }
             resumen.resumenPorClase[p.clase_id].alumnosEnClase++;
-            if (p.pago_realizado === 'Sí') resumen.resumenPorClase[p.clase_id].pagadoSiEnClase++;
-            resumen.resumenPorClase[p.clase_id].totalPagadoEnClase += (parseFloat(p.cantidad_pagada) || 0);
+            if (p.pago_realizado === 'Sí') {
+                resumen.resumenPorClase[p.clase_id].totalAlumnosPagadoEnClase++;
+            }
+            resumen.resumenPorClase[p.clase_id].sumaTotalCantidadPagadaEnClase += (parseFloat(p.cantidad_pagada) || 0);
         });
         // Convertir el objeto a array para el frontend si se prefiere
         resumen.resumenPorClase = Object.values(resumen.resumenPorClase);
