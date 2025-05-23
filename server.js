@@ -735,6 +735,614 @@ console.log("Endpoint POST /api/alumnos (crear individual) definido.");
 // (Pega aquí tus endpoints CRUD COMPLETOS para /api/participaciones. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
 // ...
 
+// --- Gestión de Excursiones ---
+app.post('/api/excursiones', authenticateToken, async (req, res) => {
+    console.log("  Ruta: POST /api/excursiones, Body:", req.body);
+    const { 
+        nombre_excursion, actividad_descripcion, lugar, fecha_excursion, 
+        hora_salida, hora_llegada, vestimenta, transporte, 
+        justificacion_texto, // Este es ahora obligatorio según la tarea
+        coste_excursion_alumno = 0 // Default si no se provee
+    } = req.body;
+    let { para_clase_id, notas_excursion } = req.body; // para_clase_id es opcional en body, notas_excursion también
+
+    const creada_por_usuario_id = req.user.id;
+
+    // Validación de campos obligatorios según la tarea
+    const requiredFields = { nombre_excursion, actividad_descripcion, lugar, fecha_excursion, hora_salida, hora_llegada, vestimenta, transporte, justificacion_texto };
+    for (const [field, value] of Object.entries(requiredFields)) {
+        if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+            return res.status(400).json({ error: `El campo '${field}' es obligatorio y no puede estar vacío.` });
+        }
+    }
+    
+    // Validación de formato de fecha (YYYY-MM-DD)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(fecha_excursion)) {
+        return res.status(400).json({ error: "Formato de fecha_excursion inválido. Use YYYY-MM-DD." });
+    }
+
+    // Validación de formato de hora (HH:MM)
+    const timeRegex = /^\d{2}:\d{2}$/;
+    if (!timeRegex.test(hora_salida) || !timeRegex.test(hora_llegada)) {
+        return res.status(400).json({ error: "Formato de hora_salida o hora_llegada inválido. Use HH:MM." });
+    }
+    
+    if (coste_excursion_alumno !== undefined && (typeof coste_excursion_alumno !== 'number' || coste_excursion_alumno < 0)) {
+        return res.status(400).json({ error: "coste_excursion_alumno debe ser un número no negativo." });
+    }
+
+    let finalParaClaseId = null; // Por defecto para excursiones globales o de dirección
+
+    if (req.user.rol === 'TUTOR') {
+        if (!req.user.claseId) {
+            return res.status(403).json({ error: "Tutor no asignado a ninguna clase. No puede crear excursiones." });
+        }
+        // Si para_clase_id se envía en el body para un tutor, DEBE coincidir con su clase.
+        if (para_clase_id !== undefined && para_clase_id !== null && parseInt(para_clase_id) !== req.user.claseId) {
+            return res.status(403).json({ error: "Tutores solo pueden crear excursiones para su propia clase." });
+        }
+        finalParaClaseId = req.user.claseId; // Tutor siempre crea para su clase.
+    } else if (req.user.rol === 'DIRECCION') {
+        if (para_clase_id !== undefined && para_clase_id !== null && String(para_clase_id).trim() !== '') {
+            const idClaseNum = parseInt(para_clase_id);
+            if (isNaN(idClaseNum)) {
+                 return res.status(400).json({ error: "ID de para_clase_id inválido." });
+            }
+            try {
+                const clase = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [idClaseNum]);
+                if (!clase) {
+                    return res.status(404).json({ error: `La clase de destino con ID ${idClaseNum} no existe.` });
+                }
+                finalParaClaseId = idClaseNum;
+            } catch (dbError) {
+                console.error("  Error verificando clase en POST /api/excursiones:", dbError.message);
+                return res.status(500).json({ error: "Error interno al verificar la clase de destino." });
+            }
+        } else {
+            finalParaClaseId = null; // Excursión global (o no especificada para_clase_id) creada por Dirección
+        }
+    } else {
+        return res.status(403).json({ error: "Rol no autorizado para crear excursiones." });
+    }
+
+    const sqlInsert = `
+        INSERT INTO excursiones (
+            nombre_excursion, fecha_excursion, lugar, hora_salida, hora_llegada,
+            coste_excursion_alumno, vestimenta, transporte, justificacion_texto,
+            actividad_descripcion, notas_excursion, creada_por_usuario_id, para_clase_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    
+    const paramsInsert = [
+        nombre_excursion.trim(), fecha_excursion, lugar.trim(), hora_salida, hora_llegada,
+        coste_excursion_alumno, vestimenta.trim(), transporte.trim(), justificacion_texto.trim(),
+        actividad_descripcion.trim(), notas_excursion ? notas_excursion.trim() : null, 
+        creada_por_usuario_id, finalParaClaseId
+    ];
+
+    try {
+        const result = await dbRunAsync(sqlInsert, paramsInsert);
+        const nuevaExcursion = await dbGetAsync(
+            `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+             FROM excursiones e 
+             JOIN usuarios u ON e.creada_por_usuario_id = u.id 
+             LEFT JOIN clases c ON e.para_clase_id = c.id 
+             WHERE e.id = ?`,
+            [result.lastID]
+        );
+        console.log(`  Excursión creada con ID: ${result.lastID} por Usuario ID: ${creada_por_usuario_id} para Clase ID: ${finalParaClaseId}`);
+        res.status(201).json(nuevaExcursion);
+    } catch (error) {
+        console.error("  Error en POST /api/excursiones:", error.message);
+        if (error.message.includes("FOREIGN KEY constraint failed")) {
+            if (error.message.includes("clases")) {
+                 return res.status(400).json({ error: "La clase especificada (para_clase_id) no existe." });
+            } else if (error.message.includes("usuarios")) {
+                 return res.status(400).json({ error: "El usuario creador no existe (esto no debería ocurrir si está autenticado)." });
+            }
+        }
+        res.status(500).json({ error: "Error interno del servidor al crear la excursión." });
+    }
+});
+console.log("Endpoint POST /api/excursiones definido.");
+
+app.get('/api/excursiones', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/excursiones para usuario:", req.user.email, "Rol:", req.user.rol);
+    let sql;
+    const params = [];
+
+    try {
+        if (req.user.rol === 'DIRECCION') {
+            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+                   FROM excursiones e 
+                   JOIN usuarios u ON e.creada_por_usuario_id = u.id 
+                   LEFT JOIN clases c ON e.para_clase_id = c.id 
+                   ORDER BY e.fecha_excursion DESC, e.id DESC`;
+        } else if (req.user.rol === 'TUTOR') {
+            if (!req.user.claseId) {
+                console.warn(`  Tutor ${req.user.email} (ID: ${req.user.id}) no tiene claseId en el token o asignada. Devolviendo lista vacía de excursiones.`);
+                return res.json({ excursiones: [] }); 
+            }
+            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+                   FROM excursiones e 
+                   JOIN usuarios u ON e.creada_por_usuario_id = u.id 
+                   LEFT JOIN clases c ON e.para_clase_id = c.id 
+                   WHERE e.para_clase_id IS NULL OR e.para_clase_id = ? 
+                   ORDER BY e.fecha_excursion DESC, e.id DESC`;
+            params.push(req.user.claseId);
+        } else {
+            console.warn(`  Usuario ${req.user.email} con rol ${req.user.rol} intentó acceder a excursiones. Acceso denegado.`);
+            return res.status(403).json({ error: "Rol no autorizado para ver excursiones." });
+        }
+        
+        const excursiones = await dbAllAsync(sql, params);
+        console.log(`  Excursiones encontradas: ${excursiones.length} para rol ${req.user.rol} (Clase ID del tutor si aplica: ${req.user.claseId || 'N/A'})`);
+        res.json({ excursiones });
+
+    } catch (error) {
+        console.error("  Error en GET /api/excursiones:", error.message);
+        res.status(500).json({ error: "Error interno del servidor al obtener las excursiones." });
+    }
+});
+console.log("Endpoint GET /api/excursiones definido.");
+
+// GET /api/excursiones/:id - Obtener una excursión específica
+app.get('/api/excursiones/:id', authenticateToken, async (req, res) => {
+    const excursionId = parseInt(req.params.id);
+    if (isNaN(excursionId)) {
+        return res.status(400).json({ error: "ID de excursión inválido." });
+    }
+    console.log(`  Ruta: GET /api/excursiones/${excursionId} para usuario ${req.user.email}`);
+
+    const sql = `
+        SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+        FROM excursiones e 
+        JOIN usuarios u ON e.creada_por_usuario_id = u.id 
+        LEFT JOIN clases c ON e.para_clase_id = c.id 
+        WHERE e.id = ?
+    `;
+    try {
+        const excursion = await dbGetAsync(sql, [excursionId]);
+        if (!excursion) {
+            return res.status(404).json({ error: "Excursión no encontrada." });
+        }
+
+        // RBAC
+        if (req.user.rol === 'DIRECCION') {
+            // Dirección tiene acceso
+        } else if (req.user.rol === 'TUTOR') {
+            if (excursion.para_clase_id !== null && excursion.para_clase_id !== req.user.claseId) {
+                 // Si la excursión es para una clase específica, y no es la del tutor, denegar.
+                return res.status(403).json({ error: "Tutores solo pueden ver excursiones globales o de su propia clase." });
+            }
+            if (excursion.para_clase_id !== null && !req.user.claseId) {
+                // Si la excursión es para una clase específica, pero el tutor no tiene clase asignada.
+                return res.status(403).json({ error: "Tutor no asignado a una clase no puede ver excursiones de clase." });
+            }
+        } else {
+            // Otros roles no definidos no tienen acceso
+            return res.status(403).json({ error: "Rol no autorizado." });
+        }
+
+        res.json(excursion);
+    } catch (error) {
+        console.error(`  Error en GET /api/excursiones/${excursionId}:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al obtener la excursión." });
+    }
+});
+console.log("Endpoint GET /api/excursiones/:id definido.");
+
+// PUT /api/excursiones/:id - Actualizar una excursión existente
+app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
+    const excursionId = parseInt(req.params.id);
+    if (isNaN(excursionId)) {
+        return res.status(400).json({ error: "ID de excursión inválido." });
+    }
+    console.log(`  Ruta: PUT /api/excursiones/${excursionId} para usuario ${req.user.email}, Body:`, req.body);
+
+    try {
+        const excursionActual = await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [excursionId]);
+        if (!excursionActual) {
+            return res.status(404).json({ error: "Excursión no encontrada para actualizar." });
+        }
+
+        // RBAC para editar
+        let puedeEditar = false;
+        if (req.user.rol === 'DIRECCION') {
+            puedeEditar = true;
+        } else if (req.user.rol === 'TUTOR') {
+            // Tutor puede editar si la creó o si es para su clase
+            if (excursionActual.creada_por_usuario_id === req.user.id || 
+                (excursionActual.para_clase_id === req.user.claseId && req.user.claseId)) {
+                puedeEditar = true;
+            }
+        }
+        if (!puedeEditar) {
+            return res.status(403).json({ error: "No tiene permisos para modificar esta excursión." });
+        }
+
+        // Construcción dinámica del UPDATE
+        const camposActualizables = [
+            'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 
+            'hora_llegada', 'coste_excursion_alumno', 'vestimenta', 'transporte',
+            'justificacion_texto', 'actividad_descripcion', 'notas_excursion', 'para_clase_id'
+        ];
+        let setClauses = [];
+        let params = [];
+
+        for (const campo of camposActualizables) {
+            if (req.body[campo] !== undefined) {
+                // Validaciones específicas antes de añadir al SET
+                if (campo === 'fecha_excursion') {
+                    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                    if (!dateRegex.test(req.body[campo])) return res.status(400).json({ error: "Formato de fecha_excursion inválido. Use YYYY-MM-DD." });
+                }
+                if (campo === 'hora_salida' || campo === 'hora_llegada') {
+                    const timeRegex = /^\d{2}:\d{2}$/;
+                    if (!timeRegex.test(req.body[campo])) return res.status(400).json({ error: `Formato de ${campo} inválido. Use HH:MM.` });
+                }
+                if (campo === 'coste_excursion_alumno' && (typeof req.body[campo] !== 'number' || req.body[campo] < 0)) {
+                     return res.status(400).json({ error: "coste_excursion_alumno debe ser un número no negativo." });
+                }
+                 if (campo === 'para_clase_id' && req.body[campo] !== null && isNaN(parseInt(req.body[campo]))) {
+                    return res.status(400).json({ error: "para_clase_id debe ser un número (ID de clase) o null." });
+                }
+
+
+                // Restricción para TUTOR en para_clase_id
+                if (req.user.rol === 'TUTOR' && campo === 'para_clase_id') {
+                    const nuevoParaClaseId = req.body[campo] === null ? null : parseInt(req.body[campo]);
+                    if (nuevoParaClaseId !== req.user.claseId && nuevoParaClaseId !== null) { // Tutor puede hacerla global si la creó él
+                         if(excursionActual.creada_por_usuario_id !== req.user.id){
+                            return res.status(403).json({ error: "Tutores solo pueden asignar excursiones a su propia clase o hacerlas globales si las crearon." });
+                         }
+                    }
+                     if (nuevoParaClaseId !== null && !req.user.claseId) {
+                         return res.status(403).json({ error: "Tutor no puede asignar excursión a una clase si no tiene clase asignada." });
+                     }
+                }
+                 // Dirección puede cambiar para_clase_id, pero si lo pone, debe existir
+                if (req.user.rol === 'DIRECCION' && campo === 'para_clase_id' && req.body[campo] !== null) {
+                    const claseDestino = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [parseInt(req.body[campo])]);
+                    if (!claseDestino) {
+                        return res.status(400).json({ error: `La clase de destino con ID ${req.body[campo]} no existe.` });
+                    }
+                }
+                
+                setClauses.push(`${campo} = ?`);
+                params.push(req.body[campo] === '' && (campo === 'notas_excursion' || campo === 'para_clase_id') ? null : req.body[campo]);
+            }
+        }
+
+        if (setClauses.length === 0) {
+            return res.status(400).json({ error: "No se proporcionaron campos para actualizar." });
+        }
+
+        const sqlUpdate = `UPDATE excursiones SET ${setClauses.join(", ")} WHERE id = ?`;
+        params.push(excursionId);
+
+        await dbRunAsync(sqlUpdate, params);
+        
+        const excursionActualizada = await dbGetAsync(
+             `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+              FROM excursiones e 
+              JOIN usuarios u ON e.creada_por_usuario_id = u.id 
+              LEFT JOIN clases c ON e.para_clase_id = c.id 
+              WHERE e.id = ?`, 
+              [excursionId]
+        );
+        console.log(`  Excursión ID ${excursionId} actualizada.`);
+        res.json(excursionActualizada);
+
+    } catch (error) {
+        console.error(`  Error en PUT /api/excursiones/${excursionId}:`, error.message);
+        if (error.message.includes("FOREIGN KEY constraint failed") && error.message.includes("clases")) {
+             return res.status(400).json({ error: "La clase especificada (para_clase_id) no existe." });
+        }
+        res.status(500).json({ error: "Error interno del servidor al actualizar la excursión." });
+    }
+});
+console.log("Endpoint PUT /api/excursiones/:id definido.");
+
+// DELETE /api/excursiones/:id - Eliminar una excursión
+app.delete('/api/excursiones/:id', authenticateToken, async (req, res) => {
+    const excursionId = parseInt(req.params.id);
+    if (isNaN(excursionId)) {
+        return res.status(400).json({ error: "ID de excursión inválido." });
+    }
+    console.log(`  Ruta: DELETE /api/excursiones/${excursionId} para usuario ${req.user.email}`);
+
+    try {
+        const excursion = await dbGetAsync("SELECT id, creada_por_usuario_id, para_clase_id FROM excursiones WHERE id = ?", [excursionId]);
+        if (!excursion) {
+            return res.status(404).json({ error: "Excursión no encontrada para eliminar." });
+        }
+
+        // RBAC para eliminar
+        let puedeEliminar = false;
+        if (req.user.rol === 'DIRECCION') {
+            puedeEliminar = true;
+        } else if (req.user.rol === 'TUTOR') {
+            // Tutor solo puede eliminar si la creó él
+            if (excursion.creada_por_usuario_id === req.user.id) {
+                puedeEliminar = true;
+            }
+        }
+        if (!puedeEliminar) {
+            return res.status(403).json({ error: "No tiene permisos para eliminar esta excursión." });
+        }
+
+        // Verificar si hay participaciones asociadas antes de eliminar
+        // Aunque ON DELETE CASCADE está activo, es buena práctica informar.
+        const participaciones = await dbGetAsync("SELECT COUNT(*) as count FROM participaciones_excursion WHERE excursion_id = ?", [excursionId]);
+        if (participaciones.count > 0) {
+            // Podrías optar por no permitir la eliminación o advertir.
+            // Por ahora, procederemos con la eliminación debido a ON DELETE CASCADE.
+            console.log(`  Excursión ID ${excursionId} tiene ${participaciones.count} participaciones. Serán eliminadas por CASCADE.`);
+        }
+
+        const result = await dbRunAsync("DELETE FROM excursiones WHERE id = ?", [excursionId]);
+        if (result.changes === 0) {
+            // Esto no debería ocurrir si la encontramos antes, pero por si acaso.
+            return res.status(404).json({ error: "Excursión no encontrada durante el intento de eliminación." });
+        }
+
+        console.log(`  Excursión ID ${excursionId} eliminada.`);
+        res.status(200).json({ message: "Excursión eliminada exitosamente." }); // O 204 No Content
+
+    } catch (error) {
+        console.error(`  Error en DELETE /api/excursiones/${excursionId}:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al eliminar la excursión." });
+    }
+});
+console.log("Endpoint DELETE /api/excursiones/:id definido.");
+
+// --- Gestión de Participaciones ---
+
+// GET /api/excursiones/:excursion_id/participaciones - Listar alumnos y su estado de participación para una excursión
+app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, async (req, res) => {
+    const excursionId = parseInt(req.params.excursion_id);
+    if (isNaN(excursionId)) {
+        return res.status(400).json({ error: "ID de excursión inválido." });
+    }
+    console.log(`  Ruta: GET /api/excursiones/${excursionId}/participaciones, Usuario: ${req.user.email}, Query:`, req.query);
+
+    try {
+        const currentExcursion = await dbGetAsync("SELECT id, para_clase_id FROM excursiones WHERE id = ?", [excursionId]);
+        if (!currentExcursion) {
+            return res.status(404).json({ error: "Excursión no encontrada." });
+        }
+
+        // RBAC para acceder a la excursión
+        if (req.user.rol === 'TUTOR') {
+            if (currentExcursion.para_clase_id !== null && currentExcursion.para_clase_id !== req.user.claseId) {
+                return res.status(403).json({ error: "Tutores solo pueden ver participaciones de excursiones globales o de su propia clase." });
+            }
+            if (currentExcursion.para_clase_id !== null && !req.user.claseId) {
+                 return res.status(403).json({ error: "Tutor no asignado a una clase no puede ver participaciones de excursiones de clase." });
+            }
+        }
+
+        let baseAlumnosSql;
+        const baseAlumnosParams = [];
+
+        if (currentExcursion.para_clase_id !== null) { // Excursión específica de una clase
+            baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+                              FROM alumnos a JOIN clases c ON a.clase_id = c.id 
+                              WHERE a.clase_id = ?`;
+            baseAlumnosParams.push(currentExcursion.para_clase_id);
+        } else { // Excursión global
+            if (req.user.rol === 'TUTOR') {
+                if (!req.user.claseId) return res.json({ alumnosParticipaciones: [], resumen: {} }); // Tutor sin clase no ve alumnos
+                baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+                                  FROM alumnos a JOIN clases c ON a.clase_id = c.id 
+                                  WHERE a.clase_id = ?`;
+                baseAlumnosParams.push(req.user.claseId);
+            } else if (req.user.rol === 'DIRECCION') {
+                const viewClaseId = req.query.view_clase_id ? parseInt(req.query.view_clase_id) : null;
+                if (viewClaseId) {
+                    baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+                                      FROM alumnos a JOIN clases c ON a.clase_id = c.id 
+                                      WHERE a.clase_id = ?`;
+                    baseAlumnosParams.push(viewClaseId);
+                } else {
+                    // Dirección, global, sin view_clase_id: todos los alumnos que ya participan + los de cualquier clase que tenga al menos un alumno participando.
+                    // O más simple: todos los alumnos de todas las clases si no hay participaciones, o todos los que participan.
+                    // La especificación dice "Fetch all students who ALREADY have a participation record for this excursion."
+                    // This simplifies to only showing students who have interacted with the excursion.
+                     baseAlumnosSql = `SELECT DISTINCT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+                                      FROM alumnos a 
+                                      JOIN clases c ON a.clase_id = c.id 
+                                      JOIN participaciones_excursion pe ON a.id = pe.alumno_id 
+                                      WHERE pe.excursion_id = ?`;
+                    baseAlumnosParams.push(excursionId);
+                    // If no participations yet, this will be empty. Consider if all students from all classes should be shown instead.
+                    // For now, sticking to the spec.
+                }
+            } else { // Otro rol
+                 return res.status(403).json({ error: "Rol no autorizado." });
+            }
+        }
+        baseAlumnosSql += " ORDER BY c.nombre_clase ASC, a.apellidos_para_ordenar ASC, a.nombre_completo ASC";
+        
+        const alumnosBase = await dbAllAsync(baseAlumnosSql, baseAlumnosParams);
+
+        if (alumnosBase.length === 0 && currentExcursion.para_clase_id === null && req.user.rol === 'DIRECCION' && !req.query.view_clase_id) {
+            // Caso especial: Dirección, excursión global, sin filtro de clase y NADIE ha participado aún.
+            // En este caso, para que la tabla no aparezca vacía y se puedan añadir participaciones,
+            // se listarán todos los alumnos de todas las clases.
+            const todosLosAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+                                       FROM alumnos a JOIN clases c ON a.clase_id = c.id
+                                       ORDER BY c.nombre_clase ASC, a.apellidos_para_ordenar ASC, a.nombre_completo ASC`;
+            const todosLosAlumnos = await dbAllAsync(todosLosAlumnosSql, []);
+            alumnosBase.push(...todosLosAlumnos);
+        }
+
+
+        const alumnosParticipaciones = [];
+        for (const alumno of alumnosBase) {
+            const participacion = await dbGetAsync(
+                `SELECT p.id as participacion_id, p.autorizacion_firmada, p.fecha_autorizacion, 
+                        p.pago_realizado, p.cantidad_pagada, p.fecha_pago, p.notas_participacion 
+                 FROM participaciones_excursion p 
+                 WHERE p.alumno_id = ? AND p.excursion_id = ?`,
+                [alumno.alumno_id, excursionId]
+            );
+            alumnosParticipaciones.push({
+                ...alumno,
+                participacion_id: participacion?.participacion_id || null,
+                autorizacion_firmada: participacion?.autorizacion_firmada || 'No',
+                fecha_autorizacion: participacion?.fecha_autorizacion || null,
+                pago_realizado: participacion?.pago_realizado || 'No',
+                cantidad_pagada: participacion?.cantidad_pagada || 0,
+                fecha_pago: participacion?.fecha_pago || null,
+                notas_participacion: participacion?.notas_participacion || null,
+            });
+        }
+        
+        // Calcular resumen
+        const resumen = {
+            totalAlumnos: alumnosParticipaciones.length,
+            totalConAutorizacionFirmadaSi: alumnosParticipaciones.filter(p => p.autorizacion_firmada === 'Sí').length,
+            totalConAutorizacionFirmadaNo: alumnosParticipaciones.filter(p => p.autorizacion_firmada === 'No').length,
+            totalConPagoRealizadoSi: alumnosParticipaciones.filter(p => p.pago_realizado === 'Sí').length,
+            totalConPagoRealizadoNo: alumnosParticipaciones.filter(p => p.pago_realizado === 'No').length,
+            totalConPagoRealizadoParcial: alumnosParticipaciones.filter(p => p.pago_realizado === 'Parcial').length,
+            sumaTotalCantidadPagada: alumnosParticipaciones.reduce((sum, p) => sum + (parseFloat(p.cantidad_pagada) || 0), 0),
+            resumenPorClase: {}
+        };
+
+        alumnosParticipaciones.forEach(p => {
+            if (!resumen.resumenPorClase[p.clase_id]) {
+                resumen.resumenPorClase[p.clase_id] = {
+                    nombre_clase: p.nombre_clase,
+                    alumnosEnClase: 0,
+                    pagadoSiEnClase: 0,
+                    totalPagadoEnClase: 0
+                };
+            }
+            resumen.resumenPorClase[p.clase_id].alumnosEnClase++;
+            if (p.pago_realizado === 'Sí') resumen.resumenPorClase[p.clase_id].pagadoSiEnClase++;
+            resumen.resumenPorClase[p.clase_id].totalPagadoEnClase += (parseFloat(p.cantidad_pagada) || 0);
+        });
+        // Convertir el objeto a array para el frontend si se prefiere
+        resumen.resumenPorClase = Object.values(resumen.resumenPorClase);
+
+
+        res.json({ alumnosParticipaciones, resumen });
+
+    } catch (error) {
+        console.error(`  Error en GET /api/excursiones/${excursionId}/participaciones:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al obtener las participaciones." });
+    }
+});
+console.log("Endpoint GET /api/excursiones/:excursion_id/participaciones definido.");
+
+
+// POST /api/participaciones - Crear o actualizar una participación (UPSERT)
+app.post('/api/participaciones', authenticateToken, async (req, res) => {
+    console.log(`  Ruta: POST /api/participaciones, Usuario: ${req.user.email}, Body:`, req.body);
+    const {
+        excursion_id, alumno_id, autorizacion_firmada, fecha_autorizacion,
+        pago_realizado, cantidad_pagada = 0, fecha_pago, notas_participacion
+    } = req.body;
+
+    // Validaciones básicas
+    if (!excursion_id || !alumno_id) {
+        return res.status(400).json({ error: "excursion_id y alumno_id son obligatorios." });
+    }
+    if (isNaN(parseInt(excursion_id)) || isNaN(parseInt(alumno_id))) {
+        return res.status(400).json({ error: "excursion_id y alumno_id deben ser números." });
+    }
+    const validAutorizacion = ['Sí', 'No'];
+    if (autorizacion_firmada !== undefined && !validAutorizacion.includes(autorizacion_firmada)) {
+        return res.status(400).json({ error: "autorizacion_firmada debe ser 'Sí' o 'No'." });
+    }
+    const validPago = ['Sí', 'No', 'Parcial'];
+    if (pago_realizado !== undefined && !validPago.includes(pago_realizado)) {
+        return res.status(400).json({ error: "pago_realizado debe ser 'Sí', 'No', o 'Parcial'." });
+    }
+    if (cantidad_pagada !== undefined && (typeof cantidad_pagada !== 'number' || cantidad_pagada < 0)) {
+        return res.status(400).json({ error: "cantidad_pagada debe ser un número no negativo." });
+    }
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (fecha_autorizacion && !dateRegex.test(fecha_autorizacion)) return res.status(400).json({ error: "Formato de fecha_autorizacion inválido. Use YYYY-MM-DD."});
+    if (fecha_pago && !dateRegex.test(fecha_pago)) return res.status(400).json({ error: "Formato de fecha_pago inválido. Use YYYY-MM-DD."});
+
+
+    try {
+        const alumno = await dbGetAsync("SELECT id, clase_id FROM alumnos WHERE id = ?", [alumno_id]);
+        if (!alumno) return res.status(404).json({ error: "Alumno no encontrado." });
+
+        const excursion = await dbGetAsync("SELECT id, para_clase_id FROM excursiones WHERE id = ?", [excursion_id]);
+        if (!excursion) return res.status(404).json({ error: "Excursión no encontrada." });
+
+        // RBAC
+        if (req.user.rol === 'TUTOR') {
+            if (!req.user.claseId || alumno.clase_id !== req.user.claseId) {
+                return res.status(403).json({ error: "Tutores solo pueden gestionar participaciones de alumnos de su propia clase." });
+            }
+            if (excursion.para_clase_id !== null && excursion.para_clase_id !== req.user.claseId) {
+                return res.status(403).json({ error: "Tutores solo pueden gestionar participaciones para excursiones globales o de su propia clase." });
+            }
+        } else if (req.user.rol !== 'DIRECCION') {
+            return res.status(403).json({ error: "Rol no autorizado para esta acción." });
+        }
+
+        // UPSERT
+        const sqlUpsert = `
+            INSERT INTO participaciones_excursion (
+                alumno_id, excursion_id, autorizacion_firmada, fecha_autorizacion,
+                pago_realizado, cantidad_pagada, fecha_pago, notas_participacion
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(alumno_id, excursion_id) DO UPDATE SET
+                autorizacion_firmada = excluded.autorizacion_firmada,
+                fecha_autorizacion = excluded.fecha_autorizacion,
+                pago_realizado = excluded.pago_realizado,
+                cantidad_pagada = excluded.cantidad_pagada,
+                fecha_pago = excluded.fecha_pago,
+                notas_participacion = excluded.notas_participacion
+            RETURNING id;`; // RETURNING id para obtener el ID de la fila afectada
+
+        const paramsUpsert = [
+            alumno_id, excursion_id,
+            autorizacion_firmada === undefined ? 'No' : autorizacion_firmada, // Default si no se manda
+            fecha_autorizacion || null,
+            pago_realizado === undefined ? 'No' : pago_realizado, // Default si no se manda
+            cantidad_pagada === undefined ? 0 : cantidad_pagada, // Default si no se manda
+            fecha_pago || null,
+            notas_participacion || null
+        ];
+        
+        // dbRunAsync no soporta RETURNING directamente de la misma forma en sqlite3 node.
+        // Haremos un get después del upsert.
+        
+        await dbRunAsync(sqlUpsert.replace("RETURNING id;", ""), paramsUpsert); // SQLite no devuelve el ID en upsert así.
+
+        // Fetch the record to confirm and get its ID
+        const participacionGuardada = await dbGetAsync(
+            "SELECT * FROM participaciones_excursion WHERE alumno_id = ? AND excursion_id = ?",
+            [alumno_id, excursion_id]
+        );
+        
+        console.log(`  Participación guardada para Alumno ID ${alumno_id}, Excursión ID ${excursion_id}. ID de participación: ${participacionGuardada.id}`);
+        res.status(200).json(participacionGuardada); // 200 OK para upsert es común.
+
+    } catch (error) {
+        console.error("  Error en POST /api/participaciones:", error.message);
+         if (error.message.includes("UNIQUE constraint failed")) { // Esto es manejado por ON CONFLICT
+            return res.status(500).json({ error: "Error de concurrencia o constraint no manejado por UPSERT." });
+        } else if (error.message.includes("FOREIGN KEY constraint failed")) {
+            // Esto puede ocurrir si alumno_id o excursion_id son válidos pero no existen, aunque lo chequeamos antes.
+            return res.status(400).json({ error: "Error de clave foránea: el alumno o la excursión no existen." });
+        }
+        res.status(500).json({ error: "Error interno del servidor al guardar la participación." });
+    }
+});
+console.log("Endpoint POST /api/participaciones definido.");
+
+
 // --- Endpoint de Dashboard ---
 app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
     console.log("  Ruta: GET /api/dashboard/summary para:", req.user.email);
