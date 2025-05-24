@@ -334,6 +334,21 @@ app.delete('/api/usuarios/:id', authenticateToken, async (req, res) => {
 });
 console.log("Endpoint DELETE /api/usuarios/:id definido.");
 
+// GET /api/usuarios/tutores - Obtener todos los tutores (ID y Nombre)
+app.get('/api/usuarios/tutores', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/usuarios/tutores, Usuario:", req.user.email);
+    try {
+        // No specific role check here as per instruction "Accessible by any authenticated user"
+        // This implies DIRECCION or TUTOR can call this to see other tutors to share with.
+        const tutores = await dbAllAsync("SELECT id, nombre_completo FROM usuarios WHERE rol = 'TUTOR' ORDER BY nombre_completo ASC");
+        res.json({ tutores });
+    } catch (error) {
+        console.error("  Error en GET /api/usuarios/tutores:", error.message);
+        res.status(500).json({ error: "Error interno del servidor al obtener la lista de tutores." });
+    }
+});
+console.log("Endpoint GET /api/usuarios/tutores definido.");
+
 // --- Gestión de Clases ---
 app.get('/api/clases', authenticateToken, async (req, res) => {
     try {
@@ -1310,6 +1325,280 @@ app.post('/api/excursiones/:id/duplicate', authenticateToken, async (req, res) =
     }
 });
 console.log("Endpoint POST /api/excursiones/:id/duplicate definido.");
+
+// POST /api/excursiones/:id/share - Compartir una excursión con otro tutor
+app.post('/api/excursiones/:id/share', authenticateToken, async (req, res) => {
+    const originalExcursionId = parseInt(req.params.id);
+    const sharerUserId = req.user.id;
+    const { target_usuario_id } = req.body;
+
+    console.log(`  Ruta: POST /api/excursiones/${originalExcursionId}/share, Usuario: ${req.user.email}, Body:`, req.body);
+
+    // a. Validate original_excursion_id
+    if (isNaN(originalExcursionId)) {
+        return res.status(400).json({ error: "ID de excursión original inválido." });
+    }
+
+    // d. Validate target_usuario_id
+    if (!target_usuario_id || isNaN(parseInt(target_usuario_id))) {
+        return res.status(400).json({ error: "target_usuario_id es requerido y debe ser un número." });
+    }
+    const targetUsuarioIdNum = parseInt(target_usuario_id);
+
+    if (targetUsuarioIdNum === sharerUserId) {
+        return res.status(400).json({ error: "No puedes compartir una excursión contigo mismo." });
+    }
+
+    try {
+        // b. Fetch the original excursion
+        const originalExcursion = await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [originalExcursionId]);
+        if (!originalExcursion) {
+            return res.status(404).json({ error: "Excursión original no encontrada." });
+        }
+
+        // c. Perform permission check for accessing the original excursion
+        let canViewOriginal = false;
+        if (req.user.rol === 'DIRECCION') {
+            canViewOriginal = true;
+        } else if (req.user.rol === 'TUTOR') {
+            if (originalExcursion.para_clase_id === null) { // Global excursion
+                canViewOriginal = true;
+            } else if (originalExcursion.para_clase_id === req.user.claseId) { // Excursion for tutor's own class
+                 if (!req.user.claseId) { // Tutor must have a class to view a class-specific excursion for their class
+                    return res.status(403).json({ error: "Tutor sin clase asignada no puede acceder a esta excursión específica de clase." });
+                 }
+                canViewOriginal = true;
+            }
+        }
+        if (!canViewOriginal) {
+            return res.status(403).json({ error: "No tienes permisos para ver/compartir esta excursión." });
+        }
+        
+        // d. Continue validation of target_usuario_id
+        const targetUser = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [targetUsuarioIdNum]);
+        if (!targetUser) {
+            return res.status(404).json({ error: "Usuario destinatario no encontrado." });
+        }
+        if (targetUser.rol !== 'TUTOR') {
+            return res.status(400).json({ error: "Solo se puede compartir con tutores." });
+        }
+
+        // e. Check for existing pending share
+        const existingShare = await dbGetAsync(
+            "SELECT id FROM shared_excursions WHERE original_excursion_id = ? AND shared_by_usuario_id = ? AND shared_with_usuario_id = ? AND status = 'pending'",
+            [originalExcursionId, sharerUserId, targetUsuarioIdNum]
+        );
+        if (existingShare) {
+            return res.status(409).json({ error: "Esta excursión ya ha sido compartida con este tutor y está pendiente." });
+        }
+
+        // f. Insert a new record into shared_excursions
+        const sqlInsertShare = `
+            INSERT INTO shared_excursions (original_excursion_id, shared_by_usuario_id, shared_with_usuario_id, status)
+            VALUES (?, ?, ?, 'pending')
+        `;
+        const result = await dbRunAsync(sqlInsertShare, [originalExcursionId, sharerUserId, targetUsuarioIdNum]);
+        const newShareId = result.lastID;
+
+        // g. Fetch the newly created share record
+        const newShareRecord = await dbGetAsync("SELECT * FROM shared_excursions WHERE id = ?", [newShareId]);
+
+        console.log(`  Excursión ID ${originalExcursionId} compartida por Usuario ID ${sharerUserId} con Tutor ID ${targetUsuarioIdNum}. Share ID: ${newShareId}`);
+        res.status(201).json(newShareRecord);
+
+    } catch (error) {
+        console.error(`  Error en POST /api/excursiones/${originalExcursionId}/share:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al compartir la excursión." });
+    }
+});
+console.log("Endpoint POST /api/excursiones/:id/share definido.");
+
+// GET /api/excursiones/shared/pending - Obtener excursiones pendientes de aceptar/rechazar
+app.get('/api/excursiones/shared/pending', authenticateToken, async (req, res) => {
+    console.log(`  Ruta: GET /api/excursiones/shared/pending, Usuario: ${req.user.email}`);
+
+    if (req.user.rol !== 'TUTOR') {
+        return res.status(403).json({ error: "Acceso denegado. Solo para tutores." });
+    }
+
+    try {
+        const sql = `
+            SELECT 
+                se.id as share_id,
+                se.original_excursion_id,
+                se.shared_at,
+                e.nombre_excursion,
+                e.fecha_excursion,
+                e.lugar,
+                u.nombre_completo as nombre_compartido_por
+            FROM shared_excursions se
+            JOIN excursiones e ON se.original_excursion_id = e.id
+            JOIN usuarios u ON se.shared_by_usuario_id = u.id
+            WHERE se.shared_with_usuario_id = ? AND se.status = 'pending'
+            ORDER BY se.shared_at DESC
+        `;
+        const pendingShares = await dbAllAsync(sql, [req.user.id]);
+        
+        res.json({ pending_shares: pendingShares });
+
+    } catch (error) {
+        console.error("  Error en GET /api/excursiones/shared/pending:", error.message);
+        res.status(500).json({ error: "Error interno del servidor al obtener las excursiones compartidas pendientes." });
+    }
+});
+console.log("Endpoint GET /api/excursiones/shared/pending definido.");
+
+// POST /api/shared-excursions/:share_id/accept - Aceptar una excursión compartida
+app.post('/api/shared-excursions/:share_id/accept', authenticateToken, async (req, res) => {
+    const shareId = parseInt(req.params.share_id);
+    const acceptingUserId = req.user.id;
+    const acceptingUserClaseId = req.user.claseId;
+
+    console.log(`  Ruta: POST /api/shared-excursiones/${shareId}/accept, Usuario: ${req.user.email}`);
+
+    // a. Validate share_id
+    if (isNaN(shareId)) {
+        return res.status(400).json({ error: "ID de compartición inválido." });
+    }
+
+    // d. Accepting user must have an assigned class
+    if (req.user.rol !== 'TUTOR' || !acceptingUserClaseId) {
+        return res.status(400).json({ error: "Debes ser un tutor con una clase asignada para aceptar una excursión." });
+    }
+
+    try {
+        // b. Fetch the shared_excursions record
+        const shareRecord = await dbGetAsync("SELECT * FROM shared_excursions WHERE id = ?", [shareId]);
+        if (!shareRecord) {
+            return res.status(404).json({ error: "Invitación para compartir no encontrada." });
+        }
+
+        // c. Verify shared_with_usuario_id and status
+        if (shareRecord.shared_with_usuario_id !== acceptingUserId) {
+            return res.status(403).json({ error: "No estás autorizado para aceptar esta invitación." });
+        }
+        if (shareRecord.status !== 'pending') {
+            return res.status(400).json({ error: `Esta invitación ya ha sido ${shareRecord.status}.` });
+        }
+
+        // e. Fetch the original excursion data
+        const originalExcursion = await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [shareRecord.original_excursion_id]);
+        if (!originalExcursion) {
+            return res.status(404).json({ error: "La excursión original asociada a esta compartición ya no existe." });
+        }
+
+        // f. Create a new excursion (duplicate)
+        const nuevaExcursionData = {
+            nombre_excursion: originalExcursion.nombre_excursion, // Keep original name by default
+            actividad_descripcion: originalExcursion.actividad_descripcion,
+            lugar: originalExcursion.lugar,
+            fecha_excursion: originalExcursion.fecha_excursion, // Keep original date by default
+            hora_salida: originalExcursion.hora_salida,
+            hora_llegada: originalExcursion.hora_llegada,
+            coste_excursion_alumno: originalExcursion.coste_excursion_alumno,
+            vestimenta: originalExcursion.vestimenta,
+            transporte: originalExcursion.transporte,
+            justificacion_texto: originalExcursion.justificacion_texto,
+            notas_excursion: originalExcursion.notas_excursion,
+            creada_por_usuario_id: acceptingUserId, // The accepting tutor is the creator of this new copy
+            para_clase_id: acceptingUserClaseId    // Assign to accepting tutor's class
+        };
+
+        const sqlInsertExcursion = `
+            INSERT INTO excursiones (
+                nombre_excursion, actividad_descripcion, lugar, fecha_excursion, hora_salida, hora_llegada,
+                coste_excursion_alumno, vestimenta, transporte, justificacion_texto, notas_excursion,
+                creada_por_usuario_id, para_clase_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const paramsInsertExcursion = [
+            nuevaExcursionData.nombre_excursion, nuevaExcursionData.actividad_descripcion, nuevaExcursionData.lugar,
+            nuevaExcursionData.fecha_excursion, nuevaExcursionData.hora_salida, nuevaExcursionData.hora_llegada,
+            nuevaExcursionData.coste_excursion_alumno, nuevaExcursionData.vestimenta, nuevaExcursionData.transporte,
+            nuevaExcursionData.justificacion_texto, nuevaExcursionData.notas_excursion,
+            nuevaExcursionData.creada_por_usuario_id, nuevaExcursionData.para_clase_id
+        ];
+        
+        const resultInsertExcursion = await dbRunAsync(sqlInsertExcursion, paramsInsertExcursion);
+        const newExcursionId = resultInsertExcursion.lastID;
+
+        // g. Update the shared_excursions record
+        const sqlUpdateShare = `
+            UPDATE shared_excursions 
+            SET status = 'accepted', processed_at = datetime('now'), new_excursion_id_on_acceptance = ?
+            WHERE id = ?
+        `;
+        await dbRunAsync(sqlUpdateShare, [newExcursionId, shareId]);
+
+        // h. Fetch the newly created excursion
+        const acceptedExcursionDetails = await dbGetAsync(
+            `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+             FROM excursiones e 
+             JOIN usuarios u ON e.creada_por_usuario_id = u.id 
+             LEFT JOIN clases c ON e.para_clase_id = c.id 
+             WHERE e.id = ?`,
+            [newExcursionId]
+        );
+        
+        console.log(`  Compartición ID ${shareId} aceptada por Usuario ID ${acceptingUserId}. Nueva Excursión ID: ${newExcursionId}`);
+        res.status(200).json(acceptedExcursionDetails);
+
+    } catch (error) {
+        console.error(`  Error en POST /api/shared-excursions/${shareId}/accept:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al aceptar la excursión compartida." });
+    }
+});
+console.log("Endpoint POST /api/shared-excursions/:share_id/accept definido.");
+
+// POST /api/shared-excursions/:share_id/decline - Rechazar una excursión compartida
+app.post('/api/shared-excursions/:share_id/decline', authenticateToken, async (req, res) => {
+    const shareId = parseInt(req.params.share_id);
+    const decliningUserId = req.user.id;
+
+    console.log(`  Ruta: POST /api/shared-excursiones/${shareId}/decline, Usuario: ${req.user.email}`);
+
+    // a. Validate share_id
+    if (isNaN(shareId)) {
+        return res.status(400).json({ error: "ID de compartición inválido." });
+    }
+
+    // Ensure user is a TUTOR
+    if (req.user.rol !== 'TUTOR') {
+        return res.status(403).json({ error: "Acceso denegado. Solo para tutores." });
+    }
+    
+    try {
+        // b. Fetch the shared_excursions record
+        const shareRecord = await dbGetAsync("SELECT * FROM shared_excursions WHERE id = ?", [shareId]);
+        if (!shareRecord) {
+            return res.status(404).json({ error: "Invitación para compartir no encontrada." });
+        }
+
+        // c. Verify shared_with_usuario_id and status
+        if (shareRecord.shared_with_usuario_id !== decliningUserId) {
+            return res.status(403).json({ error: "No estás autorizado para rechazar esta invitación." });
+        }
+        if (shareRecord.status !== 'pending') {
+            return res.status(400).json({ error: `Esta invitación ya ha sido ${shareRecord.status}.` });
+        }
+
+        // d. Update the shared_excursions record
+        const sqlUpdateShare = `
+            UPDATE shared_excursions 
+            SET status = 'declined', processed_at = datetime('now')
+            WHERE id = ?
+        `;
+        await dbRunAsync(sqlUpdateShare, [shareId]);
+        
+        console.log(`  Compartición ID ${shareId} rechazada por Usuario ID ${decliningUserId}.`);
+        res.status(200).json({ message: "Excursión compartida rechazada." });
+
+    } catch (error) {
+        console.error(`  Error en POST /api/shared-excursiones/${shareId}/decline:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al rechazar la excursión compartida." });
+    }
+});
+console.log("Endpoint POST /api/shared-excursions/:share_id/decline definido.");
 
 // --- Gestión de Participaciones ---
 

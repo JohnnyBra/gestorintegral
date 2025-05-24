@@ -20,8 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const signoutButton = document.getElementById('signout_button');
 
     const mainNavSidebar = document.getElementById('main-nav-sidebar');
-    const navLinks = document.querySelectorAll('#main-nav-sidebar a');
-    const mainSections = document.querySelectorAll('.main-section');
+    const navLinks = document.querySelectorAll('#main-nav-sidebar a'); // This will pick up the new link
+    const mainSections = document.querySelectorAll('.main-section'); // This will pick up the new section
     
     const dashboardSummaryContentDiv = document.getElementById('dashboard-summary-content');
     const clasesContentDiv = document.getElementById('clases-content');
@@ -30,6 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const participacionesContentDiv = document.getElementById('participaciones-content');
     const adminUsuariosContentDiv = document.getElementById('admin-usuarios-content');
     const formAdminUsuarioWrapper = document.getElementById('formAdminUsuarioWrapper');
+    const sharedExcursionsContentDiv = document.getElementById('shared-excursions-content');
+
 
     // --- Modal Element Variables ---
     const excursionDetailModal = document.getElementById('excursion-detail-modal');
@@ -183,6 +185,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const isAdmin = currentUser.rol === 'DIRECCION';
         const adminUsuariosLinkLi = mainNavSidebar.querySelector('a[data-section="admin-usuarios"]');
         if (adminUsuariosLinkLi) adminUsuariosLinkLi.parentElement.style.display = isAdmin ? 'list-item' : 'none';
+        
+        const sharedExcursionsLinkLi = mainNavSidebar.querySelector('a[data-section="shared-excursions"]').parentElement;
+        if (sharedExcursionsLinkLi) sharedExcursionsLinkLi.style.display = (currentUser && currentUser.rol === 'TUTOR') ? 'list-item' : 'none';
     }
 
     function checkInitialLoginState() {
@@ -241,6 +246,9 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'alumnos': loadAlumnos(); break;
             case 'excursiones': loadExcursiones(); break;
             case 'participaciones': loadParticipaciones(); break;
+            case 'shared-excursions':
+                if (currentUser && currentUser.rol === 'TUTOR') loadPendingShares();
+                break;
             case 'admin-usuarios': if (currentUser && currentUser.rol === 'DIRECCION') loadAdminUsuarios(); break;
         }
     }
@@ -962,6 +970,120 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function handleShareExcursion(originalExcursionId, excursionName) {
+        if (!currentUser) {
+            alert("Error: Usuario no identificado.");
+            return;
+        }
+    
+        let tutoresDisponibles = [];
+        try {
+            const data = await apiFetch('/usuarios/tutores'); // Corrected endpoint
+            if (data && data.tutores) {
+                tutoresDisponibles = data.tutores;
+                if (currentUser.rol === 'TUTOR') {
+                    tutoresDisponibles = tutoresDisponibles.filter(tutor => tutor.id !== currentUser.id);
+                }
+            }
+            if (tutoresDisponibles.length === 0) {
+                alert("No hay otros tutores disponibles para compartir la excursión.");
+                return;
+            }
+        } catch (error) {
+            alert("Error al cargar la lista de tutores: " + error.message);
+            return;
+        }
+    
+        const existingModal = document.getElementById('shareExcursionModal');
+        if (existingModal) existingModal.remove();
+    
+        const modal = document.createElement('div');
+        modal.id = 'shareExcursionModal';
+        modal.className = 'simple-modal';
+    
+        const modalContent = document.createElement('div');
+        modalContent.className = 'simple-modal-content';
+    
+        const title = document.createElement('h4');
+        title.textContent = `Compartir Excursión: ${excursionName}`;
+    
+        const label = document.createElement('label');
+        label.setAttribute('for', 'shareTargetTutor');
+        label.textContent = 'Seleccionar tutor para compartir:';
+    
+        const select = document.createElement('select');
+        select.id = 'shareTargetTutor';
+        select.style.width = '100%';
+        select.style.padding = '8px';
+        select.style.marginBottom = '15px';
+    
+        if (tutoresDisponibles.length === 0) { 
+            const noTutorsOption = document.createElement('option');
+            noTutorsOption.value = "";
+            noTutorsOption.textContent = "No hay tutores disponibles";
+            select.appendChild(noTutorsOption);
+            select.disabled = true;
+        } else {
+            tutoresDisponibles.forEach(tutor => {
+                const option = document.createElement('option');
+                option.value = tutor.id;
+                option.textContent = `${tutor.nombre_completo} (ID: ${tutor.id})`;
+                select.appendChild(option);
+            });
+        }
+    
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'simple-modal-buttons';
+    
+        const acceptButton = document.createElement('button');
+        acceptButton.id = 'shareExcursionAccept';
+        acceptButton.textContent = 'Aceptar';
+        acceptButton.className = 'success';
+        if (tutoresDisponibles.length === 0) acceptButton.disabled = true;
+    
+        const cancelButton = document.createElement('button');
+        cancelButton.id = 'shareExcursionCancel';
+        cancelButton.textContent = 'Cancelar';
+        cancelButton.className = 'secondary';
+    
+        buttonsDiv.appendChild(acceptButton);
+        buttonsDiv.appendChild(cancelButton);
+    
+        modalContent.appendChild(title);
+        modalContent.appendChild(label);
+        modalContent.appendChild(select);
+        modalContent.appendChild(buttonsDiv);
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+    
+        modal.style.display = 'flex';
+    
+        cancelButton.onclick = () => {
+            modal.remove();
+        };
+    
+        acceptButton.onclick = async () => {
+            const target_usuario_id = select.value;
+            if (!target_usuario_id) {
+                alert("Por favor, selecciona un tutor.");
+                return;
+            }
+    
+            const selectedTutor = tutoresDisponibles.find(t => t.id == target_usuario_id);
+            const selectedTutorName = selectedTutor ? selectedTutor.nombre_completo : "el tutor seleccionado";
+    
+            try {
+                await apiFetch(`/excursiones/${originalExcursionId}/share`, 'POST', { target_usuario_id: parseInt(target_usuario_id) });
+                alert(`Excursión '${excursionName}' compartida exitosamente con ${selectedTutorName}.`);
+            } catch (error) {
+                alert(`Error al compartir la excursión: ${error.message}`);
+            } finally {
+                modal.remove();
+            }
+        };
+    }
+
+
     async function loadExcursiones() {
         if (!excursionesContentDiv || !currentToken) return;
         excursionesContentDiv.innerHTML = "<p>Cargando excursiones...</p>";
@@ -987,6 +1109,19 @@ document.addEventListener('DOMContentLoaded', () => {
                      if (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR') {
                         accionesHtml += ` <button class="duplicate-excursion info" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}" data-original-clase-id="${ex.para_clase_id === null ? 'null' : ex.para_clase_id}">Duplicar</button>`;
                     }
+                    // Share button logic
+                    let canShare = false;
+                    if (currentUser.rol === 'DIRECCION') {
+                        canShare = true;
+                    } else if (currentUser.rol === 'TUTOR') {
+                        if (ex.para_clase_id === null || ex.para_clase_id === currentUser.claseId) { // Tutor can share global or their own class's excursion
+                            canShare = true;
+                        }
+                    }
+                    if (canShare) {
+                         accionesHtml += ` <button class="share-excursion primary" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}">Compartir</button>`;
+                    }
+
 
                     html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
                 });
@@ -1020,6 +1155,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     handleDuplicateExcursion(id, nombre, originalClaseId);
                 });
             });
+            excursionesContentDiv.querySelectorAll('.share-excursion').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const id = e.target.dataset.id;
+                    const nombre = e.target.dataset.nombre;
+                    handleShareExcursion(id, nombre);
+                });
+            });
 
         } catch (error) {
             showGlobalError(`Error cargando excursiones: ${error.message}`, excursionesContentDiv);
@@ -1035,6 +1177,95 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(error){ showGlobalError(error.message, document.getElementById('formExcursionWrapper')); }
     }
     
+    // --- Shared Excursions ---
+    async function loadPendingShares() {
+        const contentDiv = document.getElementById('shared-excursions-content');
+        if (!contentDiv) { // Check if the element exists
+            console.error("Elemento shared-excursions-content no encontrado.");
+            return;
+        }
+        if (!currentUser || currentUser.rol !== 'TUTOR') {
+            contentDiv.innerHTML = "<p>Acceso denegado o sección no disponible.</p>";
+            return;
+        }
+        contentDiv.innerHTML = "<p>Cargando excursiones recibidas...</p>";
+        try {
+            const data = await apiFetch('/excursiones/shared/pending'); 
+            if (!data || !data.pending_shares || data.pending_shares.length === 0) {
+                contentDiv.innerHTML = "<p>No tienes excursiones pendientes de aceptar o rechazar.</p>";
+                return;
+            }
+
+            let html = `
+                <table class="tabla-datos">
+                    <thead>
+                        <tr>
+                            <th>Excursión Original</th>
+                            <th>Fecha Original</th>
+                            <th>Lugar Original</th>
+                            <th>Compartida Por</th>
+                            <th>Fecha de Envío</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.pending_shares.map(share => `
+                            <tr data-share-id="${share.share_id}">
+                                <td>${share.nombre_excursion}</td>
+                                <td>${share.fecha_excursion ? share.fecha_excursion.split('T')[0] : 'N/D'}</td>
+                                <td>${share.lugar}</td>
+                                <td>${share.nombre_compartido_por}</td>
+                                <td>${share.shared_at ? new Date(share.shared_at).toLocaleString() : 'N/D'}</td>
+                                <td class="actions-cell">
+                                    <button class="accept-share success" data-share-id="${share.share_id}" data-excursion-nombre="${share.nombre_excursion}">Aceptar</button>
+                                    <button class="decline-share danger" data-share-id="${share.share_id}">Declinar</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+            contentDiv.innerHTML = html;
+
+            contentDiv.querySelectorAll('.accept-share').forEach(button => {
+                button.addEventListener('click', (e) => handleAcceptShare(e.target.dataset.shareId, e.target.dataset.excursionNombre));
+            });
+            contentDiv.querySelectorAll('.decline-share').forEach(button => {
+                button.addEventListener('click', (e) => handleDeclineShare(e.target.dataset.shareId));
+            });
+
+        } catch (error) {
+            showGlobalError("Error cargando excursiones compartidas: " + error.message, contentDiv);
+        }
+    }
+
+    async function handleAcceptShare(shareId, excursionNombre) {
+        if (!currentUser || currentUser.rol !== 'TUTOR' || !currentUser.claseId) {
+            alert("Debes ser un tutor con una clase asignada para aceptar excursiones.");
+            return;
+        }
+        if (!confirm(`¿Aceptar la excursión "${excursionNombre}"? Se creará una copia para tu clase: ${currentUser.claseNombre}. Podrás editarla después.`)) return;
+        
+        try {
+            await apiFetch(`/shared-excursions/${shareId}/accept`, 'POST');
+            alert("Excursión aceptada y añadida a tus excursiones.");
+            loadPendingShares(); 
+            // navigateTo('excursiones'); // Optionally navigate
+        } catch (error) {
+            alert("Error al aceptar la excursión: " + error.message);
+        }
+    }
+
+    async function handleDeclineShare(shareId) {
+        if (!confirm("¿Seguro que quieres declinar esta excursión compartida?")) return;
+        try {
+            await apiFetch(`/shared-excursions/${shareId}/decline`, 'POST');
+            alert("Excursión compartida declinada.");
+            loadPendingShares(); 
+        } catch (error) {
+            alert("Error al declinar la excursión: " + error.message);
+        }
+    }
+
     // --- Participaciones (Código existente) ---
     async function loadParticipaciones(excursionIdFiltroExterno = null, nombreExcursionFiltroExterno = null) {
         if (!participacionesContentDiv) return;
@@ -1373,7 +1604,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // TODO: Consider adding a loading indicator here
         try {
-            // The endpoint was already /api/excursiones/:id in previous setup for editing, so it should be correct.
+            // The endpoint was already /excursiones/:id in previous setup for editing, so it should be correct.
             const excursionDetails = await apiFetch(`/excursiones/${excursionId}`); 
             if (excursionDetails) { // apiFetch returns the excursion object directly if successful
                 openExcursionModal(excursionDetails);

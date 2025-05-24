@@ -73,6 +73,21 @@ CREATE TABLE IF NOT EXISTS excursiones (
         ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS shared_excursions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_excursion_id INTEGER,
+    shared_by_usuario_id INTEGER,
+    shared_with_usuario_id INTEGER,
+    status TEXT CHECK(status IN ('pending', 'accepted', 'declined')) NOT NULL DEFAULT 'pending',
+    shared_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    processed_at DATETIME NULLABLE,
+    new_excursion_id_on_acceptance INTEGER NULLABLE,
+    FOREIGN KEY (original_excursion_id) REFERENCES excursiones(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_by_usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_with_usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (new_excursion_id_on_acceptance) REFERENCES excursiones(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS participaciones_excursion (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     alumno_id INTEGER NOT NULL,
