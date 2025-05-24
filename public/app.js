@@ -978,7 +978,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         let tutoresDisponibles = [];
         try {
-            const data = await apiFetch('/api/usuarios/tutores'); // Corrected endpoint
+            const data = await apiFetch('/usuarios/tutores'); // Corrected endpoint
             if (data && data.tutores) {
                 tutoresDisponibles = data.tutores;
                 if (currentUser.rol === 'TUTOR') {
