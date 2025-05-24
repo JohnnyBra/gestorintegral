@@ -55,6 +55,9 @@
                     <p>Bienvenido/a <span class="current-user-name" style="font-weight:bold;"></span>.</p>
                     <div id="dashboard-summary-content">
                         </div>
+                    <hr class="dashboard-divider">
+                    <h4>Calendario de Excursiones</h4>
+                    <div id="excursion-calendar-container"></div>
                 </div>
 
                <div id="clases-section" class="main-section" style="display:none;">
@@ -93,7 +96,23 @@
 
             </main>
         </div>
+
+        <div id="excursion-detail-modal" style="display:none;">
+            <h4 id="modal-excursion-title"></h4>
+            <p><strong>Date:</strong> <span id="modal-excursion-date"></span></p>
+            <p><strong>Place:</strong> <span id="modal-excursion-place"></span></p>
+            <p><strong>Description:</strong> <span id="modal-excursion-description"></span></p>
+            <p><strong>Departure Time:</strong> <span id="modal-excursion-hora-salida"></span></p>
+            <p><strong>Arrival Time:</strong> <span id="modal-excursion-hora-llegada"></span></p>
+            <p><strong>Cost:</strong> <span id="modal-excursion-coste"></span></p>
+            <p><strong>Clothing:</strong> <span id="modal-excursion-vestimenta"></span></p>
+            <p><strong>Transport:</strong> <span id="modal-excursion-transporte"></span></p>
+            <p><strong>Justification:</strong> <span id="modal-excursion-justificacion"></span></p>
+            <p><strong>Notes:</strong> <span id="modal-excursion-notas"></span></p>
+            <button id="modal-close-button">Close</button>
+        </div>
     </div>
     <script src="app.js"></script>
+    <script src="calendar.js"></script>
 </body>
 </html>

@@ -143,6 +143,145 @@ main.content-area {
     border-radius: 8px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 }
+
+/* Excursion Detail Modal Styling */
+#excursion-detail-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #fff;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    z-index: 1000; /* Ensure it's above other content */
+    width: 80%;
+    max-width: 500px;
+}
+
+#excursion-detail-modal h4 {
+    margin-top: 0;
+    color: #333;
+}
+
+#excursion-detail-modal p {
+    margin-bottom: 10px;
+    line-height: 1.6;
+}
+
+#excursion-detail-modal strong {
+    color: #555;
+}
+
+#modal-close-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    float: right; /* Align button to the right */
+}
+
+#modal-close-button:hover {
+    background-color: #0056b3;
+}
+
+/* Calendar Styles */
+#excursion-calendar-container {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.calendar-header h4 {
+    margin: 0;
+    font-size: 1.3em;
+    color: #333;
+}
+
+.calendar-header button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.2s ease;
+}
+
+.calendar-header button:hover {
+    background-color: #0056b3;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px; /* Creates the border effect between cells */
+    background-color: #d0d0d0; /* Grid line color */
+    border: 1px solid #d0d0d0; /* Outer border for the grid */
+}
+
+.calendar-day-header {
+    background-color: #e9ecef;
+    padding: 10px 5px; /* Adjusted padding */
+    font-weight: bold;
+    text-align: center;
+    font-size: 0.85em; /* Adjusted font size */
+    color: #495057;
+    line-height: 1.2;
+}
+
+.calendar-day {
+    background-color: #fff;
+    padding: 10px 5px; /* Adjusted padding */
+    text-align: center;
+    min-height: 70px; /* Adjusted min-height */
+    font-size: 0.9em; /* Adjusted font size */
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    transition: background-color 0.2s ease;
+}
+
+.calendar-day.empty {
+    background-color: #f5f5f5;
+    cursor: default;
+}
+
+.calendar-day:not(.empty):hover {
+    background-color: #e9e9e9;
+    cursor: pointer;
+}
+
+.calendar-day .date-number { /* If you wrap the number in a span */
+    font-size: 0.95em;
+}
+
+.calendar-day.has-excursion {
+    background-color: #ffebcc; /* Light orange, for example */
+    font-weight: bold;
+    cursor: pointer; /* Indicate it's clickable */
+}
+.calendar-day.has-excursion:hover {
+    background-color: #ffd8a8;
+}
 #login-section h3 { text-align:center; margin-bottom: 20px; font-size: 1.6em; color: #333; }
 #login-section div { margin-bottom: 1rem; }
 #login-section label { display: block; margin-bottom: 0.4rem; font-size:0.9em; color: #555; }
