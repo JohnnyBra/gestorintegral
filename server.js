@@ -1,4 +1,4 @@
-/ --- server.js (CORREGIDO) ---
+// --- server.js (CORREGIDO) ---
 console.log("==================================================");
 console.log(" Iniciando server.js (Versión para Arranque Estable)");
 console.log("==================================================");
