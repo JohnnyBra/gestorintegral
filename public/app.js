@@ -730,7 +730,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Excursiones (Código existente con pequeñas adaptaciones si es necesario) ---
+    // --- Excursiones ---
     async function showFormExcursion(idExcursion = null, excursionData = {}) {
         const formExcursionWrapper = document.getElementById('formExcursionWrapper');
         if (!formExcursionWrapper) return;
@@ -819,6 +819,57 @@ document.addEventListener('DOMContentLoaded', () => {
             if(submitButton) submitButton.disabled = false;
         }
     }
+
+    async function handleDuplicateExcursion(excursionId, excursionName, originalParaClaseIdStr) {
+        if (!currentUser) {
+            alert("Error: Usuario no identificado.");
+            return;
+        }
+    
+        let target_clase_id = null; // Default to global
+        const originalParaClaseId = (originalParaClaseIdStr === 'null' || originalParaClaseIdStr === '' || originalParaClaseIdStr === undefined) ? null : parseInt(originalParaClaseIdStr);
+    
+        if (currentUser.rol === 'DIRECCION') {
+            const input = prompt(`Vas a duplicar la excursión: '${excursionName}'.\nOriginalmente era para: ${originalParaClaseId === null ? 'GLOBAL' : `Clase ID ${originalParaClaseId}`}.\n\nIngresa el ID de la NUEVA clase de destino (deja vacío para hacerla GLOBAL), o escribe 'cancelar' para abortar.`);
+            if (input === null || input.toLowerCase() === 'cancelar') {
+                alert("Duplicación cancelada.");
+                return;
+            }
+            if (input.trim() === '') {
+                target_clase_id = null; // Global
+            } else {
+                const parsedId = parseInt(input);
+                if (isNaN(parsedId)) {
+                    alert("ID de clase inválido. Debe ser un número.");
+                    return;
+                }
+                target_clase_id = parsedId;
+            }
+        } else if (currentUser.rol === 'TUTOR') {
+            if (!currentUser.claseId) {
+                alert("No tienes una clase asignada. No puedes duplicar esta excursión para una clase específica sin tener una clase asignada.");
+                return;
+            }
+            const confirmMessage = `Vas a duplicar la excursión: '${excursionName}'.\nOriginalmente era para: ${originalParaClaseId === null ? 'GLOBAL' : `Clase ID ${originalParaClaseId}`}.\n\nLa copia será asignada a TU CLASE: ${currentUser.claseNombre} (ID: ${currentUser.claseId}).\n\n¿Continuar?`;
+            if (!confirm(confirmMessage)) {
+                alert("Duplicación cancelada.");
+                return;
+            }
+            target_clase_id = currentUser.claseId;
+        } else {
+            alert("No tienes permisos para duplicar excursiones.");
+            return;
+        }
+    
+        try {
+            const duplicatedExcursion = await apiFetch(`/excursiones/${excursionId}/duplicate`, 'POST', { target_clase_id });
+            alert(`Excursión '${excursionName}' duplicada con éxito. Nueva excursión: '${duplicatedExcursion.nombre_excursion}'.`);
+            loadExcursiones();
+        } catch (error) {
+            alert(`Error al duplicar la excursión: ${error.message}`);
+        }
+    }
+
     async function loadExcursiones() {
         if (!excursionesContentDiv || !currentToken) return;
         excursionesContentDiv.innerHTML = "<p>Cargando excursiones...</p>";
@@ -835,16 +886,27 @@ document.addEventListener('DOMContentLoaded', () => {
             html += `<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Clase Destino</th><th>Creador</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.excursiones && data.excursiones.length > 0) {
                 data.excursiones.forEach(ex => {
-                    html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">
-                        <button class="view-participaciones secondary" data-excursionid="${ex.id}" data-excursionnombre="${ex.nombre_excursion}">Participaciones</button>
-                        ${ (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && ex.creada_por_usuario_id === currentUser.id) || (currentUser.rol === 'TUTOR' && ex.para_clase_id === currentUser.claseId) ) ? 
-                            `<button class="edit-excursion warning" data-id="${ex.id}">Editar</button><button class="delete-excursion danger" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}">Eliminar</button>` : ''}
-                        </td></tr>`;});
+                    let accionesHtml = `<button class="view-participaciones secondary" data-excursionid="${ex.id}" data-excursionnombre="${ex.nombre_excursion}">Participaciones</button>`;
+                    
+                    if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && ex.creada_por_usuario_id === currentUser.id) || (currentUser.rol === 'TUTOR' && ex.para_clase_id === currentUser.claseId) ) {
+                        accionesHtml += ` <button class="edit-excursion warning" data-id="${ex.id}">Editar</button>`;
+                        accionesHtml += ` <button class="delete-excursion danger" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}">Eliminar</button>`;
+                    }
+                     if (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR') {
+                        accionesHtml += ` <button class="duplicate-excursion info" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}" data-original-clase-id="${ex.para_clase_id === null ? 'null' : ex.para_clase_id}">Duplicar</button>`;
+                    }
+
+                    html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
+                });
             } else { html += '<tr><td colspan="6" style="text-align:center;">No hay excursiones.</td></tr>'; }
             html += '</tbody></table>';
             excursionesContentDiv.innerHTML = html;
             excursionesContentDiv.insertBefore(formExcursionWrapper, excursionesContentDiv.firstChild);
-            if(document.getElementById('btnShowFormNuevaExcursion')) document.getElementById('btnShowFormNuevaExcursion').onclick = () => showFormExcursion();
+            
+            if(document.getElementById('btnShowFormNuevaExcursion')) {
+                document.getElementById('btnShowFormNuevaExcursion').onclick = () => showFormExcursion();
+            }
+            
             excursionesContentDiv.querySelectorAll('.edit-excursion').forEach(b => b.onclick = async (e) => {
                 const excursionId = e.target.dataset.id;
                 try {
@@ -858,6 +920,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 sessionStorage.setItem('filtroParticipacionesNombreExcursion',e.target.dataset.excursionnombre); 
                 navigateTo('participaciones'); 
             });
+            excursionesContentDiv.querySelectorAll('.duplicate-excursion').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const id = e.target.dataset.id;
+                    const nombre = e.target.dataset.nombre;
+                    const originalClaseId = e.target.dataset.originalClaseId;
+                    handleDuplicateExcursion(id, nombre, originalClaseId);
+                });
+            });
+
         } catch (error) {
             showGlobalError(`Error cargando excursiones: ${error.message}`, excursionesContentDiv);
              excursionesContentDiv.insertBefore(formExcursionWrapper, excursionesContentDiv.firstChild);
