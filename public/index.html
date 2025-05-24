@@ -18,6 +18,9 @@
                     <li><a href="#" data-section="alumnos"><i class="fas fa-user-graduate"></i> Alumnos</a></li>
                     <li><a href="#" data-section="excursiones"><i class="fas fa-map-signs"></i> Excursiones</a></li>
                     <li><a href="#" data-section="participaciones"><i class="fas fa-clipboard-check"></i> Participaciones</a></li>
+                    <li id="nav-shared-excursions" style="display:none;">
+                        <a href="#" data-section="shared-excursions"><i class="fas fa-inbox"></i> Recibidas</a>
+                    </li>
                     <li id="nav-admin-usuarios" style="display:none;"> 
                         <a href="#" data-section="admin-usuarios"><i class="fas fa-users-cog"></i> Admin Usuarios</a>
                     </li>
@@ -82,6 +85,13 @@
                     <h2>Gestión de Participaciones en Excursiones</h2>
                     <div id="participaciones-content">
                         </div>
+                </div>
+
+                <div id="shared-excursions-section" class="main-section" style="display:none;">
+                    <h2>Excursiones Recibidas Pendientes</h2>
+                    <div id="shared-excursions-content">
+                        <!-- Pending shares will be rendered here -->
+                    </div>
                 </div>
                 
                 <div id="admin-usuarios-section" class="main-section" style="display:none;">
