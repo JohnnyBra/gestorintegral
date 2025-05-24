@@ -1,4 +1,4 @@
-/ --- public/app.js (Revisado y Mejorado a partir de tu versión) ---
+// --- public/app.js (Revisado y Mejorado a partir de tu versión) ---
 document.addEventListener('DOMContentLoaded', () => {
     // --- Estado Global del Frontend ---
     let currentCalendarYear = new Date().getFullYear();
