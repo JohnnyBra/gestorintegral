@@ -1190,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         contentDiv.innerHTML = "<p>Cargando excursiones recibidas...</p>";
         try {
-            const data = await apiFetch('/api/excursiones/shared/pending'); 
+            const data = await apiFetch('/excursiones/shared/pending'); 
             if (!data || !data.pending_shares || data.pending_shares.length === 0) {
                 contentDiv.innerHTML = "<p>No tienes excursiones pendientes de aceptar o rechazar.</p>";
                 return;
@@ -1246,7 +1246,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm(`¿Aceptar la excursión "${excursionNombre}"? Se creará una copia para tu clase: ${currentUser.claseNombre}. Podrás editarla después.`)) return;
         
         try {
-            await apiFetch(`/api/shared-excursions/${shareId}/accept`, 'POST');
+            await apiFetch(`/shared-excursions/${shareId}/accept`, 'POST');
             alert("Excursión aceptada y añadida a tus excursiones.");
             loadPendingShares(); 
             // navigateTo('excursiones'); // Optionally navigate
@@ -1258,7 +1258,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleDeclineShare(shareId) {
         if (!confirm("¿Seguro que quieres declinar esta excursión compartida?")) return;
         try {
-            await apiFetch(`/api/shared-excursions/${shareId}/decline`, 'POST');
+            await apiFetch(`/shared-excursions/${shareId}/decline`, 'POST');
             alert("Excursión compartida declinada.");
             loadPendingShares(); 
         } catch (error) {
@@ -1604,7 +1604,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // TODO: Consider adding a loading indicator here
         try {
-            // The endpoint was already /api/excursiones/:id in previous setup for editing, so it should be correct.
+            // The endpoint was already /excursiones/:id in previous setup for editing, so it should be correct.
             const excursionDetails = await apiFetch(`/excursiones/${excursionId}`); 
             if (excursionDetails) { // apiFetch returns the excursion object directly if successful
                 openExcursionModal(excursionDetails);
