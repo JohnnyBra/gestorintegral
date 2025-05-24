@@ -728,14 +728,6 @@ console.log("Endpoint POST /api/alumnos (crear individual) definido.");
 
 
 // --- Gestión de Excursiones ---
-// (Pega aquí tus endpoints CRUD COMPLETOS para /api/excursiones. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
-// ...
-
-// --- Gestión de Participaciones ---
-// (Pega aquí tus endpoints CRUD COMPLETOS para /api/participaciones. Asegúrate de que usen dbGetAsync, dbRunAsync, dbAllAsync y la lógica de roles)
-// ...
-
-// --- Gestión de Excursiones ---
 app.post('/api/excursiones', authenticateToken, async (req, res) => {
     console.log("  Ruta: POST /api/excursiones, Body:", req.body);
     // Destructure with _raw suffix to indicate pre-trimmed values
@@ -1171,6 +1163,153 @@ app.delete('/api/excursiones/:id', authenticateToken, async (req, res) => {
     }
 });
 console.log("Endpoint DELETE /api/excursiones/:id definido.");
+
+// POST /api/excursiones/:id/duplicate - Duplicar una excursión
+app.post('/api/excursiones/:id/duplicate', authenticateToken, async (req, res) => {
+    const originalExcursionId = parseInt(req.params.id);
+    const { target_clase_id } = req.body; // Puede ser undefined, null, o un ID de clase
+    const duplicatorUserId = req.user.id;
+    const duplicatorUserRol = req.user.rol;
+    const duplicatorUserClaseId = req.user.claseId; // Puede ser null o undefined
+
+    console.log(`  Ruta: POST /api/excursiones/${originalExcursionId}/duplicate, Usuario: ${req.user.email}, Body: { target_clase_id: ${target_clase_id} }`);
+
+    if (isNaN(originalExcursionId)) {
+        return res.status(400).json({ error: "ID de excursión original inválido." });
+    }
+
+    try {
+        // 1. Fetch Original Excursion
+        const originalExcursion = await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [originalExcursionId]);
+        if (!originalExcursion) {
+            return res.status(404).json({ error: "Excursión original no encontrada." });
+        }
+
+        // 2. Handle Permissions (RBAC) for Duplicating
+        let canDuplicate = false;
+        if (duplicatorUserRol === 'DIRECCION') {
+            canDuplicate = true;
+        } else if (duplicatorUserRol === 'TUTOR') {
+            if (!duplicatorUserClaseId && originalExcursion.para_clase_id !== null) {
+                 return res.status(403).json({ error: "Tutor sin clase asignada no puede duplicar una excursión que originalmente era para una clase específica." });
+            }
+            if (originalExcursion.para_clase_id === null) { // Global excursion
+                canDuplicate = true;
+            } else if (originalExcursion.para_clase_id === duplicatorUserClaseId) { // Excursion for tutor's own class
+                canDuplicate = true;
+            } else {
+                return res.status(403).json({ error: "Tutores no pueden duplicar excursiones destinadas a otras clases específicas." });
+            }
+        }
+
+        if (!canDuplicate) {
+            return res.status(403).json({ error: "No tiene permisos para duplicar esta excursión." });
+        }
+
+        // 3. Prepare Data for the New Excursion - Determine finalParaClaseId
+        let finalParaClaseId;
+
+        if (target_clase_id !== undefined && target_clase_id !== null && String(target_clase_id).trim() !== '') {
+            const idClaseNum = parseInt(target_clase_id);
+            if (isNaN(idClaseNum)) {
+                return res.status(400).json({ error: "target_clase_id proporcionado es inválido (no es un número)." });
+            }
+
+            if (duplicatorUserRol === 'DIRECCION') {
+                const claseDestino = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [idClaseNum]);
+                if (!claseDestino) {
+                    return res.status(404).json({ error: `La clase de destino (target_clase_id ${idClaseNum}) no existe.` });
+                }
+                finalParaClaseId = idClaseNum;
+            } else if (duplicatorUserRol === 'TUTOR') {
+                if (!duplicatorUserClaseId) {
+                     return res.status(403).json({ error: "Tutor sin clase asignada no puede asignar la excursión duplicada a una clase específica." });
+                }
+                if (idClaseNum !== duplicatorUserClaseId) {
+                    return res.status(403).json({ error: "Tutores solo pueden asignar la excursión duplicada a su propia clase." });
+                }
+                finalParaClaseId = idClaseNum;
+            }
+        } else if (target_clase_id === null || (target_clase_id !== undefined && String(target_clase_id).trim() === '')) { 
+            finalParaClaseId = null;
+        } else { // target_clase_id is undefined (not provided in body)
+            if (duplicatorUserRol === 'DIRECCION') {
+                finalParaClaseId = null; 
+            } else if (duplicatorUserRol === 'TUTOR') {
+                if (!duplicatorUserClaseId) {
+                    if (originalExcursion.para_clase_id !== null) { // Tutor sin clase intentando duplicar una de clase sin especificar target
+                         return res.status(400).json({ error: "Tutor sin clase asignada debe especificar target_clase_id (nulo para global) si la excursión original era para una clase." });
+                    }
+                    finalParaClaseId = null; // Tutor sin clase, duplica global a global
+                } else {
+                    finalParaClaseId = duplicatorUserClaseId; // Defaults to tutor's own class
+                }
+            }
+        }
+        
+        // 4. Prepare Data for the New Excursion - Copy fields
+        const nombreNuevaExcursion = originalExcursion.nombre_excursion;
+
+        const nuevaExcursionData = {
+            nombre_excursion: nombreNuevaExcursion,
+            actividad_descripcion: originalExcursion.actividad_descripcion,
+            lugar: originalExcursion.lugar,
+            fecha_excursion: originalExcursion.fecha_excursion,
+            hora_salida: originalExcursion.hora_salida,
+            hora_llegada: originalExcursion.hora_llegada,
+            coste_excursion_alumno: originalExcursion.coste_excursion_alumno,
+            vestimenta: originalExcursion.vestimenta,
+            transporte: originalExcursion.transporte,
+            justificacion_texto: originalExcursion.justificacion_texto,
+            notas_excursion: originalExcursion.notas_excursion,
+            creada_por_usuario_id: duplicatorUserId,
+            para_clase_id: finalParaClaseId
+        };
+
+        // 5. Insert the New Excursion
+        const sqlInsert = `
+            INSERT INTO excursiones (
+                nombre_excursion, actividad_descripcion, lugar, fecha_excursion, hora_salida, hora_llegada,
+                coste_excursion_alumno, vestimenta, transporte, justificacion_texto, notas_excursion,
+                creada_por_usuario_id, para_clase_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const paramsInsert = [
+            nuevaExcursionData.nombre_excursion, nuevaExcursionData.actividad_descripcion, nuevaExcursionData.lugar,
+            nuevaExcursionData.fecha_excursion, nuevaExcursionData.hora_salida, nuevaExcursionData.hora_llegada,
+            nuevaExcursionData.coste_excursion_alumno, nuevaExcursionData.vestimenta, nuevaExcursionData.transporte,
+            nuevaExcursionData.justificacion_texto, nuevaExcursionData.notas_excursion,
+            nuevaExcursionData.creada_por_usuario_id, nuevaExcursionData.para_clase_id
+        ];
+
+        const result = await dbRunAsync(sqlInsert, paramsInsert);
+        const nuevaExcursionId = result.lastID;
+
+        const excursionDuplicada = await dbGetAsync(
+            `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+             FROM excursiones e 
+             JOIN usuarios u ON e.creada_por_usuario_id = u.id 
+             LEFT JOIN clases c ON e.para_clase_id = c.id 
+             WHERE e.id = ?`,
+            [nuevaExcursionId]
+        );
+
+        console.log(`  Excursión ID ${originalExcursionId} duplicada a nueva Excursión ID ${nuevaExcursionId} por Usuario ID: ${duplicatorUserId} para Clase ID: ${finalParaClaseId === null ? 'GLOBAL' : finalParaClaseId}`);
+        res.status(201).json(excursionDuplicada);
+
+    } catch (error) {
+        console.error(`  Error en POST /api/excursiones/${originalExcursionId}/duplicate:`, error.message);
+        if (error.message.includes("FOREIGN KEY constraint failed")) {
+            if (error.message.includes("clases")) {
+                 return res.status(400).json({ error: "La clase de destino especificada (target_clase_id) no existe o es inválida." });
+            } else if (error.message.includes("usuarios")){
+                 return res.status(500).json({ error: "Error interno: El usuario creador no parece existir."});
+            }
+        }
+        res.status(500).json({ error: "Error interno del servidor al duplicar la excursión." });
+    }
+});
+console.log("Endpoint POST /api/excursiones/:id/duplicate definido.");
 
 // --- Gestión de Participaciones ---
 

@@ -2,8 +2,8 @@
 let currentCalendarYear = new Date().getFullYear();
 let currentCalendarMonth = new Date().getMonth(); // 0-indexed
 
-const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+const dayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]; // MODIFIED for Monday start
 
 // --- Calendar Helper Functions ---
 function getDaysInMonth(year, month) {
@@ -11,7 +11,8 @@ function getDaysInMonth(year, month) {
 }
 
 function getFirstDayOfMonth(year, month) {
-    return new Date(year, month, 1).getDay(); // 0 for Sunday
+    const day = new Date(year, month, 1).getDay(); // Sunday is 0, Monday is 1, ...
+    return (day === 0) ? 6 : day - 1; // MODIFIED: Monday is 0, Sunday is 6
 }
 
 // --- Process Excursions and Mark Days ---
@@ -94,7 +95,7 @@ function renderExcursionCalendar(year, month, excursions = []) {
 
     const prevButton = document.createElement('button');
     prevButton.id = 'calendar-prev-month';
-    prevButton.textContent = 'Previous';
+    prevButton.textContent = 'Anterior'; // TRANSLATED
     prevButton.onclick = () => {
         currentCalendarMonth--;
         if (currentCalendarMonth < 0) {
@@ -109,7 +110,7 @@ function renderExcursionCalendar(year, month, excursions = []) {
 
     const nextButton = document.createElement('button');
     nextButton.id = 'calendar-next-month';
-    nextButton.textContent = 'Next';
+    nextButton.textContent = 'Siguiente'; // TRANSLATED
     nextButton.onclick = () => {
         currentCalendarMonth++;
         if (currentCalendarMonth > 11) {
@@ -136,7 +137,7 @@ function renderExcursionCalendar(year, month, excursions = []) {
     });
 
     const daysInMonth = getDaysInMonth(year, month);
-    const firstDay = getFirstDayOfMonth(year, month);
+    const firstDay = getFirstDayOfMonth(year, month); // This will now return 0 for Monday
 
     for (let i = 0; i < firstDay; i++) {
         const emptyCell = document.createElement('div');
@@ -163,12 +164,12 @@ function renderExcursionCalendar(year, month, excursions = []) {
     if (window.dashboardExcursions === undefined) { // Indicates fetch failure if app.js sets it to undefined initially or on error
         const errorMessage = document.createElement('p');
         errorMessage.className = 'calendar-message error-message';
-        errorMessage.textContent = 'Error al cargar datos de excursiones.';
+        errorMessage.textContent = 'Error al cargar datos de excursiones.'; // Already Spanish
         calendarContainer.appendChild(errorMessage);
     } else if (excursions.length === 0) {
         const noExcursionsMessage = document.createElement('p');
         noExcursionsMessage.className = 'calendar-message'; // General message class
-        noExcursionsMessage.textContent = 'No hay excursiones programadas para este mes.';
+        noExcursionsMessage.textContent = 'No hay excursiones programadas para este mes.'; // Already Spanish
         calendarContainer.appendChild(noExcursionsMessage);
     }
 }
