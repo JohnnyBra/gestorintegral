@@ -1073,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedTutorName = selectedTutor ? selectedTutor.nombre_completo : "el tutor seleccionado";
     
             try {
-                await apiFetch(`/api/excursiones/${originalExcursionId}/share`, 'POST', { target_usuario_id: parseInt(target_usuario_id) });
+                await apiFetch(`/excursiones/${originalExcursionId}/share`, 'POST', { target_usuario_id: parseInt(target_usuario_id) });
                 alert(`Excursión '${excursionName}' compartida exitosamente con ${selectedTutorName}.`);
             } catch (error) {
                 alert(`Error al compartir la excursión: ${error.message}`);
