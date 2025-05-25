@@ -1287,18 +1287,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Participaciones (Código existente) ---
-    async function loadParticipaciones(excursionIdFiltroExterno = null, nombreExcursionFiltroExterno = null) {
+    async function loadParticipaciones() { // Removed parameters, will rely on sessionStorage or user selection
         if (!participacionesContentDiv) return;
         participacionesContentDiv.innerHTML = "<p>Cargando participaciones...</p>";
-        const excursionIdActual = excursionIdFiltroExterno || sessionStorage.getItem('filtroParticipacionesExcursionId');
-        const nombreExcursionActual = nombreExcursionFiltroExterno || sessionStorage.getItem('filtroParticipacionesNombreExcursion');
+        
         let selectExcursionesHtml = '<option value="">-- Selecciona excursión --</option>';
+        let dataExcursiones;
         try {
-            const dataExcursiones = await apiFetch('/excursiones');
+            dataExcursiones = await apiFetch('/excursiones');
             (dataExcursiones.excursiones || []).forEach(ex => {
-                selectExcursionesHtml += `<option value="${ex.id}" ${excursionIdActual == ex.id ? 'selected' : ''}>${ex.nombre_excursion} (${ex.fecha_excursion})</option>`;
+                // The selected attribute will be handled after checking session storage
+                selectExcursionesHtml += `<option value="${ex.id}">${ex.nombre_excursion} (${new Date(ex.fecha_excursion).toLocaleDateString()})</option>`;
             });
-        } catch (error) { selectExcursionesHtml = '<option value="">Error cargando</option>'; }
+        } catch (error) { 
+            selectExcursionesHtml = '<option value="">Error cargando excursiones</option>'; 
+            console.error("Error fetching excursions for participation filter:", error);
+        }
+
         let filtroClaseHtml = '';
         if (currentUser.rol === 'DIRECCION') {
             filtroClaseHtml = `<label for="selectFiltroClaseParticipaciones">Filtrar Clase:</label><select id="selectFiltroClaseParticipaciones"><option value="">-- Todas --</option>`;
@@ -1306,38 +1311,78 @@ document.addEventListener('DOMContentLoaded', () => {
                  try {
                     const dataClases = await apiFetch('/clases');
                     listaDeClasesGlobal = dataClases.clases || [];
-                } catch (error) { console.error("Error cargando clases", error); }
+                } catch (error) { console.error("Error cargando clases para filtro de participaciones:", error); }
             }
             listaDeClasesGlobal.forEach(clase => filtroClaseHtml += `<option value="${clase.id}">${clase.nombre_clase}</option>`);
             filtroClaseHtml += `</select>`;
         }
-        let html = `<h3>Participación en Excursiones</h3><div class="filtros-participaciones"><label>Excursión:</label><select id="selectExcursionParticipaciones">${selectExcursionesHtml}</select>${filtroClaseHtml}</div><div id="resumenParticipacionesContainer"></div><div id="tablaParticipacionesContainer"></div>`;
+        
+        let html = `<h3>Participación en Excursiones</h3>
+                    <div class="filtros-participaciones">
+                        <label>Excursión:</label><select id="selectExcursionParticipaciones">${selectExcursionesHtml}</select>
+                        ${filtroClaseHtml}
+                    </div>
+                    <div id="resumenParticipacionesContainer"></div>
+                    <div id="tablaParticipacionesContainer"></div>`;
         participacionesContentDiv.innerHTML = html;
+
         const selectExcursion = document.getElementById('selectExcursionParticipaciones');
+        const tablaContainer = document.getElementById('tablaParticipacionesContainer');
+        const resumenContainer = document.getElementById('resumenParticipacionesContainer');
+
         if (selectExcursion) {
             selectExcursion.onchange = (e) => {
                 const selectedExId = e.target.value;
-                const selectedExNombre = e.target.options[e.target.selectedIndex].text;
-                sessionStorage.setItem('filtroParticipacionesExcursionId', selectedExId);
-                sessionStorage.setItem('filtroParticipacionesNombreExcursion', selectedExNombre);
-                if (selectedExId) renderTablaParticipaciones(selectedExId, selectedExNombre);
-                else {
-                    document.getElementById('tablaParticipacionesContainer').innerHTML = '<p>Selecciona excursión.</p>';
-                    document.getElementById('resumenParticipacionesContainer').innerHTML = '';
+                if (selectedExId) {
+                    const selectedExNombre = e.target.options[e.target.selectedIndex].text;
+                    sessionStorage.setItem('filtroParticipacionesExcursionId', selectedExId);
+                    sessionStorage.setItem('filtroParticipacionesNombreExcursion', selectedExNombre);
+                    renderTablaParticipaciones(selectedExId, selectedExNombre);
+                } else {
+                    sessionStorage.removeItem('filtroParticipacionesExcursionId');
+                    sessionStorage.removeItem('filtroParticipacionesNombreExcursion');
+                    if(tablaContainer) tablaContainer.innerHTML = '<p>Selecciona una excursión para ver las participaciones.</p>';
+                    if(resumenContainer) resumenContainer.innerHTML = '';
                 }
             };
         }
-        if (document.getElementById('selectFiltroClaseParticipaciones')) {
-            document.getElementById('selectFiltroClaseParticipaciones').onchange = () => {
-                if (excursionIdActual) renderTablaParticipaciones(excursionIdActual, nombreExcursionActual);
+        
+        const filtroClaseSelect = document.getElementById('selectFiltroClaseParticipaciones');
+        if (filtroClaseSelect) {
+            filtroClaseSelect.onchange = () => {
+                const currentSelectedExcursionId = selectExcursion ? selectExcursion.value : null;
+                if (currentSelectedExcursionId) { // Only re-render if an excursion is actually selected
+                    const currentSelectedExcursionName = selectExcursion.options[selectExcursion.selectedIndex].text;
+                    renderTablaParticipaciones(currentSelectedExcursionId, currentSelectedExcursionName);
+                }
             };
         }
-        if (excursionIdActual) renderTablaParticipaciones(excursionIdActual, nombreExcursionActual);
-        else {
-            document.getElementById('tablaParticipacionesContainer').innerHTML = '<p>Selecciona excursión.</p>';
-            document.getElementById('resumenParticipacionesContainer').innerHTML = '';
+
+        // Logic to handle session storage for excursion ID
+        const excursionIdFromSession = sessionStorage.getItem('filtroParticipacionesExcursionId');
+        let isValidSessionId = false;
+
+        if (excursionIdFromSession && dataExcursiones && dataExcursiones.excursiones) {
+            const numericExcursionId = parseInt(excursionIdFromSession);
+            const foundExcursion = dataExcursiones.excursiones.find(ex => ex.id === numericExcursionId);
+            if (foundExcursion) {
+                isValidSessionId = true;
+                if(selectExcursion) selectExcursion.value = numericExcursionId; // Pre-select in dropdown
+                const nombreExcursionFromSession = sessionStorage.getItem('filtroParticipacionesNombreExcursion') || foundExcursion.nombre_excursion; // Fallback if name not in session
+                renderTablaParticipaciones(numericExcursionId, nombreExcursionFromSession);
+            } else {
+                sessionStorage.removeItem('filtroParticipacionesExcursionId');
+                sessionStorage.removeItem('filtroParticipacionesNombreExcursion');
+            }
+        }
+
+        if (!isValidSessionId) {
+            if(tablaContainer) tablaContainer.innerHTML = '<p>Por favor, seleccione una excursión de la lista para ver las participaciones.</p>';
+            if(resumenContainer) resumenContainer.innerHTML = '';
+            if(selectExcursion) selectExcursion.value = ""; // Reset dropdown
         }
     }
+
     async function renderTablaParticipaciones(excursionId, excursionNombre) {
         const container = document.getElementById('tablaParticipacionesContainer');
         const resumenContainer = document.getElementById('resumenParticipacionesContainer');
@@ -1345,10 +1390,20 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = `<p>Cargando para "${excursionNombre}"...</p>`;
         resumenContainer.innerHTML = ''; 
         let endpoint = `/excursiones/${excursionId}/participaciones`;
-        const filtroClaseSelect = document.getElementById('selectFiltroClaseParticipaciones');
-        if (currentUser.rol === 'DIRECCION' && filtroClaseSelect && filtroClaseSelect.value) {
-            endpoint += `?view_clase_id=${filtroClaseSelect.value}`;
+        
+        // For DIRECCION role, if filtering by class, append view_clase_id
+        const filtroClaseSelectElement = document.getElementById('selectFiltroClaseParticipaciones');
+        if (currentUser.rol === 'DIRECCION' && filtroClaseSelectElement && filtroClaseSelectElement.value) {
+            endpoint += `?view_clase_id=${filtroClaseSelectElement.value}`;
         }
+        // For COORDINACION role, if the excursion is global, they MUST have selected a class to view
+        // This is now handled by the API for /api/excursiones/:excursion_id/participaciones,
+        // which expects view_clase_id if a COORDINADOR is viewing a global excursion.
+        // We need to ensure the frontend sends this if applicable.
+        // However, the logic to *select* which class a coordinator is viewing for a global excursion
+        // is not part of this specific 'loadParticipaciones' function, but rather how this
+        // renderTablaParticipaciones is called (e.g., from coordinacion section or a modified general participaciones view)
+
         try {
             const data = await apiFetch(endpoint);
             if (!data || !data.alumnosParticipaciones) {
