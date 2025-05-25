@@ -3,10 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Estado Global del Frontend ---
     let currentCalendarYear = new Date().getFullYear();
     let currentCalendarMonth = new Date().getMonth(); // 0-indexed (0 for January, 11 for December)
-    // window.dashboardExcursions is now the primary store for excursions fetched for the calendar
-    // let dashboardExcursions = []; // This local one can be removed or kept for other dashboard specific uses if any.
     let currentUser = null;
     let currentToken = null;
+    let selectedCoordClaseId = null; 
+    let selectedCoordClaseNombre = null;
+
 
     // --- URLs y Selectores del DOM ---
     const API_BASE_URL = `http://192.168.1.7:3000/api`; // Tu IP específica
@@ -20,8 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const signoutButton = document.getElementById('signout_button');
 
     const mainNavSidebar = document.getElementById('main-nav-sidebar');
-    const navLinks = document.querySelectorAll('#main-nav-sidebar a'); // This will pick up the new link
-    const mainSections = document.querySelectorAll('.main-section'); // This will pick up the new section
+    const navLinks = document.querySelectorAll('#main-nav-sidebar a'); 
+    const mainSections = document.querySelectorAll('.main-section'); 
     
     const dashboardSummaryContentDiv = document.getElementById('dashboard-summary-content');
     const clasesContentDiv = document.getElementById('clases-content');
@@ -188,6 +189,18 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const sharedExcursionsLinkLi = mainNavSidebar.querySelector('a[data-section="shared-excursions"]').parentElement;
         if (sharedExcursionsLinkLi) sharedExcursionsLinkLi.style.display = (currentUser && currentUser.rol === 'TUTOR') ? 'list-item' : 'none';
+
+        const tesoreriaLinkLi = mainNavSidebar.querySelector('a[data-section="tesoreria"]');
+        if (tesoreriaLinkLi) { 
+            const canViewTesoreria = currentUser.rol === 'TESORERIA' || currentUser.rol === 'DIRECCION';
+            tesoreriaLinkLi.parentElement.style.display = canViewTesoreria ? 'list-item' : 'none';
+        }
+        
+        const coordinacionLinkLi = mainNavSidebar.querySelector('a[data-section="coordinacion"]');
+        if (coordinacionLinkLi) { 
+            const canViewCoordinacion = currentUser.rol === 'COORDINACION' || currentUser.rol === 'DIRECCION';
+            coordinacionLinkLi.parentElement.style.display = canViewCoordinacion ? 'list-item' : 'none';
+        }
     }
 
     function checkInitialLoginState() {
@@ -250,6 +263,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (currentUser && currentUser.rol === 'TUTOR') loadPendingShares();
                 break;
             case 'admin-usuarios': if (currentUser && currentUser.rol === 'DIRECCION') loadAdminUsuarios(); break;
+            case 'tesoreria': 
+                if (currentUser && (currentUser.rol === 'TESORERIA' || currentUser.rol === 'DIRECCION')) loadTesoreriaData();
+                break;
+            case 'coordinacion':
+                if (currentUser && (currentUser.rol === 'COORDINACION' || currentUser.rol === 'DIRECCION')) loadCoordinacionData();
+                else showGlobalError("Acceso denegado.", document.getElementById('coordinacion-content')); 
+                break;
         }
     }
 
@@ -1492,55 +1512,271 @@ document.addEventListener('DOMContentLoaded', () => {
     function showFormAdminUsuario(userId = null, initialUserData = null) {
         if (!formAdminUsuarioWrapper) return;
         const isEditMode = userId && initialUserData;
-        const formTitle = isEditMode ? "Editar Usuario Tutor" : "Crear Nuevo Usuario Tutor";
+        const isDireccionUserBeingViewed = isEditMode && initialUserData.rol === 'DIRECCION';
+        
+        const formTitle = isEditMode ? (isDireccionUserBeingViewed ? "Ver Usuario Dirección" : "Editar Usuario") : "Crear Nuevo Usuario";
         const submitButtonText = isEditMode ? "Guardar Cambios" : "Crear Usuario";
+
+        let roleOptionsHtml = '';
+        const allowedRoles = ['TUTOR', 'TESORERIA', 'COORDINACION'];
+        allowedRoles.forEach(role => {
+            roleOptionsHtml += `<option value="${role}" ${isEditMode && initialUserData.rol === role ? 'selected' : ''}>${role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()}</option>`;
+        });
+
         let formHtml = `<div class="form-container"><h4>${formTitle}</h4><form id="formGestionUsuarioTutor">
             ${isEditMode ? `<input type="hidden" id="editUserId" value="${userId}">` : ''}
-            <div><label>Email:</label><input type="email" id="adminUserEmail" value="${isEditMode ? initialUserData.email : ''}" required></div>
-            <div><label>Nombre Completo:</label><input type="text" id="adminUserNombreCompleto" value="${isEditMode ? initialUserData.nombre_completo : ''}" required></div>`;
-        if (!isEditMode) {
+            <div><label>Email:</label><input type="email" id="adminUserEmail" value="${isEditMode ? initialUserData.email : ''}" ${isDireccionUserBeingViewed ? 'disabled' : ''} required></div>
+            <div><label>Nombre Completo:</label><input type="text" id="adminUserNombreCompleto" value="${isEditMode ? initialUserData.nombre_completo : ''}" ${isDireccionUserBeingViewed ? 'disabled' : ''} required></div>`;
+
+        if (isEditMode) {
+            if (isDireccionUserBeingViewed) {
+                formHtml += `<div><label>Rol:</label><input type="text" value="${initialUserData.rol}" disabled></div>`;
+            } else {
+                formHtml += `<div><label>Rol:</label><select id="adminUserRol" name="adminUserRol">${roleOptionsHtml}</select></div>`;
+            }
+        } else { // Create mode
             formHtml += `<div><label>Contraseña:</label><input type="password" id="adminUserPassword" required minlength="8"></div>
-                         <input type="hidden" id="adminUserRol" value="TUTOR">`;
+                         <div><label>Rol:</label><select id="adminUserRol" name="adminUserRol" required>${roleOptionsHtml}</select></div>`;
         }
-        formHtml += `<div class="form-buttons"><button type="submit" class="success">${submitButtonText}</button><button type="button" id="btnCancelarGestionUsuario" class="secondary">Cancelar</button></div>
+        
+        formHtml += `<div class="form-buttons">`;
+        if (!isDireccionUserBeingViewed) { // Only show submit button if not viewing a DIRECCION user
+            formHtml += `<button type="submit" class="success">${submitButtonText}</button>`;
+        }
+        formHtml += `<button type="button" id="btnCancelarGestionUsuario" class="secondary">Cancelar</button></div>
                      <p id="formAdminUsuarioError" class="error-message"></p></form></div>`;
         formAdminUsuarioWrapper.innerHTML = formHtml;
         formAdminUsuarioWrapper.style.display = 'block';
-        document.getElementById('formGestionUsuarioTutor').addEventListener('submit', saveAdminUsuario);
-        document.getElementById('btnCancelarGestionUsuario').onclick = () => { formAdminUsuarioWrapper.innerHTML = ''; formAdminUsuarioWrapper.style.display = 'none'; };
+        
+        const formElement = document.getElementById('formGestionUsuarioTutor');
+        if (formElement) {
+            formElement.addEventListener('submit', saveAdminUsuario);
+        }
+        
+        const cancelButton = document.getElementById('btnCancelarGestionUsuario');
+        if (cancelButton) {
+            cancelButton.onclick = () => { 
+                formAdminUsuarioWrapper.innerHTML = ''; 
+                formAdminUsuarioWrapper.style.display = 'none'; 
+                const coordinatorSection = document.getElementById('coordinadorClasesManagementSection');
+                if (coordinatorSection) coordinatorSection.innerHTML = ''; // Clear this too
+            };
+        }
+
+        if (isEditMode && initialUserData.rol === 'COORDINACION' && !isDireccionUserBeingViewed) {
+            const managementSection = document.createElement('div');
+            managementSection.id = 'coordinadorClasesManagementSection';
+            managementSection.style.marginTop = '20px';
+            managementSection.style.paddingTop = '20px';
+            managementSection.style.borderTop = '1px solid #ccc';
+            formAdminUsuarioWrapper.appendChild(managementSection);
+            renderCoordinatorClassManagementSection(userId, initialUserData.nombre_completo, managementSection);
+        }
     }
+
+    async function renderCoordinatorClassManagementSection(coordinadorId, coordinadorName, parentElement) {
+        parentElement.innerHTML = `<h4>Gestión de Clases Asignadas para: ${coordinadorName} (ID: ${coordinadorId})</h4>
+            <div id="assignedClassesListContainer" style="margin-bottom: 20px;"></div>
+            <div id="assignNewClassFormContainer"></div>
+            <p id="coordinatorClassManagementError" class="error-message" style="margin-top: 10px;"></p>`;
+        
+        await loadAndDisplayAssignedClasses(coordinadorId, document.getElementById('assignedClassesListContainer'));
+        await loadAndDisplayAssignableClasses(coordinadorId, document.getElementById('assignNewClassFormContainer'));
+    }
+
+    async function loadAndDisplayAssignedClasses(coordinadorId, container) {
+        if (!container) return;
+        container.innerHTML = '<p><em>Cargando clases asignadas...</em></p>';
+        try {
+            const data = await apiFetch(`/coordinadores/${coordinadorId}/clases`);
+            const assignedClasses = data.clases_asignadas || [];
+            if (assignedClasses.length === 0) {
+                container.innerHTML = '<p>No hay clases asignadas actualmente a este coordinador.</p>';
+                return;
+            }
+            let html = '<h5>Clases Asignadas:</h5><ul class="simple-list">';
+            assignedClasses.forEach(clase => {
+                html += `<li>
+                    ${clase.nombre_clase} (Tutor: ${clase.nombre_tutor || 'No asignado'})
+                    <button class="unassign-clase-coordinador danger" data-clase-id="${clase.id}" style="margin-left: 10px; padding: 3px 8px; font-size: 0.8em;">Desasignar</button>
+                </li>`;
+            });
+            html += '</ul>';
+            container.innerHTML = html;
+
+            container.querySelectorAll('.unassign-clase-coordinador').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const claseId = e.target.dataset.claseId;
+                    if (confirm(`¿Seguro que quieres desasignar esta clase del coordinador?`)) {
+                        await handleUnassignClassFromCoordinator(coordinadorId, claseId);
+                    }
+                });
+            });
+        } catch (error) {
+            console.error("Error cargando clases asignadas:", error);
+            container.innerHTML = `<p class="error-message">Error al cargar clases asignadas: ${error.message}</p>`;
+        }
+    }
+
+    async function loadAndDisplayAssignableClasses(coordinadorId, container) {
+        if (!container) return;
+        container.innerHTML = '<p><em>Cargando clases disponibles para asignar...</em></p>';
+        try {
+            const [allClassesData, assignedClassesData] = await Promise.all([
+                apiFetch('/clases'),
+                apiFetch(`/coordinadores/${coordinadorId}/clases`)
+            ]);
+
+            const allClasses = allClassesData.clases || [];
+            const assignedClassIds = (assignedClassesData.clases_asignadas || []).map(c => c.id);
+            
+            const assignableClasses = allClasses.filter(clase => !assignedClassIds.includes(clase.id));
+
+            if (assignableClasses.length === 0) {
+                container.innerHTML = '<p>No hay más clases disponibles para asignar a este coordinador.</p>';
+                return;
+            }
+
+            let html = '<h5>Asignar Nueva Clase:</h5>';
+            html += `<select id="selectAssignableClassForCoordinator_${coordinadorId}" style="margin-right: 10px;">`;
+            assignableClasses.forEach(clase => {
+                html += `<option value="${clase.id}">${clase.nombre_clase}</option>`;
+            });
+            html += `</select>`;
+            html += `<button id="btnAssignClassToCoordinator_${coordinadorId}" class="success">Asignar Clase Seleccionada</button>`;
+            container.innerHTML = html;
+
+            const assignButton = document.getElementById(`btnAssignClassToCoordinator_${coordinadorId}`);
+            if (assignButton) {
+                 assignButton.addEventListener('click', async () => {
+                    const selectElement = document.getElementById(`selectAssignableClassForCoordinator_${coordinadorId}`);
+                    if (selectElement && selectElement.value) {
+                        await handleAssignClassToCoordinator(coordinadorId, selectElement.value);
+                    } else {
+                        alert("Por favor, selecciona una clase para asignar.");
+                    }
+                });
+            }
+        } catch (error) {
+            console.error("Error cargando clases para asignar:", error);
+            container.innerHTML = `<p class="error-message">Error al cargar clases para asignar: ${error.message}</p>`;
+        }
+    }
+    
+    async function handleAssignClassToCoordinator(coordinadorId, claseId) {
+        const errorP = document.getElementById('coordinatorClassManagementError');
+        if(errorP) errorP.textContent = '';
+        try {
+            await apiFetch(`/coordinadores/${coordinadorId}/clases`, 'POST', { clase_id: parseInt(claseId) });
+            // Refresh both sections
+            const assignedContainer = document.getElementById('assignedClassesListContainer');
+            const assignableContainer = document.getElementById('assignNewClassFormContainer');
+            if (assignedContainer) await loadAndDisplayAssignedClasses(coordinadorId, assignedContainer);
+            if (assignableContainer) await loadAndDisplayAssignableClasses(coordinadorId, assignableContainer);
+            if (errorP) showTemporaryStatusInElement(errorP, "Clase asignada.", false, 2000);
+        } catch (error) {
+            console.error(`Error asignando clase ${claseId} a coordinador ${coordinadorId}:`, error);
+            if(errorP) errorP.textContent = `Error al asignar clase: ${error.message}`;
+        }
+    }
+    
+    async function handleUnassignClassFromCoordinator(coordinadorId, claseId) {
+        const errorP = document.getElementById('coordinatorClassManagementError');
+        if(errorP) errorP.textContent = '';
+        try {
+            await apiFetch(`/coordinadores/${coordinadorId}/clases/${claseId}`, 'DELETE');
+             // Refresh both sections
+            const assignedContainer = document.getElementById('assignedClassesListContainer');
+            const assignableContainer = document.getElementById('assignNewClassFormContainer');
+            if (assignedContainer) await loadAndDisplayAssignedClasses(coordinadorId, assignedContainer);
+            if (assignableContainer) await loadAndDisplayAssignableClasses(coordinadorId, assignableContainer);
+            if (errorP) showTemporaryStatusInElement(errorP, "Clase desasignada.", false, 2000);
+        } catch (error) {
+            console.error(`Error desasignando clase ${claseId} de coordinador ${coordinadorId}:`, error);
+            if(errorP) errorP.textContent = `Error al desasignar clase: ${error.message}`;
+        }
+    }
+
+    function showTemporaryStatusInElement(element, message, isError, duration = 3000) {
+        if (!element) return;
+        element.textContent = message;
+        element.style.color = isError ? 'red' : 'green';
+        setTimeout(() => { if (element) element.textContent = ''; }, duration);
+    }
+
     async function saveAdminUsuario(event) {
         event.preventDefault();
         const errorP = document.getElementById('formAdminUsuarioError');
         if (errorP) errorP.textContent = '';
         const editUserIdInput = document.getElementById('editUserId');
         const isEditMode = editUserIdInput && editUserIdInput.value;
-        const email = document.getElementById('adminUserEmail').value.trim();
-        const nombre_completo = document.getElementById('adminUserNombreCompleto').value.trim();
-        let userData = { email, nombre_completo };
+        const emailInput = document.getElementById('adminUserEmail');
+        const nombreCompletoInput = document.getElementById('adminUserNombreCompleto');
+        const rolSelect = document.getElementById('adminUserRol'); // Might be null if viewing DIRECCION
+        const passwordInput = document.getElementById('adminUserPassword'); // Might be null if editing
+
+        const email = emailInput ? emailInput.value.trim() : null;
+        const nombre_completo = nombreCompletoInput ? nombreCompletoInput.value.trim() : null;
+        
+        let userData = {};
+        if (email) userData.email = email;
+        if (nombre_completo) userData.nombre_completo = nombre_completo;
+
         let method = 'POST';
         let endpoint = '/usuarios';
+
         if (isEditMode) {
             method = 'PUT';
             endpoint = `/usuarios/${editUserIdInput.value}`;
-        } else {
-            const password = document.getElementById('adminUserPassword').value;
-            const rol = document.getElementById('adminUserRol').value;
-            if (!password || password.length < 8) {
-                if (errorP) errorP.textContent = "Contraseña requerida (mínimo 8 caracteres)."; return;
+            if (rolSelect) { // Only include rol if the select element exists (i.e., not viewing DIRECCION)
+                userData.rol = rolSelect.value;
             }
-            userData.password = password; userData.rol = rol;
+        } else { // Create mode
+            if (passwordInput) {
+                const password = passwordInput.value;
+                if (!password || password.length < 8) {
+                    if (errorP) errorP.textContent = "Contraseña requerida (mínimo 8 caracteres)."; return;
+                }
+                userData.password = password;
+            } else { // Should not happen in create mode
+                 if (errorP) errorP.textContent = "Campo de contraseña no encontrado."; return;
+            }
+            if (rolSelect) {
+                 userData.rol = rolSelect.value;
+            } else { // Should not happen in create mode
+                 if (errorP) errorP.textContent = "Campo de rol no encontrado."; return;
+            }
         }
-        if (!email || !nombre_completo) {
-            if (errorP) errorP.textContent = "Email y Nombre son requeridos."; return;
+
+        if (!userData.email || !userData.nombre_completo) {
+            if (errorP) errorP.textContent = "Email y Nombre Completo son requeridos."; return;
         }
+         if (!isEditMode && !userData.rol) { // Rol is required for new users
+            if (errorP) errorP.textContent = "Rol es requerido para nuevos usuarios."; return;
+        }
+
+
         const submitButton = event.target.querySelector('button[type="submit"]');
         try {
             if (submitButton) submitButton.disabled = true;
             await apiFetch(endpoint, method, userData);
+            
+            // After successfully saving user details, if it was an edit mode for a COORDINACION user,
+            // the class management section might need to be re-rendered if the role potentially changed
+            // TO COORDINACION or FROM COORDINACION. However, the current logic in showFormAdminUsuario handles
+            // adding/removing the section based on the *initial* role.
+            // For simplicity, we'll rely on a full reload of the user list and re-clicking edit
+            // if a role change affects the visibility of the coordinator section.
+            // A more sophisticated approach might re-initialize the form for the same user.
+
             if (formAdminUsuarioWrapper) {
-                 formAdminUsuarioWrapper.innerHTML = `<p class="success-message">Usuario ${isEditMode ? 'actualizado' : 'creado'}.</p>`;
-                 setTimeout(() => { formAdminUsuarioWrapper.innerHTML = ''; formAdminUsuarioWrapper.style.display = 'none'; }, 3000);
+                 formAdminUsuarioWrapper.innerHTML = `<p class="success-message">Usuario ${isEditMode ? 'actualizado' : 'creado'} exitosamente.</p>`;
+                 setTimeout(() => { 
+                    formAdminUsuarioWrapper.innerHTML = ''; 
+                    formAdminUsuarioWrapper.style.display = 'none'; 
+                    const coordinatorSection = document.getElementById('coordinadorClasesManagementSection');
+                    if (coordinatorSection) coordinatorSection.innerHTML = ''; // Clear this too
+                }, 2000);
             }
             loadAdminUsuarios(); 
         } catch (error) {
@@ -1622,6 +1858,203 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     window.handleExcursionDayClick = handleExcursionDayClick; // Expose to global scope
 
+    // --- Tesorería ---
+    async function loadTesoreriaData() {
+        const contentDiv = document.getElementById('tesoreria-content');
+        if (!contentDiv || !currentToken) {
+            if(contentDiv) contentDiv.innerHTML = '<p class="error-message">Error de acceso o carga.</p>';
+            return;
+        }
+        contentDiv.innerHTML = "<p>Cargando datos de tesorería...</p>";
+    
+        try {
+            const [pendientesData, pasadasData] = await Promise.all([
+                apiFetch('/tesoreria/excursiones-pendientes'),
+                apiFetch('/tesoreria/excursiones-pasadas')
+            ]);
+    
+            let html = '<h3>Excursiones Pendientes</h3>';
+            if (pendientesData && pendientesData.excursiones_pendientes && pendientesData.excursiones_pendientes.length > 0) {
+                html += '<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Coste Alumno (€)</th><th>Clase Destino</th><th>Creador</th></tr></thead><tbody>';
+                pendientesData.excursiones_pendientes.forEach(ex => {
+                    html += `<tr>
+                        <td>${ex.nombre_excursion || 'N/D'}</td>
+                        <td>${ex.fecha_excursion ? new Date(ex.fecha_excursion).toLocaleDateString() : 'N/D'}</td>
+                        <td>${ex.lugar || 'N/D'}</td>
+                        <td>${ex.coste_excursion_alumno !== null ? ex.coste_excursion_alumno.toFixed(2) : '0.00'}</td>
+                        <td>${ex.nombre_clase_destino || 'Global'}</td>
+                        <td>${ex.nombre_creador || 'N/D'}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+            } else {
+                html += '<p>No hay excursiones pendientes.</p>';
+            }
+    
+            html += '<h3 style="margin-top: 20px;">Excursiones Pasadas</h3>';
+            if (pasadasData && pasadasData.excursiones_pasadas && pasadasData.excursiones_pasadas.length > 0) {
+                html += '<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Participantes</th><th>Total Pagado (€)</th><th>Coste Alumno (€)</th><th>Clase Destino</th><th>Creador</th></tr></thead><tbody>';
+                pasadasData.excursiones_pasadas.forEach(ex => {
+                    html += `<tr>
+                        <td>${ex.nombre_excursion || 'N/D'}</td>
+                        <td>${ex.fecha_excursion ? new Date(ex.fecha_excursion).toLocaleDateString() : 'N/D'}</td>
+                        <td>${ex.lugar || 'N/D'}</td>
+                        <td>${ex.totalAlumnosParticipantes !== null ? ex.totalAlumnosParticipantes : 'N/D'}</td>
+                        <td>${ex.totalPagado !== null ? ex.totalPagado.toFixed(2) : '0.00'}</td>
+                        <td>${ex.coste_excursion_alumno !== null ? ex.coste_excursion_alumno.toFixed(2) : '0.00'}</td>
+                        <td>${ex.nombre_clase_destino || 'Global'}</td>
+                        <td>${ex.nombre_creador || 'N/D'}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+            } else {
+                html += '<p>No hay excursiones pasadas.</p>';
+            }
+            contentDiv.innerHTML = html;
+        } catch (error) {
+            console.error("Error en loadTesoreriaData:", error);
+            contentDiv.innerHTML = `<p class="error-message">Error al cargar datos de tesorería: ${error.message}</p>`;
+        }
+    }
+
     // --- INICIALIZACIÓN DE LA APP ---
     checkInitialLoginState();
+
+    // --- Coordinación ---
+    async function loadCoordinacionData() {
+        const contentDiv = document.getElementById('coordinacion-content');
+        if (!contentDiv || !currentToken) {
+            if(contentDiv) contentDiv.innerHTML = '<p class="error-message">Error de acceso o carga.</p>';
+            return;
+        }
+    
+        if (currentUser.rol !== 'COORDINACION' && currentUser.rol !== 'DIRECCION') {
+            contentDiv.innerHTML = '<p class="error-message">Acceso denegado.</p>';
+            return;
+        }
+    
+        contentDiv.innerHTML = '<p>Cargando datos de coordinación...</p>';
+    
+        if (currentUser.rol === 'COORDINACION') {
+            try {
+                const assignedClassesData = await apiFetch(`/coordinadores/${currentUser.id}/clases`);
+                if (assignedClassesData && assignedClassesData.clases_asignadas && assignedClassesData.clases_asignadas.length > 0) {
+                    let html = '<h3>Sus Clases Asignadas</h3><ul class="simple-list">';
+                    assignedClassesData.clases_asignadas.forEach(clase => {
+                        html += `<li><a href="#" class="view-clase-details-coord" data-clase-id="${clase.id}" data-clase-nombre="${clase.nombre_clase}">${clase.nombre_clase} (Tutor: ${clase.nombre_tutor || 'No asignado'})</a></li>`;
+                    });
+                    html += '</ul><div id="coordinacion-clase-details-view" style="margin-top:15px; padding-top:15px; border-top: 1px solid #eee;"></div>';
+                    contentDiv.innerHTML = html;
+    
+                    contentDiv.querySelectorAll('.view-clase-details-coord').forEach(link => {
+                        link.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            const claseId = parseInt(e.target.dataset.claseId); // Ensure it's a number for comparison
+                            const claseNombre = e.target.dataset.claseNombre;
+                            
+                            selectedCoordClaseId = claseId; 
+                            selectedCoordClaseNombre = claseNombre;
+
+                            const detailsViewContainer = document.getElementById('coordinacion-clase-details-view');
+                            if (detailsViewContainer) {
+                                detailsViewContainer.innerHTML = `<h3>Detalles para la Clase: ${claseNombre}</h3>
+                                                              <div id="coord-alumnos-list" class="coordinacion-sub-section"></div>
+                                                              <div id="coord-excursiones-list" class="coordinacion-sub-section" style="margin-top: 20px;"></div>`;
+                                
+                                const alumnosListContainer = document.getElementById('coord-alumnos-list');
+                                const excursionesListContainer = document.getElementById('coord-excursiones-list');
+
+                                if (alumnosListContainer) {
+                                    displayCoordinadorClaseAlumnos(claseId, claseNombre, alumnosListContainer);
+                                }
+                                if (excursionesListContainer) {
+                                    displayCoordinadorClaseExcursiones(claseId, claseNombre, excursionesListContainer);
+                                }
+                            }
+                        });
+                    });
+                } else {
+                    contentDiv.innerHTML = '<p>No tiene clases asignadas actualmente.</p>';
+                }
+            } catch (error) {
+                console.error("Error cargando clases asignadas para coordinador:", error);
+                contentDiv.innerHTML = `<p class="error-message">Error al cargar sus clases asignadas: ${error.message}</p>`;
+            }
+        } else if (currentUser.rol === 'DIRECCION') {
+            contentDiv.innerHTML = `<p>Como Dirección, puede gestionar las asignaciones de clases a coordinadores en la sección "Admin Usuarios" al editar un usuario con rol COORDINACION.</p>
+                                     <p>Esta vista está principalmente diseñada para que los Coordinadores vean sus clases asignadas.</p>`;
+        }
+    }
+
+    async function displayCoordinadorClaseAlumnos(claseId, claseNombre, containerElement) {
+        containerElement.innerHTML = `<h4>Alumnos en ${claseNombre}</h4><p>Cargando alumnos...</p>`;
+        try {
+            // For COORDINACION role, /api/alumnos endpoint expects claseId if the coordinator is not DIRECCION
+            const data = await apiFetch(`/alumnos?claseId=${claseId}`); 
+            if (data && data.alumnos && data.alumnos.length > 0) {
+                let html = '<table class="tabla-datos"><thead><tr><th>Nombre Completo</th></tr></thead><tbody>';
+                data.alumnos.forEach(alumno => {
+                    html += `<tr><td>${alumno.nombre_completo}</td></tr>`;
+                });
+                html += '</tbody></table>';
+                containerElement.innerHTML = `<h4>Alumnos en ${claseNombre}</h4>${html}`;
+            } else {
+                containerElement.innerHTML = `<h4>Alumnos en ${claseNombre}</h4><p>No hay alumnos en esta clase o no tiene acceso.</p>`;
+            }
+        } catch (error) {
+            console.error(`Error cargando alumnos para clase ${claseId} en vista coordinador:`, error);
+            containerElement.innerHTML = `<p class="error-message">Error al cargar alumnos: ${error.message}</p>`;
+        }
+    }
+
+    async function displayCoordinadorClaseExcursiones(claseId, claseNombre, containerElement) {
+        containerElement.innerHTML = `<h4>Excursiones para ${claseNombre}</h4><p>Cargando excursiones...</p>`;
+        try {
+            // The /api/excursiones endpoint for COORDINACION already filters by their assigned classes + global ones.
+            // We need to further filter client-side for *this specific* claseId or global.
+            const data = await apiFetch('/excursiones'); 
+            
+            const relevantExcursiones = (data.excursiones || []).filter(ex => 
+                ex.para_clase_id === null || ex.para_clase_id === claseId
+            );
+
+            if (relevantExcursiones.length > 0) {
+                let html = '<table class="tabla-datos"><thead><tr><th>Nombre Excursión</th><th>Fecha</th><th>Lugar</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody>';
+                relevantExcursiones.forEach(ex => {
+                    html += `<tr>
+                                <td>${ex.nombre_excursion}</td>
+                                <td>${new Date(ex.fecha_excursion).toLocaleDateString()}</td>
+                                <td>${ex.lugar}</td>
+                                <td>${ex.para_clase_id === null ? 'Global' : 'Específica de la clase'}</td>
+                                <td><button class="coord-view-participations secondary" data-excursion-id="${ex.id}" data-excursion-nombre="${ex.nombre_excursion}">Ver Participaciones</button></td>
+                             </tr>`;
+                });
+                html += '</tbody></table>';
+                containerElement.innerHTML = `<h4>Excursiones para ${claseNombre}</h4>${html}`;
+
+                containerElement.querySelectorAll('.coord-view-participations').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const excursionId = e.target.dataset.excursionId;
+                        const excursionNombre = e.target.dataset.excursionNombre;
+                        
+                        console.log(`Coordinador: Ver participaciones para Excursión ID ${excursionId} (${excursionNombre}), filtrado por Clase ID ${selectedCoordClaseId}`);
+                        // For future task:
+                        // sessionStorage.setItem('filtroParticipacionesExcursionId', excursionId);
+                        // sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionNombre);
+                        // // Crucially, set the class context for the participaciones view
+                        // sessionStorage.setItem('viewParticipacionesForClaseId', selectedCoordClaseId); 
+                        // navigateTo('participaciones');
+                        alert(`(Coordinador) Ver participaciones para Excursión ID ${excursionId}, filtrado por Clase ID ${selectedCoordClaseId}. (Implementación futura)`);
+                    });
+                });
+
+            } else {
+                containerElement.innerHTML = `<h4>Excursiones para ${claseNombre}</h4><p>No hay excursiones relevantes para esta clase.</p>`;
+            }
+        } catch (error) {
+            console.error(`Error cargando excursiones para clase ${claseId} en vista coordinador:`, error);
+            containerElement.innerHTML = `<p class="error-message">Error al cargar excursiones: ${error.message}</p>`;
+        }
+    }
+
 }); // Fin de DOMContentLoaded

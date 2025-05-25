@@ -102,6 +102,14 @@ CREATE TABLE IF NOT EXISTS participaciones_excursion (
     FOREIGN KEY (excursion_id) REFERENCES excursiones(id) ON DELETE CASCADE,
     UNIQUE (alumno_id, excursion_id)
 );
+
+CREATE TABLE IF NOT EXISTS coordinador_clases (
+    coordinador_id INTEGER NOT NULL,
+    clase_id INTEGER NOT NULL,
+    FOREIGN KEY (coordinador_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (clase_id) REFERENCES clases(id) ON DELETE CASCADE,
+    PRIMARY KEY (coordinador_id, clase_id)
+);
 `;
 
 function crearTablas() {

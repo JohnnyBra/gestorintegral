@@ -71,7 +71,23 @@ function dbAllAsync(sql, params = []) {
         db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)));
     });
 }
-console.log(" Paso 5: Helpers de BD con Promesas definidos.");
+
+// Helper function to get classes assigned to a coordinator
+async function getCoordinadorClases(coordinadorId) {
+    if (!db) {
+        console.error("getCoordinadorClases: La base de datos no está inicializada.");
+        return []; // Return empty array or throw error as appropriate
+    }
+    const sql = "SELECT clase_id FROM coordinador_clases WHERE coordinador_id = ?";
+    try {
+        const rows = await dbAllAsync(sql, [coordinadorId]);
+        return rows.map(row => row.clase_id);
+    } catch (error) {
+        console.error(`Error obteniendo clases para coordinador ${coordinadorId}:`, error.message);
+        return []; // Or throw error
+    }
+}
+console.log(" Paso 5: Helpers de BD con Promesas definidos (incluyendo getCoordinadorClases).");
 
 // --- Definición de Rutas de la API ---
 console.log(" Paso 6: Definiendo rutas de API...");
@@ -125,7 +141,7 @@ app.get('/api/usuarios', authenticateToken, async (req, res) => {
     } catch (error) { res.status(500).json({ error: "Error obteniendo usuarios: " + error.message }); }
 });
 
-// POST /api/usuarios - Crear un nuevo usuario (solo para TUTOR)
+// POST /api/usuarios - Crear un nuevo usuario (TUTOR, TESORERIA, COORDINACION)
 app.post('/api/usuarios', authenticateToken, async (req, res) => {
     if (req.user.rol !== 'DIRECCION') {
         return res.status(403).json({ error: 'No autorizado. Solo el rol DIRECCION puede crear usuarios.' });
@@ -138,8 +154,9 @@ app.post('/api/usuarios', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: "Email, nombre_completo, password y rol son requeridos." });
     }
 
-    if (rol !== 'TUTOR') {
-        return res.status(400).json({ error: "Solo se pueden crear usuarios con rol TUTOR." });
+    const allowedRolesToCreate = ['TUTOR', 'TESORERIA', 'COORDINACION'];
+    if (!allowedRolesToCreate.includes(rol)) {
+        return res.status(400).json({ error: `Rol inválido. Roles permitidos: ${allowedRolesToCreate.join(', ')}.` });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -175,7 +192,7 @@ app.post('/api/usuarios', authenticateToken, async (req, res) => {
             [result.lastID]
         );
         
-        console.log(`  Usuario TUTOR creado con ID: ${result.lastID}, Email: ${normalizedEmail}`);
+        console.log(`  Usuario con rol ${rol} creado con ID: ${result.lastID}, Email: ${normalizedEmail}`);
         res.status(201).json(nuevoUsuario);
 
     } catch (error) {
@@ -198,11 +215,11 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: "ID de usuario inválido." });
     }
 
-    const { email, nombre_completo } = req.body;
+    const { email, nombre_completo, rol: newRol } = req.body; // Capturar newRol del body
     console.log(`  Ruta: PUT /api/usuarios/${userIdToUpdate}, Body:`, req.body);
 
-    if (email === undefined && nombre_completo === undefined) {
-        return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (email o nombre_completo)." });
+    if (email === undefined && nombre_completo === undefined && newRol === undefined) {
+        return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (email, nombre_completo o rol)." });
     }
     
     let normalizedEmail;
@@ -237,20 +254,25 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: "Usuario no encontrado." });
         }
 
-        if (userToUpdate.rol === 'DIRECCION') {
-            return res.status(403).json({ error: "No se puede modificar un usuario con rol DIRECCION mediante esta vía." });
+        if (userToUpdate.id === req.user.id || userToUpdate.rol === 'DIRECCION') {
+            return res.status(403).json({ error: "No se puede modificar un usuario con rol DIRECCION o a sí mismo mediante esta vía." });
         }
         
-        if (userToUpdate.rol !== 'TUTOR') {
-            return res.status(403).json({ error: "Solo se pueden modificar usuarios con rol TUTOR mediante esta vía." });
+        const allowedRolesToUpdate = ['TUTOR', 'TESORERIA', 'COORDINACION'];
+        // Se pueden modificar usuarios con estos roles. Si se proporciona un newRol, también debe ser uno de estos.
+        if (!allowedRolesToUpdate.includes(userToUpdate.rol) && userToUpdate.rol !== null) { // Permitir modificar si el rol actual es null por alguna razón
+             return res.status(403).json({ error: `Solo se pueden modificar usuarios con roles ${allowedRolesToUpdate.join(', ')}.` });
         }
+
 
         let updateFields = [];
         let updateParams = [];
         
-        const newValues = {
+        const newValues = { // Para construir el objeto de respuesta
+            id: userToUpdate.id,
             email: userToUpdate.email, 
-            nombre_completo: userToUpdate.nombre_completo
+            nombre_completo: userToUpdate.nombre_completo,
+            rol: userToUpdate.rol
         };
 
         if (normalizedEmail !== undefined && normalizedEmail !== userToUpdate.email) {
@@ -260,14 +282,30 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
             }
             updateFields.push("email = ?");
             updateParams.push(normalizedEmail);
-            newValues.email = normalizedEmail;
+            newValues.email = normalizedEmail; // Actualizar para la respuesta
         }
 
         if (trimmedNombre !== undefined && trimmedNombre !== userToUpdate.nombre_completo) {
             updateFields.push("nombre_completo = ?");
             updateParams.push(trimmedNombre);
-            newValues.nombre_completo = trimmedNombre;
+            newValues.nombre_completo = trimmedNombre; // Actualizar para la respuesta
         }
+
+        if (newRol !== undefined && newRol !== userToUpdate.rol) {
+            if (!allowedRolesToUpdate.includes(newRol)) {
+                return res.status(400).json({ error: `Nuevo rol inválido. Roles permitidos para asignación: ${allowedRolesToUpdate.join(', ')}.` });
+            }
+            // Si el rol anterior era TUTOR y el nuevo rol NO es TUTOR, desasignar de clase.
+            if (userToUpdate.rol === 'TUTOR' && newRol !== 'TUTOR') {
+                await dbRunAsync("UPDATE clases SET tutor_id = NULL WHERE tutor_id = ?", [userIdToUpdate]);
+                console.log(`  Usuario ID ${userIdToUpdate} desasignado como tutor de sus clases debido a cambio de rol.`);
+                // Si el frontend maneja la info del token, el usuario necesitará reloguear para ver el cambio de claseId/claseNombre.
+            }
+            updateFields.push("rol = ?");
+            updateParams.push(newRol);
+            newValues.rol = newRol; // Actualizar para la respuesta
+        }
+
 
         if (updateFields.length > 0) {
             updateParams.push(userIdToUpdate);
@@ -278,12 +316,14 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
             console.log(`  Usuario ID ${userIdToUpdate} no requirió actualización, datos idénticos o no proporcionados para cambio.`);
         }
         
-        res.json({ 
-            id: userToUpdate.id, 
-            email: newValues.email, 
-            nombre_completo: newValues.nombre_completo, 
-            rol: userToUpdate.rol 
-        });
+        // Devolver el estado final del usuario modificado (sin el hash de la contraseña)
+        const usuarioActualizadoParaRespuesta = {
+            id: newValues.id,
+            email: newValues.email,
+            nombre_completo: newValues.nombre_completo,
+            rol: newValues.rol
+        };
+        res.json(usuarioActualizadoParaRespuesta);
 
     } catch (error) {
         console.error(`  Error en PUT /api/usuarios/${userIdToUpdate}:`, error.message);
@@ -351,11 +391,34 @@ console.log("Endpoint GET /api/usuarios/tutores definido.");
 
 // --- Gestión de Clases ---
 app.get('/api/clases', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/clases, Usuario:", req.user.email, "Rol:", req.user.rol);
     try {
-        const clases = await dbAllAsync(`SELECT c.id, c.nombre_clase, c.tutor_id, u.nombre_completo as nombre_tutor, u.email as email_tutor
-                                        FROM clases c LEFT JOIN usuarios u ON c.tutor_id = u.id ORDER BY c.nombre_clase ASC`);
+        let sql = `SELECT c.id, c.nombre_clase, c.tutor_id, u.nombre_completo as nombre_tutor, u.email as email_tutor
+                   FROM clases c LEFT JOIN usuarios u ON c.tutor_id = u.id`;
+        const params = [];
+
+        if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            if (assignedClaseIds.length === 0) {
+                return res.json({ clases: [] });
+            }
+            // Dynamically create placeholders for IN clause
+            const placeholders = assignedClaseIds.map(() => '?').join(',');
+            sql += ` WHERE c.id IN (${placeholders})`;
+            params.push(...assignedClaseIds);
+        }
+        // For DIRECCION or TUTOR (or other future roles that see all classes), no additional WHERE clause is needed unless specified.
+        // Currently, TUTORs also see all classes in this specific endpoint, which might be by design or an oversight.
+        // If TUTORs should only see their class, this needs further adjustment.
+        // For now, adhering to the existing implicit behavior for TUTOR and explicit for DIRECCION and COORDINACION.
+
+        sql += " ORDER BY c.nombre_clase ASC";
+        const clases = await dbAllAsync(sql, params);
         res.json({ clases });
-    } catch (error) { res.status(500).json({ error: "Error obteniendo clases: " + error.message });}
+    } catch (error) { 
+        console.error("  Error en GET /api/clases:", error.message, error.stack);
+        res.status(500).json({ error: "Error obteniendo clases: " + error.message });
+    }
 });
 app.post('/api/clases', authenticateToken, async (req, res) => {
     if (req.user.rol !== 'DIRECCION') {
@@ -529,13 +592,14 @@ app.get('/api/alumnos', authenticateToken, async (req, res) => {
     console.log("  Ruta: GET /api/alumnos solicitada. Query params:", req.query);
     const { claseId } = req.query;
     const userRol = req.user.rol;
-    const userId = req.user.id; // ID del usuario que hace la petición (tutor)
-    const userClaseId = req.user.claseId; // ID de la clase del tutor (si es tutor)
+    const userId = req.user.id; 
+    const userClaseId = req.user.claseId; 
 
-    let sql = `SELECT a.id, a.nombre_completo, a.clase_id, c.nombre_clase 
-               FROM alumnos a 
-               JOIN clases c ON a.clase_id = c.id`;
+    let baseSql = `SELECT a.id, a.nombre_completo, a.apellidos_para_ordenar, a.clase_id, c.nombre_clase 
+                   FROM alumnos a 
+                   JOIN clases c ON a.clase_id = c.id`;
     const params = [];
+    let whereClauses = [];
 
     try {
         if (userRol === 'TUTOR') {
@@ -543,21 +607,35 @@ app.get('/api/alumnos', authenticateToken, async (req, res) => {
                 console.warn(`  Tutor ${req.user.email} (ID: ${userId}) no tiene clase asignada. Devolviendo lista vacía de alumnos.`);
                 return res.json({ alumnos: [] });
             }
-            sql += " WHERE a.clase_id = ?";
+            whereClauses.push("a.clase_id = ?");
             params.push(userClaseId);
         } else if (userRol === 'DIRECCION') {
             if (claseId) {
-                sql += " WHERE a.clase_id = ?";
+                whereClauses.push("a.clase_id = ?");
                 params.push(claseId);
             }
+        } else if (userRol === 'COORDINACION') {
+            if (!claseId) {
+                return res.status(400).json({ error: "Se requiere un ID de clase (claseId) para coordinadores." });
+            }
+            const assignedClaseIds = await getCoordinadorClases(userId);
+            const numericClaseId = parseInt(claseId);
+            if (isNaN(numericClaseId) || !assignedClaseIds.includes(numericClaseId)) {
+                return res.status(403).json({ error: "Acceso denegado. El coordinador no tiene asignada esta clase." });
+            }
+            whereClauses.push("a.clase_id = ?");
+            params.push(numericClaseId);
         } else {
-            // Otros roles no deberían tener acceso general, a menos que se defina específicamente
             return res.status(403).json({ error: "Acceso no autorizado a la lista de alumnos." });
         }
 
-            sql += " ORDER BY c.nombre_clase ASC, a.apellidos_para_ordenar ASC, a.nombre_completo ASC"; 
+        let finalSql = baseSql;
+        if (whereClauses.length > 0) {
+            finalSql += " WHERE " + whereClauses.join(" AND ");
+        }
+        finalSql += " ORDER BY c.nombre_clase ASC, a.apellidos_para_ordenar ASC, a.nombre_completo ASC"; 
         
-        const alumnos = await dbAllAsync(sql, params);
+        const alumnos = await dbAllAsync(finalSql, params);
         console.log(`  Alumnos encontrados: ${alumnos.length}`);
         res.json({ alumnos });
 
@@ -902,8 +980,8 @@ app.get('/api/excursiones', authenticateToken, async (req, res) => {
             sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
                    FROM excursiones e 
                    JOIN usuarios u ON e.creada_por_usuario_id = u.id 
-                   LEFT JOIN clases c ON e.para_clase_id = c.id 
-                   ORDER BY e.fecha_excursion DESC, e.id DESC`;
+                   LEFT JOIN clases c ON e.para_clase_id = c.id`;
+            // No additional WHERE for DIRECCION initially, fetches all.
         } else if (req.user.rol === 'TUTOR') {
             if (!req.user.claseId) {
                 console.warn(`  Tutor ${req.user.email} (ID: ${req.user.id}) no tiene claseId en el token o asignada. Devolviendo lista vacía de excursiones.`);
@@ -913,14 +991,26 @@ app.get('/api/excursiones', authenticateToken, async (req, res) => {
                    FROM excursiones e 
                    JOIN usuarios u ON e.creada_por_usuario_id = u.id 
                    LEFT JOIN clases c ON e.para_clase_id = c.id 
-                   WHERE e.para_clase_id IS NULL OR e.para_clase_id = ? 
-                   ORDER BY e.fecha_excursion DESC, e.id DESC`;
+                   WHERE e.para_clase_id IS NULL OR e.para_clase_id = ?`;
             params.push(req.user.claseId);
+        } else if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+                   FROM excursiones e 
+                   JOIN usuarios u ON e.creada_por_usuario_id = u.id 
+                   LEFT JOIN clases c ON e.para_clase_id = c.id 
+                   WHERE e.para_clase_id IS NULL`; // Global excursions
+            if (assignedClaseIds.length > 0) {
+                const placeholders = assignedClaseIds.map(() => '?').join(',');
+                sql += ` OR e.para_clase_id IN (${placeholders})`;
+                params.push(...assignedClaseIds);
+            }
         } else {
             console.warn(`  Usuario ${req.user.email} con rol ${req.user.rol} intentó acceder a excursiones. Acceso denegado.`);
             return res.status(403).json({ error: "Rol no autorizado para ver excursiones." });
         }
         
+        sql += " ORDER BY e.fecha_excursion DESC, e.id DESC";
         const excursiones = await dbAllAsync(sql, params);
         console.log(`  Excursiones encontradas: ${excursiones.length} para rol ${req.user.rol} (Clase ID del tutor si aplica: ${req.user.claseId || 'N/A'})`);
         res.json({ excursiones });
@@ -1621,55 +1711,78 @@ app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, asy
             if (currentExcursion.para_clase_id !== null && currentExcursion.para_clase_id !== req.user.claseId) {
                 return res.status(403).json({ error: "Tutores solo pueden ver participaciones de excursiones globales o de su propia clase." });
             }
-            if (currentExcursion.para_clase_id !== null && !req.user.claseId) {
+            if (currentExcursion.para_clase_id !== null && !req.user.claseId) { // Tutor sin clase asignada
                  return res.status(403).json({ error: "Tutor no asignado a una clase no puede ver participaciones de excursiones de clase." });
             }
+        } else if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            if (currentExcursion.para_clase_id !== null && !assignedClaseIds.includes(currentExcursion.para_clase_id)) {
+                // Excursion is for a specific class, and it's not one of the coordinator's assigned classes
+                return res.status(403).json({ error: "Coordinador no tiene acceso a participaciones de esta excursión específica de clase." });
+            }
+            // If excursion is global, access is allowed, but student fetching will be filtered later.
         }
+
 
         let baseAlumnosSql;
         const baseAlumnosParams = [];
 
         if (currentExcursion.para_clase_id !== null) { // Excursión específica de una clase
-            baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+            // All roles (DIR, TUTOR, COORD) if they passed prior checks, see students from this specific class.
+            baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, a.clase_id, c.nombre_clase 
                               FROM alumnos a JOIN clases c ON a.clase_id = c.id 
                               WHERE a.clase_id = ?`;
             baseAlumnosParams.push(currentExcursion.para_clase_id);
         } else { // Excursión global
+            const viewClaseId = req.query.view_clase_id ? parseInt(req.query.view_clase_id) : null;
+
             if (req.user.rol === 'TUTOR') {
                 if (!req.user.claseId) return res.json({ alumnosParticipaciones: [], resumen: {} }); // Tutor sin clase no ve alumnos
-                baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+                baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, a.clase_id, c.nombre_clase 
                                   FROM alumnos a JOIN clases c ON a.clase_id = c.id 
                                   WHERE a.clase_id = ?`;
-                baseAlumnosParams.push(req.user.claseId);
+                baseAlumnosParams.push(req.user.claseId); // Tutor ve alumnos de su clase
             } else if (req.user.rol === 'DIRECCION') {
-                const viewClaseId = req.query.view_clase_id ? parseInt(req.query.view_clase_id) : null;
-                if (viewClaseId) {
-                    baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+                if (viewClaseId) { // Dirección puede filtrar por clase
+                    baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, a.clase_id, c.nombre_clase 
                                       FROM alumnos a JOIN clases c ON a.clase_id = c.id 
                                       WHERE a.clase_id = ?`;
                     baseAlumnosParams.push(viewClaseId);
-                } else {
-                     baseAlumnosSql = `SELECT DISTINCT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+                } else { // Dirección, sin filtro de clase, ve alumnos que ya participan
+                     baseAlumnosSql = `SELECT DISTINCT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, a.clase_id, c.nombre_clase 
                                       FROM alumnos a 
                                       JOIN clases c ON a.clase_id = c.id 
                                       JOIN participaciones_excursion pe ON a.id = pe.alumno_id 
                                       WHERE pe.excursion_id = ?`;
                     baseAlumnosParams.push(excursionId);
                 }
+            } else if (req.user.rol === 'COORDINACION') {
+                if (!viewClaseId) {
+                    return res.status(400).json({ error: "Para excursiones globales, el coordinador debe especificar un view_clase_id." });
+                }
+                const assignedClaseIds = await getCoordinadorClases(req.user.id);
+                if (!assignedClaseIds.includes(viewClaseId)) {
+                    return res.status(403).json({ error: "Coordinador solo puede ver participaciones de sus clases asignadas para excursiones globales." });
+                }
+                baseAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, a.clase_id, c.nombre_clase 
+                                  FROM alumnos a JOIN clases c ON a.clase_id = c.id 
+                                  WHERE a.clase_id = ?`;
+                baseAlumnosParams.push(viewClaseId);
             } else { 
-                 return res.status(403).json({ error: "Rol no autorizado." });
+                 return res.status(403).json({ error: "Rol no autorizado para esta vista de participaciones." });
             }
         }
         baseAlumnosSql += " ORDER BY c.nombre_clase ASC, a.apellidos_para_ordenar ASC, a.nombre_completo ASC";
         
-        const alumnosBase = await dbAllAsync(baseAlumnosSql, baseAlumnosParams);
+        let alumnosBase = await dbAllAsync(baseAlumnosSql, baseAlumnosParams);
 
-        if (alumnosBase.length === 0 && currentExcursion.para_clase_id === null && req.user.rol === 'DIRECCION' && !req.query.view_clase_id) {
-            const todosLosAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.clase_id, c.nombre_clase 
+        // Special case for DIRECCION viewing global excursion without a specific class filter:
+        // If no students are participating yet, show all students so participation can be added.
+        if (req.user.rol === 'DIRECCION' && currentExcursion.para_clase_id === null && !req.query.view_clase_id && alumnosBase.length === 0) {
+            const todosLosAlumnosSql = `SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, a.clase_id, c.nombre_clase 
                                        FROM alumnos a JOIN clases c ON a.clase_id = c.id
                                        ORDER BY c.nombre_clase ASC, a.apellidos_para_ordenar ASC, a.nombre_completo ASC`;
-            const todosLosAlumnos = await dbAllAsync(todosLosAlumnosSql, []);
-            alumnosBase.push(...todosLosAlumnos);
+            alumnosBase = await dbAllAsync(todosLosAlumnosSql, []); // Overwrite with all students
         }
 
 
@@ -1840,14 +1953,370 @@ console.log("Endpoint POST /api/participaciones definido.");
 
 // --- Endpoint de Dashboard ---
 app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
-    console.log("  Ruta: GET /api/dashboard/summary para:", req.user.email);
+    console.log("  Ruta: GET /api/dashboard/summary para:", req.user.email, "Rol:", req.user.rol);
     try {
-        const totalClases = (await dbGetAsync("SELECT COUNT(*) as count FROM clases")).count;
-        // Aquí deberías expandir para obtener más datos como en tu app.js
-        // Por ahora, solo devolvemos totalClases para que el log original no falle.
-        res.json({ mensaje: "Resumen del dashboard", totalClases /* , otros datos... */ });
-    } catch (error) { res.status(500).json({error: "Error en dashboard: " + error.message});}
+        const dashboardData = {
+            mensaje: "Resumen del dashboard"
+        };
+
+        // Common data for all roles
+        const totalClasesRow = await dbGetAsync("SELECT COUNT(*) as count FROM clases");
+        dashboardData.totalClases = totalClasesRow ? totalClasesRow.count : 0;
+
+        if (req.user.rol === 'TUTOR') {
+            dashboardData.infoSuClase = { numAlumnos: 0 };
+            dashboardData.proximasExcursiones = [];
+            dashboardData.resumenProximaExcursionSuClase = null;
+
+            const tutorClaseId = req.user.claseId;
+
+            if (tutorClaseId) {
+                const numAlumnosRow = await dbGetAsync("SELECT COUNT(*) as count FROM alumnos WHERE clase_id = ?", [tutorClaseId]);
+                dashboardData.infoSuClase.numAlumnos = numAlumnosRow ? numAlumnosRow.count : 0;
+
+                const sqlProximasExcursionesTutor = `
+                    SELECT id, nombre_excursion, fecha_excursion, para_clase_id 
+                    FROM excursiones 
+                    WHERE (para_clase_id IS NULL OR para_clase_id = ?) AND fecha_excursion >= date('now') 
+                    ORDER BY fecha_excursion ASC`;
+                dashboardData.proximasExcursiones = await dbAllAsync(sqlProximasExcursionesTutor, [tutorClaseId]);
+
+                if (dashboardData.proximasExcursiones.length > 0) {
+                    const proximaExcursionParaResumen = dashboardData.proximasExcursiones[0];
+                    const excursionIdParaResumen = proximaExcursionParaResumen.id;
+
+                    const totalInscritos = dashboardData.infoSuClase.numAlumnos;
+
+                    const participaciones = await dbAllAsync(
+                        "SELECT autorizacion_firmada, pago_realizado FROM participaciones_excursion WHERE excursion_id = ? AND alumno_id IN (SELECT id FROM alumnos WHERE clase_id = ?)",
+                        [excursionIdParaResumen, tutorClaseId]
+                    );
+
+                    let autorizadosSi = 0;
+                    let pagadoSi = 0;
+                    let pagadoParcial = 0;
+                    
+                    participaciones.forEach(p => {
+                        if (p.autorizacion_firmada === 'Sí') autorizadosSi++;
+                        if (p.pago_realizado === 'Sí') pagadoSi++;
+                        else if (p.pago_realizado === 'Parcial') pagadoParcial++;
+                    });
+                    
+                    // Los "No" son el total menos los que han dicho "Sí" o "Parcial" (para pagos) o "Sí" (para autorizaciones)
+                    // O más bien, los que tienen registro 'No' o no tienen registro.
+                    // Para simplificar, contamos los que no son 'Sí' explícitamente.
+                    // Total de alumnos en la clase - los que tienen 'Sí'
+                    const autorizadosNo = totalInscritos - autorizadosSi;
+                    // Total de alumnos en la clase - los que tienen 'Sí' o 'Parcial'
+                    const pagadoNo = totalInscritos - (pagadoSi + pagadoParcial);
+
+
+                    dashboardData.resumenProximaExcursionSuClase = {
+                        nombreExcursion: proximaExcursionParaResumen.nombre_excursion,
+                        fecha: proximaExcursionParaResumen.fecha_excursion,
+                        excursionId: excursionIdParaResumen,
+                        totalInscritos: totalInscritos,
+                        autorizadosSi: autorizadosSi,
+                        autorizadosNo: autorizadosNo, // Esto incluye los que no tienen registro.
+                        pagadoSi: pagadoSi,
+                        pagadoParcial: pagadoParcial,
+                        pagadoNo: pagadoNo // Esto incluye los que no tienen registro.
+                    };
+                }
+            }
+        } else if (req.user.rol === 'DIRECCION') {
+            const totalAlumnosRow = await dbGetAsync("SELECT COUNT(*) as count FROM alumnos");
+            dashboardData.totalAlumnos = totalAlumnosRow ? totalAlumnosRow.count : 0;
+
+            const totalExcursionesRow = await dbGetAsync("SELECT COUNT(*) as count FROM excursiones");
+            dashboardData.totalExcursiones = totalExcursionesRow ? totalExcursionesRow.count : 0;
+
+            const sqlProximasExcursionesDireccion = `
+                SELECT id, nombre_excursion, fecha_excursion 
+                FROM excursiones 
+                WHERE para_clase_id IS NULL AND fecha_excursion >= date('now') 
+                ORDER BY fecha_excursion ASC`;
+            dashboardData.proximasExcursiones = await dbAllAsync(sqlProximasExcursionesDireccion);
+        } else {
+            // Potentially handle other roles or return a more generic summary if needed
+            // For now, just the base totalClases and message will be sent.
+            console.warn(`  Rol no reconocido para resumen específico del dashboard: ${req.user.rol}`);
+        }
+
+        res.json(dashboardData);
+
+    } catch (error) {
+        console.error("  Error en GET /api/dashboard/summary:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al generar el resumen del dashboard.", detalles: error.message });
+    }
 });
+
+// --- Rutas de Tesorería ---
+console.log("Definiendo rutas de Tesorería...");
+
+// GET /api/tesoreria/excursiones-pendientes
+app.get('/api/tesoreria/excursiones-pendientes', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/tesoreria/excursiones-pendientes para:", req.user.email, "Rol:", req.user.rol);
+
+    if (req.user.rol !== 'TESORERIA' && req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol TESORERIA o DIRECCION.' });
+    }
+
+    try {
+        const sql = `
+            SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino
+            FROM excursiones e
+            JOIN usuarios u ON e.creada_por_usuario_id = u.id
+            LEFT JOIN clases c ON e.para_clase_id = c.id
+            WHERE e.fecha_excursion >= date('now')
+            ORDER BY e.fecha_excursion ASC;
+        `;
+        const excursionesPendientes = await dbAllAsync(sql);
+        res.json({ excursiones_pendientes: excursionesPendientes });
+    } catch (error) {
+        console.error("  Error en GET /api/tesoreria/excursiones-pendientes:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al obtener excursiones pendientes.", detalles: error.message });
+    }
+});
+console.log("Endpoint GET /api/tesoreria/excursiones-pendientes definido.");
+
+// GET /api/tesoreria/excursiones-pasadas
+app.get('/api/tesoreria/excursiones-pasadas', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/tesoreria/excursiones-pasadas para:", req.user.email, "Rol:", req.user.rol);
+
+    if (req.user.rol !== 'TESORERIA' && req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol TESORERIA o DIRECCION.' });
+    }
+
+    try {
+        const sqlExcursionesPasadas = `
+            SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino
+            FROM excursiones e
+            JOIN usuarios u ON e.creada_por_usuario_id = u.id
+            LEFT JOIN clases c ON e.para_clase_id = c.id
+            WHERE e.fecha_excursion < date('now')
+            ORDER BY e.fecha_excursion DESC;
+        `;
+        const excursionesPasadas = await dbAllAsync(sqlExcursionesPasadas);
+
+        const augmentedExcursiones = [];
+        for (const excursion of excursionesPasadas) {
+            const sqlTotalAlumnos = `
+                SELECT COUNT(DISTINCT alumno_id) as count 
+                FROM participaciones_excursion 
+                WHERE excursion_id = ? AND autorizacion_firmada = 'Sí'`;
+            const totalAlumnosRow = await dbGetAsync(sqlTotalAlumnos, [excursion.id]);
+            excursion.totalAlumnosParticipantes = totalAlumnosRow ? totalAlumnosRow.count : 0;
+
+            const sqlTotalPagado = `
+                SELECT SUM(cantidad_pagada) as total 
+                FROM participaciones_excursion 
+                WHERE excursion_id = ?`;
+            const totalPagadoRow = await dbGetAsync(sqlTotalPagado, [excursion.id]);
+            excursion.totalPagado = totalPagadoRow && totalPagadoRow.total !== null ? totalPagadoRow.total : 0;
+            
+            augmentedExcursiones.push(excursion);
+        }
+
+        res.json({ excursiones_pasadas: augmentedExcursiones });
+    } catch (error) {
+        console.error("  Error en GET /api/tesoreria/excursiones-pasadas:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al obtener excursiones pasadas.", detalles: error.message });
+    }
+});
+console.log("Endpoint GET /api/tesoreria/excursiones-pasadas definido.");
+
+// --- Coordinator Class Assignment Routes ---
+console.log("Definiendo rutas de asignación de clases a coordinadores...");
+
+// POST /api/coordinadores/:coordinador_id/clases - Assign Class to Coordinator
+app.post('/api/coordinadores/:coordinador_id/clases', authenticateToken, async (req, res) => {
+    console.log("  Ruta: POST /api/coordinadores/:coordinador_id/clases, Usuario:", req.user.email);
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede asignar clases a coordinadores.' });
+    }
+
+    const coordinadorId = parseInt(req.params.coordinador_id);
+    const { clase_id: claseId } = req.body;
+
+    if (isNaN(coordinadorId)) {
+        return res.status(400).json({ error: "ID de coordinador inválido." });
+    }
+    if (claseId === undefined || isNaN(parseInt(claseId))) {
+        return res.status(400).json({ error: "clase_id es requerido en el body y debe ser un número." });
+    }
+    const claseIdNum = parseInt(claseId);
+
+    try {
+        // Validate coordinator
+        const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
+        if (!coordinador) {
+            return res.status(404).json({ error: "Usuario coordinador no encontrado." });
+        }
+        if (coordinador.rol !== 'COORDINACION') {
+            return res.status(400).json({ error: "El usuario especificado no tiene el rol de COORDINACION." });
+        }
+
+        // Validate class
+        const clase = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [claseIdNum]);
+        if (!clase) {
+            return res.status(404).json({ error: "Clase no encontrada." });
+        }
+
+        // Check if assignment already exists
+        const existingAssignment = await dbGetAsync(
+            "SELECT * FROM coordinador_clases WHERE coordinador_id = ? AND clase_id = ?",
+            [coordinadorId, claseIdNum]
+        );
+        if (existingAssignment) {
+            return res.status(409).json({ error: "Esta clase ya está asignada a este coordinador." });
+        }
+
+        // Insert new assignment
+        await dbRunAsync(
+            "INSERT INTO coordinador_clases (coordinador_id, clase_id) VALUES (?, ?)",
+            [coordinadorId, claseIdNum]
+        );
+        
+        console.log(`  Clase ID ${claseIdNum} asignada a Coordinador ID ${coordinadorId} por ${req.user.email}`);
+        res.status(201).json({ coordinador_id: coordinadorId, clase_id: claseIdNum, message: "Clase asignada al coordinador exitosamente." });
+
+    } catch (error) {
+        console.error("  Error en POST /api/coordinadores/:coordinador_id/clases:", error.message, error.stack);
+        if (error.message.includes("UNIQUE constraint failed")) { // Should be caught by pre-check, but as a fallback
+            return res.status(409).json({ error: "Esta clase ya está asignada a este coordinador (constraint)." });
+        }
+        res.status(500).json({ error: "Error interno del servidor al asignar la clase.", detalles: error.message });
+    }
+});
+console.log("Endpoint POST /api/coordinadores/:coordinador_id/clases definido.");
+
+// DELETE /api/coordinadores/:coordinador_id/clases/:clase_id - Unassign Class from Coordinator
+app.delete('/api/coordinadores/:coordinador_id/clases/:clase_id', authenticateToken, async (req, res) => {
+    console.log("  Ruta: DELETE /api/coordinadores/:coordinador_id/clases/:clase_id, Usuario:", req.user.email);
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede desasignar clases.' });
+    }
+
+    const coordinadorId = parseInt(req.params.coordinador_id);
+    const claseId = parseInt(req.params.clase_id);
+
+    if (isNaN(coordinadorId)) {
+        return res.status(400).json({ error: "ID de coordinador inválido." });
+    }
+    if (isNaN(claseId)) {
+        return res.status(400).json({ error: "ID de clase inválido." });
+    }
+
+    try {
+        // It's not strictly necessary to validate if the coordinator is indeed 'COORDINACION' here for deletion,
+        // as the record itself defines the link. If the link exists, it can be deleted.
+        // However, validating that the class exists could be useful.
+        const clase = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [claseId]);
+        if (!clase) {
+            // If the class doesn't exist, the assignment also can't exist in a consistent DB.
+            // Or one might choose to proceed with deletion attempt anyway.
+            // For now, we'll proceed, as the FK constraint on `coordinador_clases` should handle inconsistencies.
+        }
+
+        const result = await dbRunAsync(
+            "DELETE FROM coordinador_clases WHERE coordinador_id = ? AND clase_id = ?",
+            [coordinadorId, claseId]
+        );
+
+        if (result.changes === 0) {
+            return res.status(404).json({ error: "Asignación no encontrada para eliminar." });
+        }
+        
+        console.log(`  Clase ID ${claseId} desasignada del Coordinador ID ${coordinadorId} por ${req.user.email}`);
+        res.status(200).json({ message: "Clase desasignada del coordinador exitosamente." });
+        // Alternative: res.status(204).send();
+
+    } catch (error) {
+        console.error("  Error en DELETE /api/coordinadores/:coordinador_id/clases/:clase_id:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al desasignar la clase.", detalles: error.message });
+    }
+});
+console.log("Endpoint DELETE /api/coordinadores/:coordinador_id/clases/:clase_id definido.");
+
+// GET /api/coordinadores/:coordinador_id/clases - List Classes for a Coordinator
+app.get('/api/coordinadores/:coordinador_id/clases', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/coordinadores/:coordinador_id/clases, Usuario:", req.user.email);
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado.' });
+    }
+
+    const coordinadorId = parseInt(req.params.coordinador_id);
+    if (isNaN(coordinadorId)) {
+        return res.status(400).json({ error: "ID de coordinador inválido." });
+    }
+
+    try {
+        const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
+        if (!coordinador) {
+            return res.status(404).json({ error: "Usuario coordinador no encontrado." });
+        }
+        // While the route is for coordinators, it might be useful to check any user's assignments if they were mistakenly assigned.
+        // However, sticking to the "user with COORDINACION role" for validation.
+        if (coordinador.rol !== 'COORDINACION') {
+             return res.status(400).json({ error: "El usuario especificado no es un coordinador." });
+        }
+
+        const sql = `
+            SELECT c.id, c.nombre_clase, c.tutor_id, u_tutor.nombre_completo as nombre_tutor
+            FROM clases c
+            JOIN coordinador_clases cc ON c.id = cc.clase_id
+            LEFT JOIN usuarios u_tutor ON c.tutor_id = u_tutor.id
+            WHERE cc.coordinador_id = ?
+            ORDER BY c.nombre_clase ASC;
+        `;
+        const clasesAsignadas = await dbAllAsync(sql, [coordinadorId]);
+        
+        res.json({ clases_asignadas: clasesAsignadas });
+
+    } catch (error) {
+        console.error("  Error en GET /api/coordinadores/:coordinador_id/clases:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al obtener las clases del coordinador.", detalles: error.message });
+    }
+});
+console.log("Endpoint GET /api/coordinadores/:coordinador_id/clases definido.");
+
+// GET /api/clases/:clase_id/coordinadores - List Coordinators for a Class
+app.get('/api/clases/:clase_id/coordinadores', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/clases/:clase_id/coordinadores, Usuario:", req.user.email);
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado.' });
+    }
+
+    const claseId = parseInt(req.params.clase_id);
+    if (isNaN(claseId)) {
+        return res.status(400).json({ error: "ID de clase inválido." });
+    }
+
+    try {
+        const clase = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [claseId]);
+        if (!clase) {
+            return res.status(404).json({ error: "Clase no encontrada." });
+        }
+
+        const sql = `
+            SELECT u.id, u.nombre_completo, u.email, u.rol
+            FROM usuarios u
+            JOIN coordinador_clases cc ON u.id = cc.coordinador_id
+            WHERE cc.clase_id = ? AND u.rol = 'COORDINACION'
+            ORDER BY u.nombre_completo ASC;
+        `;
+        const coordinadoresAsignados = await dbAllAsync(sql, [claseId]);
+        
+        res.json({ coordinadores_asignados: coordinadoresAsignados });
+
+    } catch (error) {
+        console.error("  Error en GET /api/clases/:clase_id/coordinadores:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al obtener los coordinadores de la clase.", detalles: error.message });
+    }
+});
+console.log("Endpoint GET /api/clases/:clase_id/coordinadores definido.");
+
 
 console.log("Paso 17: Todas las definiciones de rutas de API (o sus placeholders) completadas.");
 
