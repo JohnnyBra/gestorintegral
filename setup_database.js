@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     email TEXT UNIQUE NOT NULL,
     nombre_completo TEXT NOT NULL,
     password_hash TEXT NOT NULL,
-    rol TEXT NOT NULL CHECK(rol IN ('DIRECCION', 'TUTOR'))
+    rol TEXT NOT NULL CHECK(rol IN ('DIRECCION', 'TUTOR', 'TESORERIA', 'COORDINACION'))
 );
 
 CREATE TABLE IF NOT EXISTS clases (
