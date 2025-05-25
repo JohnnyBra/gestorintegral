@@ -195,9 +195,31 @@ async function insertarDatosIniciales() {
 
         // 3. Crear Clase de Ejemplo y asignarla al Tutor de Ejemplo
         if (idTutorEjemplo) { 
-            await insertClase("1A PRIMARIA", idTutorEjemplo); 
+            await insertClase("1A PRIMARIA", idTutorEjemplo); // This was PRIMARIA 1A
         }
-        await insertClase("INFANTIL 4B", null); 
+        // await insertClase("INFANTIL 4B", null); // This is in the new list, will be handled below if it doesn't exist
+
+        // Add new classes
+        await insertClase("INFANTIL 3A", null);
+        await insertClase("INFANTIL 3B", null);
+        await insertClase("INFANTIL 4A", null);
+        await insertClase("INFANTIL 4B", null); // Duplicate from above, but insertClase handles it
+        await insertClase("INFANTIL 5A", null);
+        await insertClase("INFANTIL 5B", null);
+        // PRIMARIA 1A is already handled if idTutorEjemplo exists, if not, it won't be created here unless added explicitly
+        // For consistency, let's ensure all are listed, insertClase handles duplicates.
+        await insertClase("PRIMARIA 1A", null); // Will only insert if not already by tutor
+        await insertClase("PRIMARIA 1B", null);
+        await insertClase("PRIMARIA 2A", null);
+        await insertClase("PRIMARIA 2B", null);
+        await insertClase("PRIMARIA 3A", null);
+        await insertClase("PRIMARIA 3B", null);
+        await insertClase("PRIMARIA 4A", null);
+        await insertClase("PRIMARIA 4B", null);
+        await insertClase("PRIMARIA 5A", null);
+        await insertClase("PRIMARIA 5B", null);
+        await insertClase("PRIMARIA 6A", null);
+        await insertClase("PRIMARIA 6B", null);
 
     } catch (error) {
         console.error("Error durante la inserción de datos iniciales:", error.message);

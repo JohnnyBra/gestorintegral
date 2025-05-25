@@ -32,6 +32,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminUsuariosContentDiv = document.getElementById('admin-usuarios-content');
     const formAdminUsuarioWrapper = document.getElementById('formAdminUsuarioWrapper');
     const sharedExcursionsContentDiv = document.getElementById('shared-excursions-content');
+    
+    // New selectors for password change features
+    const settingsSection = document.getElementById('settings-section'); 
+    const formChangeOwnPassword = document.getElementById('formChangeOwnPassword'); 
+    const changeOwnPasswordMessage = document.getElementById('changeOwnPasswordMessage'); 
 
 
     // --- Modal Element Variables ---
@@ -49,9 +54,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalExcursionNotas = document.getElementById('modal-excursion-notas');
     const modalCloseButton = document.getElementById('modal-close-button');
 
+    // Admin Set Password Modal Elements
+    const setPasswordModal = document.getElementById('setPasswordModal'); 
+    const setPasswordModalUserName = document.getElementById('setPasswordModalUserName'); 
+    const setPasswordUserIdInput = document.getElementById('setPasswordUserId'); 
+    const setPasswordNewPasswordInput = document.getElementById('setPasswordNewPassword'); 
+    const formSetPasswordAdmin = document.getElementById('formSetPasswordAdmin'); 
+    const btnSetPasswordSubmit = document.getElementById('btnSetPasswordSubmit'); 
+    const setPasswordModalMessage = document.getElementById('setPasswordModalMessage'); 
+    const setPasswordModalCloseBtn = document.querySelector('#setPasswordModal .simple-modal-close-btn'); 
+
+
     console.log("app.js cargado y DOMContentLoaded disparado. API_BASE_URL:", API_BASE_URL);
     if (!loginForm) console.error("Elemento loginForm NO encontrado.");
     if (!excursionDetailModal) console.error("Elemento excursionDetailModal NO encontrado.");
+    if (!setPasswordModal) console.error("Elemento setPasswordModal NO encontrado.");
 
 
     // --- Funciones Auxiliares ---
@@ -189,6 +206,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const sharedExcursionsLinkLi = mainNavSidebar.querySelector('a[data-section="shared-excursions"]').parentElement;
         if (sharedExcursionsLinkLi) sharedExcursionsLinkLi.style.display = (currentUser && currentUser.rol === 'TUTOR') ? 'list-item' : 'none';
+        
+        const settingsLinkLi = mainNavSidebar.querySelector('a[data-section="settings"]').parentElement; 
+        if (settingsLinkLi) settingsLinkLi.style.display = currentUser ? 'list-item' : 'none'; // Show if any user is logged in
+
 
         const tesoreriaLinkLi = mainNavSidebar.querySelector('a[data-section="tesoreria"]');
         if (tesoreriaLinkLi) { 
@@ -270,6 +291,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (currentUser && (currentUser.rol === 'COORDINACION' || currentUser.rol === 'DIRECCION')) loadCoordinacionData();
                 else showGlobalError("Acceso denegado.", document.getElementById('coordinacion-content')); 
                 break;
+            case 'settings': 
+                if (settingsSection) { // settingsSection is the new div for the form
+                    settingsSection.style.display = 'block'; // Make sure it's visible
+                    if(formChangeOwnPassword) formChangeOwnPassword.reset(); // Reset form
+                    if(changeOwnPasswordMessage) changeOwnPasswordMessage.textContent = ''; // Clear any previous messages
+                }
+                break;
         }
     }
 
@@ -277,7 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadDashboardData() {
         if (!dashboardSummaryContentDiv) {
              console.error("Elemento dashboardSummaryContentDiv no encontrado.");
-             // Still try to load calendar if its container exists
         }
         if (!currentToken) {
             if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = '<p class="error-message">Error de sesión.</p>';
@@ -303,13 +330,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const data = await apiFetch('/dashboard/summary');
-            if (dashboardSummaryContentDiv) { // Check again in case it wasn't found initially
+            if (dashboardSummaryContentDiv) { 
                 if (!data) {
                     dashboardSummaryContentDiv.innerHTML = `<p class="error-message">No se pudo obtener el resumen.</p>`;
                     return;
                 }
                 let html = '<h4>Resumen General</h4>';
-                // (Rest of summary HTML generation as before)
                 if (currentUser && currentUser.rol === 'DIRECCION') {
                     html += `<ul>
                         <li>Total Clases: ${data.totalClases ?? 'N/D'}</li>
@@ -344,6 +370,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (data.proximasExcursiones && data.proximasExcursiones.length > 0) { 
                          html += `<p>Aún no hay datos de participación para la excursión más próxima de tu clase.</p>`;
                     }
+                }
+                 if (currentUser && currentUser.rol === 'COORDINACION') {
+                    html += `<ul>
+                        <li>Clases Asignadas: ${data.infoSusClasesAsignadas ? data.infoSusClasesAsignadas.numClases : 'N/D'}</li>
+                        <li>Nº Alumnos en Clases Asignadas: ${data.infoSusClasesAsignadas ? data.infoSusClasesAsignadas.numAlumnos : 'N/D'}</li>
+                    </ul>`;
+                    if (data.proximasExcursionesCoordinador && data.proximasExcursionesCoordinador.length > 0) {
+                        html += '<h5>Próximas Excursiones (Clases Asignadas / Globales):</h5><ul>';
+                        data.proximasExcursionesCoordinador.forEach(ex => {
+                            let tipoExcursion = ex.para_clase_id === null ? '(Global)' : '(Específica de clase)';
+                            html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'}) - ${tipoExcursion}</li>`;
+                        });
+                        html += '</ul>';
+                    } else { html += '<p>No hay próximas excursiones para tus clases asignadas o globales.</p>'; }
                 }
                 dashboardSummaryContentDiv.innerHTML = html;
             }
@@ -1391,19 +1431,11 @@ document.addEventListener('DOMContentLoaded', () => {
         resumenContainer.innerHTML = ''; 
         let endpoint = `/excursiones/${excursionId}/participaciones`;
         
-        // For DIRECCION role, if filtering by class, append view_clase_id
         const filtroClaseSelectElement = document.getElementById('selectFiltroClaseParticipaciones');
         if (currentUser.rol === 'DIRECCION' && filtroClaseSelectElement && filtroClaseSelectElement.value) {
             endpoint += `?view_clase_id=${filtroClaseSelectElement.value}`;
         }
-        // For COORDINACION role, if the excursion is global, they MUST have selected a class to view
-        // This is now handled by the API for /api/excursiones/:excursion_id/participaciones,
-        // which expects view_clase_id if a COORDINADOR is viewing a global excursion.
-        // We need to ensure the frontend sends this if applicable.
-        // However, the logic to *select* which class a coordinator is viewing for a global excursion
-        // is not part of this specific 'loadParticipaciones' function, but rather how this
-        // renderTablaParticipaciones is called (e.g., from coordinacion section or a modified general participaciones view)
-
+        
         try {
             const data = await apiFetch(endpoint);
             if (!data || !data.alumnosParticipaciones) {
@@ -1542,18 +1574,29 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const data = await apiFetch('/usuarios');
             let html = '<h3>Listado de Usuarios</h3>';
-            html += `<button id="btnShowFormNuevoUsuarioTutor" class="success" style="margin-bottom:15px;">+ Crear Usuario Tutor</button>`;
+            html += `<button id="btnShowFormNuevoUsuarioTutor" class="success" style="margin-bottom:15px;">+ Crear Usuario</button>`;
             html += `<table class="tabla-datos"><thead><tr><th>ID</th><th>Email</th><th>Nombre</th><th>Rol</th><th>Clase (Tutor)</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.usuarios && data.usuarios.length > 0) {
                 data.usuarios.forEach(usuario => {
+                    let actionsHtml = '';
+                    if (usuario.rol !== 'DIRECCION') {
+                        actionsHtml += `<button class="edit-usuario warning" data-id="${usuario.id}">Editar</button>
+                                        <button class="delete-usuario danger" data-id="${usuario.id}" data-nombre="${usuario.nombre_completo}">Eliminar</button>`;
+                        if (currentUser.rol === 'DIRECCION' && usuario.id !== currentUser.id) { // Ensure admin cannot change their own password here
+                             actionsHtml += ` <button class="set-password-admin-btn info" data-user-id="${usuario.id}" data-user-name="${usuario.nombre_completo}">Cambiar Contraseña</button>`;
+                        }
+                    } else {
+                        actionsHtml = (usuario.id === currentUser.id) ? '<em>(Tu usuario)</em>' : '<em>(No editable)</em>';
+                    }
                     html += `<tr data-user-id="${usuario.id}"><td>${usuario.id}</td><td>${usuario.email}</td><td>${usuario.nombre_completo}</td><td>${usuario.rol}</td><td>${usuario.rol === 'TUTOR' ? (usuario.clase_asignada_nombre || '<em>No asignada</em>') : 'N/A'}</td><td class="actions-cell">
-                        ${usuario.rol !== 'DIRECCION' ? `<button class="edit-usuario warning" data-id="${usuario.id}">Editar</button><button class="delete-usuario danger" data-id="${usuario.id}" data-nombre="${usuario.nombre_completo}">Eliminar</button>` : '<em>(No editable)</em>'}
+                        ${actionsHtml}
                         </td></tr>`;});
             } else { html += '<tr><td colspan="6" style="text-align:center;">No hay usuarios.</td></tr>'; }
             html += '</tbody></table>';
             adminUsuariosContentDiv.innerHTML = html; 
             const btnShowForm = document.getElementById('btnShowFormNuevoUsuarioTutor');
             if (btnShowForm) btnShowForm.addEventListener('click', () => showFormAdminUsuario(null, null));
+            
             adminUsuariosContentDiv.querySelectorAll('.edit-usuario').forEach(b => {
                 b.onclick = async (e) => {
                     const userId = e.target.dataset.id;
@@ -1562,6 +1605,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
             adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre));
+            
+            adminUsuariosContentDiv.querySelectorAll('.set-password-admin-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const userId = e.target.dataset.userId;
+                    const userName = e.target.dataset.userName;
+                    openSetPasswordModal(userId, userName);
+                });
+            });
+
         } catch (error) { showGlobalError(`Error cargando usuarios: ${error.message}`, adminUsuariosContentDiv); }
     }
     function showFormAdminUsuario(userId = null, initialUserData = null) {
@@ -1595,7 +1647,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         formHtml += `<div class="form-buttons">`;
-        if (!isDireccionUserBeingViewed) { // Only show submit button if not viewing a DIRECCION user
+        if (!isDireccionUserBeingViewed) { 
             formHtml += `<button type="submit" class="success">${submitButtonText}</button>`;
         }
         formHtml += `<button type="button" id="btnCancelarGestionUsuario" class="secondary">Cancelar</button></div>
@@ -1614,7 +1666,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 formAdminUsuarioWrapper.innerHTML = ''; 
                 formAdminUsuarioWrapper.style.display = 'none'; 
                 const coordinatorSection = document.getElementById('coordinadorClasesManagementSection');
-                if (coordinatorSection) coordinatorSection.innerHTML = ''; // Clear this too
+                if (coordinatorSection) coordinatorSection.innerHTML = ''; 
             };
         }
 
@@ -1723,7 +1775,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if(errorP) errorP.textContent = '';
         try {
             await apiFetch(`/coordinadores/${coordinadorId}/clases`, 'POST', { clase_id: parseInt(claseId) });
-            // Refresh both sections
             const assignedContainer = document.getElementById('assignedClassesListContainer');
             const assignableContainer = document.getElementById('assignNewClassFormContainer');
             if (assignedContainer) await loadAndDisplayAssignedClasses(coordinadorId, assignedContainer);
@@ -1740,7 +1791,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if(errorP) errorP.textContent = '';
         try {
             await apiFetch(`/coordinadores/${coordinadorId}/clases/${claseId}`, 'DELETE');
-             // Refresh both sections
             const assignedContainer = document.getElementById('assignedClassesListContainer');
             const assignableContainer = document.getElementById('assignNewClassFormContainer');
             if (assignedContainer) await loadAndDisplayAssignedClasses(coordinadorId, assignedContainer);
@@ -1767,8 +1817,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const isEditMode = editUserIdInput && editUserIdInput.value;
         const emailInput = document.getElementById('adminUserEmail');
         const nombreCompletoInput = document.getElementById('adminUserNombreCompleto');
-        const rolSelect = document.getElementById('adminUserRol'); // Might be null if viewing DIRECCION
-        const passwordInput = document.getElementById('adminUserPassword'); // Might be null if editing
+        const rolSelect = document.getElementById('adminUserRol'); 
+        const passwordInput = document.getElementById('adminUserPassword'); 
 
         const email = emailInput ? emailInput.value.trim() : null;
         const nombre_completo = nombreCompletoInput ? nombreCompletoInput.value.trim() : null;
@@ -1783,22 +1833,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isEditMode) {
             method = 'PUT';
             endpoint = `/usuarios/${editUserIdInput.value}`;
-            if (rolSelect) { // Only include rol if the select element exists (i.e., not viewing DIRECCION)
+            if (rolSelect) { 
                 userData.rol = rolSelect.value;
             }
-        } else { // Create mode
+        } else { 
             if (passwordInput) {
                 const password = passwordInput.value;
                 if (!password || password.length < 8) {
                     if (errorP) errorP.textContent = "Contraseña requerida (mínimo 8 caracteres)."; return;
                 }
                 userData.password = password;
-            } else { // Should not happen in create mode
+            } else { 
                  if (errorP) errorP.textContent = "Campo de contraseña no encontrado."; return;
             }
             if (rolSelect) {
                  userData.rol = rolSelect.value;
-            } else { // Should not happen in create mode
+            } else { 
                  if (errorP) errorP.textContent = "Campo de rol no encontrado."; return;
             }
         }
@@ -1806,31 +1856,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!userData.email || !userData.nombre_completo) {
             if (errorP) errorP.textContent = "Email y Nombre Completo son requeridos."; return;
         }
-         if (!isEditMode && !userData.rol) { // Rol is required for new users
+         if (!isEditMode && !userData.rol) { 
             if (errorP) errorP.textContent = "Rol es requerido para nuevos usuarios."; return;
         }
-
 
         const submitButton = event.target.querySelector('button[type="submit"]');
         try {
             if (submitButton) submitButton.disabled = true;
             await apiFetch(endpoint, method, userData);
             
-            // After successfully saving user details, if it was an edit mode for a COORDINACION user,
-            // the class management section might need to be re-rendered if the role potentially changed
-            // TO COORDINACION or FROM COORDINACION. However, the current logic in showFormAdminUsuario handles
-            // adding/removing the section based on the *initial* role.
-            // For simplicity, we'll rely on a full reload of the user list and re-clicking edit
-            // if a role change affects the visibility of the coordinator section.
-            // A more sophisticated approach might re-initialize the form for the same user.
-
             if (formAdminUsuarioWrapper) {
                  formAdminUsuarioWrapper.innerHTML = `<p class="success-message">Usuario ${isEditMode ? 'actualizado' : 'creado'} exitosamente.</p>`;
                  setTimeout(() => { 
                     formAdminUsuarioWrapper.innerHTML = ''; 
                     formAdminUsuarioWrapper.style.display = 'none'; 
                     const coordinatorSection = document.getElementById('coordinadorClasesManagementSection');
-                    if (coordinatorSection) coordinatorSection.innerHTML = ''; // Clear this too
+                    if (coordinatorSection) coordinatorSection.innerHTML = ''; 
                 }, 2000);
             }
             loadAdminUsuarios(); 
@@ -1868,7 +1909,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(modalExcursionJustificacion) modalExcursionJustificacion.textContent = excursionData.justificacion_texto || 'N/A';
         if(modalExcursionNotas) modalExcursionNotas.textContent = excursionData.notas_excursion || 'N/A';
         
-        excursionDetailModal.style.display = 'block'; // Use 'block' or 'flex' based on CSS
+        excursionDetailModal.style.display = 'block'; 
     }
 
     function closeExcursionModal() {
@@ -1885,7 +1926,122 @@ document.addEventListener('DOMContentLoaded', () => {
         if (excursionDetailModal && event.target === excursionDetailModal) {
             closeExcursionModal();
         }
+        if (setPasswordModal && event.target === setPasswordModal) { 
+            closeSetPasswordModal();
+        }
     });
+
+    // --- User's Own Password Change ---
+    if (formChangeOwnPassword) {
+        formChangeOwnPassword.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const currentPasswordInput = document.getElementById('currentPassword');
+            const newPasswordInput = document.getElementById('newPassword');
+            const confirmNewPasswordInput = document.getElementById('confirmNewPassword');
+
+            const currentPassword = currentPasswordInput.value;
+            const newPassword = newPasswordInput.value;
+            const confirmNewPassword = confirmNewPasswordInput.value;
+
+            if (changeOwnPasswordMessage) {
+                changeOwnPasswordMessage.textContent = '';
+                changeOwnPasswordMessage.className = 'message'; 
+            }
+
+            if (newPassword !== confirmNewPassword) {
+                if (changeOwnPasswordMessage) {
+                    changeOwnPasswordMessage.textContent = 'Las nuevas contraseñas no coinciden.';
+                    changeOwnPasswordMessage.className = 'error-message';
+                }
+                return;
+            }
+            if (newPassword.length < 8) {
+                if (changeOwnPasswordMessage) {
+                    changeOwnPasswordMessage.textContent = 'La nueva contraseña debe tener al menos 8 caracteres.';
+                    changeOwnPasswordMessage.className = 'error-message';
+                }
+                return;
+            }
+
+            const btn = document.getElementById('btnChangeOwnPassword');
+            if(btn) btn.disabled = true;
+
+            try {
+                const response = await apiFetch('/auth/change-password', 'POST', {
+                    current_password: currentPassword,
+                    new_password: newPassword
+                });
+                if (changeOwnPasswordMessage) {
+                    changeOwnPasswordMessage.textContent = response.message || 'Contraseña cambiada con éxito.';
+                    changeOwnPasswordMessage.className = 'success-message';
+                }
+                formChangeOwnPassword.reset();
+            } catch (error) {
+                if (changeOwnPasswordMessage) {
+                    changeOwnPasswordMessage.textContent = error.message || 'Error al cambiar la contraseña.';
+                    changeOwnPasswordMessage.className = 'error-message';
+                }
+            } finally {
+                 if(btn) btn.disabled = false;
+            }
+        });
+    }
+
+    // --- Admin Setting Other User's Password ---
+    function openSetPasswordModal(userId, userName) {
+        if (!setPasswordModal || !setPasswordModalUserName || !setPasswordUserIdInput || !setPasswordNewPasswordInput || !setPasswordModalMessage) {
+            console.error("Modal elements for setting password not found.");
+            return;
+        }
+        setPasswordModalUserName.textContent = userName;
+        setPasswordUserIdInput.value = userId;
+        setPasswordNewPasswordInput.value = '';
+        setPasswordModalMessage.textContent = '';
+        setPasswordModalMessage.className = 'message'; 
+        setPasswordModal.style.display = 'flex';
+    }
+
+    function closeSetPasswordModal() {
+        if (setPasswordModal) setPasswordModal.style.display = 'none';
+    }
+
+    if (setPasswordModalCloseBtn) {
+        setPasswordModalCloseBtn.addEventListener('click', closeSetPasswordModal);
+    }
+
+    if (formSetPasswordAdmin) { 
+        formSetPasswordAdmin.addEventListener('submit', async (e) => {
+            e.preventDefault(); 
+            if (!setPasswordUserIdInput || !setPasswordNewPasswordInput || !setPasswordModalMessage || !btnSetPasswordSubmit) return;
+
+            const userId = setPasswordUserIdInput.value;
+            const newPassword = setPasswordNewPasswordInput.value;
+            
+            setPasswordModalMessage.textContent = '';
+            setPasswordModalMessage.className = 'message';
+
+            if (newPassword.length < 8) {
+                setPasswordModalMessage.textContent = 'La nueva contraseña debe tener al menos 8 caracteres.';
+                setPasswordModalMessage.className = 'error-message';
+                return;
+            }
+            
+            btnSetPasswordSubmit.disabled = true;
+
+            try {
+                const response = await apiFetch(`/usuarios/${userId}/set-password`, 'POST', { new_password: newPassword });
+                setPasswordModalMessage.textContent = response.message || 'Contraseña establecida con éxito.';
+                setPasswordModalMessage.className = 'success-message';
+                if(setPasswordNewPasswordInput) setPasswordNewPasswordInput.value = ''; 
+                setTimeout(closeSetPasswordModal, 2000); 
+            } catch (error) {
+                setPasswordModalMessage.textContent = error.message || 'Error al establecer la contraseña.';
+                setPasswordModalMessage.className = 'error-message';
+            } finally {
+                 if(btnSetPasswordSubmit) btnSetPasswordSubmit.disabled = false;
+            }
+        });
+    }
 
     async function handleExcursionDayClick(excursionId) {
         console.log("handleExcursionDayClick called with ID:", excursionId);
@@ -1893,25 +2049,20 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn("No excursionId provided to handleExcursionDayClick.");
             return;
         }
-        // TODO: Consider adding a loading indicator here
         try {
-            // The endpoint was already /excursiones/:id in previous setup for editing, so it should be correct.
             const excursionDetails = await apiFetch(`/excursiones/${excursionId}`); 
-            if (excursionDetails) { // apiFetch returns the excursion object directly if successful
+            if (excursionDetails) { 
                 openExcursionModal(excursionDetails);
             } else {
-                console.warn(`No details found for excursion ID: ${excursionId}. The API might have returned null or an empty object if not found.`);
-                // If apiFetch throws for 404s, this 'else' might not be hit.
-                // If it returns null/undefined for 404s, this is appropriate.
+                console.warn(`No details found for excursion ID: ${excursionId}.`);
                 alert("No se pudieron encontrar los detalles de la excursión. Puede que no exista.");
             }
         } catch (error) {
             console.error(`Error fetching details for excursion ID ${excursionId}:`, error);
             alert(`Error al cargar detalles de la excursión: ${error.message}`);
         }
-        // TODO: Consider hiding loading indicator here
     }
-    window.handleExcursionDayClick = handleExcursionDayClick; // Expose to global scope
+    window.handleExcursionDayClick = handleExcursionDayClick; 
 
     // --- Tesorería ---
     async function loadTesoreriaData() {
@@ -2004,7 +2155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     contentDiv.querySelectorAll('.view-clase-details-coord').forEach(link => {
                         link.addEventListener('click', (e) => {
                             e.preventDefault();
-                            const claseId = parseInt(e.target.dataset.claseId); // Ensure it's a number for comparison
+                            const claseId = parseInt(e.target.dataset.claseId); 
                             const claseNombre = e.target.dataset.claseNombre;
                             
                             selectedCoordClaseId = claseId; 
@@ -2044,7 +2195,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function displayCoordinadorClaseAlumnos(claseId, claseNombre, containerElement) {
         containerElement.innerHTML = `<h4>Alumnos en ${claseNombre}</h4><p>Cargando alumnos...</p>`;
         try {
-            // For COORDINACION role, /api/alumnos endpoint expects claseId if the coordinator is not DIRECCION
             const data = await apiFetch(`/alumnos?claseId=${claseId}`); 
             if (data && data.alumnos && data.alumnos.length > 0) {
                 let html = '<table class="tabla-datos"><thead><tr><th>Nombre Completo</th></tr></thead><tbody>';
@@ -2065,8 +2215,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function displayCoordinadorClaseExcursiones(claseId, claseNombre, containerElement) {
         containerElement.innerHTML = `<h4>Excursiones para ${claseNombre}</h4><p>Cargando excursiones...</p>`;
         try {
-            // The /api/excursiones endpoint for COORDINACION already filters by their assigned classes + global ones.
-            // We need to further filter client-side for *this specific* claseId or global.
             const data = await apiFetch('/excursiones'); 
             
             const relevantExcursiones = (data.excursiones || []).filter(ex => 
@@ -2093,12 +2241,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         const excursionNombre = e.target.dataset.excursionNombre;
                         
                         console.log(`Coordinador: Ver participaciones para Excursión ID ${excursionId} (${excursionNombre}), filtrado por Clase ID ${selectedCoordClaseId}`);
-                        // For future task:
-                        // sessionStorage.setItem('filtroParticipacionesExcursionId', excursionId);
-                        // sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionNombre);
-                        // // Crucially, set the class context for the participaciones view
-                        // sessionStorage.setItem('viewParticipacionesForClaseId', selectedCoordClaseId); 
-                        // navigateTo('participaciones');
                         alert(`(Coordinador) Ver participaciones para Excursión ID ${excursionId}, filtrado por Clase ID ${selectedCoordClaseId}. (Implementación futura)`);
                     });
                 });

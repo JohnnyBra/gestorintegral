@@ -132,6 +132,47 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
     res.json({ usuario: req.user });
 });
 
+// POST /api/auth/change-password - User changes their own password
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+    console.log("  Ruta: POST /api/auth/change-password, Usuario:", req.user.email);
+    const { current_password, new_password } = req.body;
+    const userId = req.user.id;
+
+    if (!current_password || !new_password) {
+        return res.status(400).json({ error: "La contraseña actual y la nueva contraseña son requeridas." });
+    }
+    if (new_password.length < 8) {
+        return res.status(400).json({ error: "La nueva contraseña debe tener al menos 8 caracteres." });
+    }
+
+    try {
+        const user = await dbGetAsync("SELECT password_hash FROM usuarios WHERE id = ?", [userId]);
+        if (!user) {
+            // This should not happen if the token is valid and user exists
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        const passwordIsValid = await bcrypt.compare(current_password, user.password_hash);
+        if (!passwordIsValid) {
+            return res.status(401).json({ error: "La contraseña actual es incorrecta." });
+        }
+
+        const saltRounds = 10;
+        const new_password_hash = await bcrypt.hash(new_password, saltRounds);
+
+        await dbRunAsync("UPDATE usuarios SET password_hash = ? WHERE id = ?", [new_password_hash, userId]);
+        
+        console.log(`  Contraseña actualizada para Usuario ID: ${userId} por él mismo.`);
+        res.json({ message: "Contraseña actualizada exitosamente." });
+
+    } catch (error) {
+        console.error("  Error en /api/auth/change-password:", error.message);
+        res.status(500).json({ error: "Error interno del servidor al cambiar la contraseña." });
+    }
+});
+console.log("Endpoint POST /api/auth/change-password definido.");
+
+
 // --- Gestión de Usuarios (Solo Dirección) ---
 app.get('/api/usuarios', authenticateToken, async (req, res) => {
     if (req.user.rol !== 'DIRECCION') return res.status(403).json({ error: 'No autorizado.' });
@@ -379,6 +420,54 @@ app.delete('/api/usuarios/:id', authenticateToken, async (req, res) => {
     }
 });
 console.log("Endpoint DELETE /api/usuarios/:id definido.");
+
+// POST /api/usuarios/:id/set-password - Admin sets a user's password
+app.post('/api/usuarios/:id/set-password', authenticateToken, async (req, res) => {
+    console.log("  Ruta: POST /api/usuarios/:id/set-password, Admin:", req.user.email);
+    
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado. Solo el rol DIRECCION puede cambiar contraseñas de otros usuarios.' });
+    }
+
+    const userIdToUpdate = parseInt(req.params.id);
+    if (isNaN(userIdToUpdate)) {
+        return res.status(400).json({ error: "ID de usuario inválido." });
+    }
+
+    if (userIdToUpdate === req.user.id) {
+        return res.status(403).json({ error: "No puede cambiar su propia contraseña mediante esta vía. Use la opción de cambio de contraseña personal." });
+    }
+
+    const { new_password } = req.body;
+    if (!new_password || new_password.length < 8) {
+        return res.status(400).json({ error: "La nueva contraseña es requerida y debe tener al menos 8 caracteres." });
+    }
+
+    try {
+        const userToUpdate = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [userIdToUpdate]);
+        if (!userToUpdate) {
+            return res.status(404).json({ error: "Usuario a actualizar no encontrado." });
+        }
+
+        if (userToUpdate.rol === 'DIRECCION') {
+            return res.status(403).json({ error: "No se puede cambiar la contraseña de otro usuario con rol DIRECCION." });
+        }
+
+        const saltRounds = 10;
+        const new_password_hash = await bcrypt.hash(new_password, saltRounds);
+
+        await dbRunAsync("UPDATE usuarios SET password_hash = ? WHERE id = ?", [new_password_hash, userIdToUpdate]);
+        
+        console.log(`  Contraseña actualizada para Usuario ID: ${userIdToUpdate} por Admin ID: ${req.user.id}`);
+        res.json({ message: "Contraseña del usuario actualizada exitosamente." });
+
+    } catch (error) {
+        console.error(`  Error en POST /api/usuarios/${userIdToUpdate}/set-password:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al establecer la contraseña del usuario." });
+    }
+});
+console.log("Endpoint POST /api/usuarios/:id/set-password definido.");
+
 
 // GET /api/usuarios/tutores - Obtener todos los tutores (ID y Nombre)
 app.get('/api/usuarios/tutores', authenticateToken, async (req, res) => {
@@ -2043,10 +2132,34 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
                 WHERE para_clase_id IS NULL AND fecha_excursion >= date('now') 
                 ORDER BY fecha_excursion ASC`;
             dashboardData.proximasExcursiones = await dbAllAsync(sqlProximasExcursionesDireccion);
+        } else if (req.user.rol === 'COORDINACION') {
+            dashboardData.infoSusClasesAsignadas = { numClases: 0, numAlumnos: 0 };
+            dashboardData.proximasExcursionesCoordinador = [];
+
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            dashboardData.infoSusClasesAsignadas.numClases = assignedClaseIds.length;
+
+            if (assignedClaseIds.length > 0) {
+                // Calculate total number of students in assigned classes
+                const placeholders = assignedClaseIds.map(() => '?').join(',');
+                const sqlAlumnosCoordinador = `SELECT COUNT(*) as count FROM alumnos WHERE clase_id IN (${placeholders})`;
+                const numAlumnosRow = await dbGetAsync(sqlAlumnosCoordinador, assignedClaseIds);
+                dashboardData.infoSusClasesAsignadas.numAlumnos = numAlumnosRow ? numAlumnosRow.count : 0;
+
+                // Fetch upcoming excursions relevant to these classes
+                const sqlExcursionesCoordinador = `
+                    SELECT id, nombre_excursion, fecha_excursion, para_clase_id 
+                    FROM excursiones 
+                    WHERE fecha_excursion >= date('now') 
+                    AND (para_clase_id IS NULL OR para_clase_id IN (${placeholders}))
+                    ORDER BY fecha_excursion ASC`;
+                // Need to add assignedClaseIds to params for the IN clause
+                const paramsExcursiones = [...assignedClaseIds];
+                dashboardData.proximasExcursionesCoordinador = await dbAllAsync(sqlExcursionesCoordinador, paramsExcursiones);
+            }
         } else {
-            // Potentially handle other roles or return a more generic summary if needed
-            // For now, just the base totalClases and message will be sent.
-            console.warn(`  Rol no reconocido para resumen específico del dashboard: ${req.user.rol}`);
+            // Handle other roles or return a more generic summary if needed
+            console.warn(`  Rol no reconocido (${req.user.rol}) para resumen específico del dashboard. Solo se enviarán datos básicos.`);
         }
 
         res.json(dashboardData);
@@ -2247,13 +2360,23 @@ console.log("Endpoint DELETE /api/coordinadores/:coordinador_id/clases/:clase_id
 
 // GET /api/coordinadores/:coordinador_id/clases - List Classes for a Coordinator
 app.get('/api/coordinadores/:coordinador_id/clases', authenticateToken, async (req, res) => {
-    console.log("  Ruta: GET /api/coordinadores/:coordinador_id/clases, Usuario:", req.user.email);
-    if (req.user.rol !== 'DIRECCION') {
+    console.log("  Ruta: GET /api/coordinadores/:coordinador_id/clases, Usuario:", req.user.email, "Rol:", req.user.rol);
+    const coordinadorIdParam = req.params.coordinador_id;
+    const coordinadorId = parseInt(coordinadorIdParam);
+
+    if (req.user.rol === 'DIRECCION') {
+        // Dirección has access
+    } else if (req.user.rol === 'COORDINACION') {
+        if (isNaN(coordinadorId) || coordinadorId !== req.user.id) {
+            return res.status(403).json({ error: 'Acceso no autorizado.' });
+        }
+    } else {
         return res.status(403).json({ error: 'Acceso no autorizado.' });
     }
 
-    const coordinadorId = parseInt(req.params.coordinador_id);
-    if (isNaN(coordinadorId)) {
+    // const coordinadorId = parseInt(req.params.coordinador_id); // Moved up and refined
+    // const coordinadorId = parseInt(req.params.coordinador_id); // Original line, now handled above
+    if (isNaN(coordinadorId)) { // Check if parsing failed, even if authorised, the ID must be valid for the query
         return res.status(400).json({ error: "ID de coordinador inválido." });
     }
 

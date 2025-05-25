@@ -26,6 +26,9 @@
                     <li id="nav-admin-usuarios" style="display:none;"> 
                         <a href="#" data-section="admin-usuarios"><i class="fas fa-users-cog"></i> Admin Usuarios</a>
                     </li>
+                    <li id="nav-settings" style="display:none;"> <!-- Corrected: Single Settings Link -->
+                        <a href="#" data-section="settings"><i class="fas fa-cog"></i> Cambiar Contraseña</a>
+                    </li>
                 </ul>
             </nav>
         </aside>
@@ -121,6 +124,28 @@
                     </div>
                 </section>
 
+                <section id="settings-section" class="main-section" style="display: none;"> <!-- Corrected: Single Settings Section -->
+                    <h2>Cambiar Mi Contraseña</h2>
+                    <div class="form-container" style="max-width: 500px;">
+                        <form id="formChangeOwnPassword">
+                            <div>
+                                <label for="currentPassword">Contraseña Actual:</label>
+                                <input type="password" id="currentPassword" name="currentPassword" required autocomplete="current-password">
+                            </div>
+                            <div>
+                                <label for="newPassword">Nueva Contraseña:</label>
+                                <input type="password" id="newPassword" name="newPassword" required autocomplete="new-password" minlength="8">
+                            </div>
+                            <div>
+                                <label for="confirmNewPassword">Confirmar Nueva Contraseña:</label>
+                                <input type="password" id="confirmNewPassword" name="confirmNewPassword" required autocomplete="new-password" minlength="8">
+                            </div>
+                            <button type="submit" id="btnChangeOwnPassword" class="success">Cambiar Contraseña</button>
+                            <p id="changeOwnPasswordMessage" class="message" style="margin-top:10px;"></p>
+                        </form>
+                    </div>
+                </section>
+
             </main>
         </div>
 
@@ -138,7 +163,27 @@
             <p><strong>Notas:</strong> <span id="modal-excursion-notas"></span></p>
             <button id="modal-close-button">Cerrar</button>
         </div>
+    </div> <!-- End of app-container -->
+
+    <!-- Modal para Cambiar Contraseña (Admin) - Moved outside main-panel for correct stacking context -->
+    <div id="setPasswordModal" class="simple-modal" style="display:none;">
+        <div class="simple-modal-content">
+            <span class="simple-modal-close-btn">&times;</span> <!-- Ensure this class is targeted in JS for close -->
+            <h4 id="setPasswordModalTitle">Cambiar Contraseña para <span id="setPasswordModalUserName" style="font-weight:normal;"></span></h4>
+            <form id="formSetPasswordAdmin"> <!-- Added form tag for better structure and potential submit event -->
+                <input type="hidden" id="setPasswordUserId">
+                <div>
+                    <label for="setPasswordNewPassword">Nueva Contraseña:</label>
+                    <input type="password" id="setPasswordNewPassword" name="newPassword" required minlength="8" style="width: calc(100% - 22px); padding: 10px; margin-bottom:15px;">
+                </div>
+                <div class="simple-modal-buttons"> <!-- Standardized button container -->
+                    <button type="submit" id="btnSetPasswordSubmit" class="success">Establecer Contraseña</button>
+                </div>
+                <p id="setPasswordModalMessage" class="message" style="margin-top:10px;"></p>
+            </form>
+        </div>
     </div>
+
     <script src="app.js"></script>
     <script src="calendar.js"></script>
 </body>
