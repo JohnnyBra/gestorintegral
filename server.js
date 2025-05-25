@@ -2606,7 +2606,7 @@ app.get('/api/coordinadores/:coordinador_id/clases', authenticateToken, async (r
     // const coordinadorId = parseInt(req.params.coordinador_id); // Moved up
     // if (isNaN(coordinadorId)) { // Moved up
     //     return res.status(400).json({ error: "ID de coordinador inválido." });
-    }
+    // } // <<< THIS BRACE WAS REMOVED
 
     try {
         const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
