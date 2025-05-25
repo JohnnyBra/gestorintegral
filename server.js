@@ -2585,13 +2585,27 @@ console.log("Endpoint DELETE /api/coordinadores/:coordinador_id/clases/:clase_id
 // GET /api/coordinadores/:coordinador_id/clases - List Classes for a Coordinator
 app.get('/api/coordinadores/:coordinador_id/clases', authenticateToken, async (req, res) => {
     console.log("  Ruta: GET /api/coordinadores/:coordinador_id/clases, Usuario:", req.user.email);
-    if (req.user.rol !== 'DIRECCION') {
+    const coordinadorId = parseInt(req.params.coordinador_id);
+
+    if (isNaN(coordinadorId)) {
+        return res.status(400).json({ error: "ID de coordinador inválido." });
+    }
+
+    // Authorization logic
+    if (req.user.rol === 'DIRECCION') {
+        // Allow access
+    } else if (req.user.rol === 'COORDINACION') {
+        if (req.user.id !== coordinadorId) {
+            return res.status(403).json({ error: 'Acceso no autorizado.' });
+        }
+        // Allow access
+    } else {
         return res.status(403).json({ error: 'Acceso no autorizado.' });
     }
 
-    const coordinadorId = parseInt(req.params.coordinador_id);
-    if (isNaN(coordinadorId)) {
-        return res.status(400).json({ error: "ID de coordinador inválido." });
+    // const coordinadorId = parseInt(req.params.coordinador_id); // Moved up
+    // if (isNaN(coordinadorId)) { // Moved up
+    //     return res.status(400).json({ error: "ID de coordinador inválido." });
     }
 
     try {
@@ -2599,11 +2613,9 @@ app.get('/api/coordinadores/:coordinador_id/clases', authenticateToken, async (r
         if (!coordinador) {
             return res.status(404).json({ error: "Usuario coordinador no encontrado." });
         }
-        // While the route is for coordinators, it might be useful to check any user's assignments if they were mistakenly assigned.
-        // However, sticking to the "user with COORDINACION role" for validation.
-        if (coordinador.rol !== 'COORDINACION') {
-             return res.status(400).json({ error: "El usuario especificado no es un coordinador." });
-        }
+        // No need to check coordinador.rol !== 'COORDINACION' here if access is already granted by the logic above.
+        // If it's DIRECCION, they can see any coordinator's classes.
+        // If it's COORDINACION, they can only see their own, which is already checked.
 
         const sql = `
             SELECT c.id, c.nombre_clase, c.tutor_id, u_tutor.nombre_completo as nombre_tutor
