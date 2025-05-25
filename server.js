@@ -148,9 +148,11 @@ app.post('/api/usuarios', authenticateToken, async (req, res) => {
     }
 
     const { email, nombre_completo, password, rol } = req.body;
-    console.log("  Ruta: POST /api/usuarios, Body:", req.body);
+    // Enhanced logging: Log received parameters
+    console.log(`  Ruta: POST /api/usuarios, Received - Email: ${email}, Nombre: ${nombre_completo}, Rol: ${rol}`);
 
     if (!email || !nombre_completo || !password || !rol) {
+        console.warn("  POST /api/usuarios - Validation failed: Missing required fields.");
         return res.status(400).json({ error: "Email, nombre_completo, password y rol son requeridos." });
     }
 
@@ -182,6 +184,9 @@ app.post('/api/usuarios', authenticateToken, async (req, res) => {
         const saltRounds = 10;
         const password_hash = await bcrypt.hash(password, saltRounds);
 
+        // Enhanced logging: Log parameters before DB insert
+        console.log(`  POST /api/usuarios - Inserting user with - Normalized Email: ${normalizedEmail}, Trimmed Nombre: ${nombre_completo.trim()}, Password Hash Type: ${typeof password_hash}, Rol: ${rol}`);
+
         const result = await dbRunAsync(
             "INSERT INTO usuarios (email, nombre_completo, password_hash, rol) VALUES (?, ?, ?, ?)",
             [normalizedEmail, nombre_completo.trim(), password_hash, rol]
@@ -196,8 +201,9 @@ app.post('/api/usuarios', authenticateToken, async (req, res) => {
         res.status(201).json(nuevoUsuario);
 
     } catch (error) {
-        console.error("  Error en POST /api/usuarios:", error.message);
-        if (error.message.includes("UNIQUE constraint failed: usuarios.email")) {
+        // Enhanced logging: Log the full error object
+        console.error("  Error details in POST /api/usuarios:", error);
+        if (error.message && error.message.includes("UNIQUE constraint failed: usuarios.email")) {
              return res.status(409).json({ error: "El email proporcionado ya está en uso (error de BD)." });
         }
         res.status(500).json({ error: "Error interno del servidor al crear el usuario." });
