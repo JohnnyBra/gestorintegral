@@ -345,6 +345,39 @@ document.addEventListener('DOMContentLoaded', () => {
                          html += `<p>Aún no hay datos de participación para la excursión más próxima de tu clase.</p>`;
                     }
                 }
+                if (currentUser && currentUser.rol === 'COORDINACION') {
+                    html += '<h4>Resumen de Coordinación</h4>';
+                    html += `<p>Total de Clases Coordinadas: ${data.totalClasesCoordinadas ?? 'N/D'}</p>`;
+
+                    if (data.clasesCoordinadasDetalles && data.clasesCoordinadasDetalles.length > 0) {
+                        html += '<h5>Detalles de Clases Coordinadas:</h5><ul>';
+                        data.clasesCoordinadasDetalles.forEach(clase => {
+                            html += `<li>${clase.nombreClase}: ${clase.numAlumnos} alumnos</li>`;
+                        });
+                        html += '</ul>';
+                    } else {
+                        html += '<p>No hay clases asignadas para coordinación.</p>';
+                    }
+
+                    if (data.proximasExcursionesCoordinador && data.proximasExcursionesCoordinador.length > 0) {
+                        html += '<h5>Próximas Excursiones Relevantes:</h5><ul>';
+                        data.proximasExcursionesCoordinador.forEach(ex => {
+                            let tipoExcursion = ex.para_clase_id === null ? '(Global)' : `(Específica para: ${ex.nombre_clase_destino || 'N/A'})`;
+                            html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'}) ${tipoExcursion}</li>`;
+                        });
+                        html += '</ul>';
+                    } else {
+                        html += '<p>No hay próximas excursiones relevantes.</p>';
+                    }
+                }
+                if (currentUser && currentUser.rol === 'TESORERIA') {
+                    html += '<h4>Resumen de Tesorería</h4>';
+                    html += '<ul>';
+                    html += `<li>Total Excursiones Registradas: ${data.totalExcursiones ?? 'N/D'}</li>`;
+                    html += `<li>Total Alumnos con Algún Pago Registrado: ${data.totalAlumnosConPago ?? 'N/D'}</li>`;
+                    html += `<li>Suma Total Recaudada (Global): ${data.sumaTotalPagado !== undefined ? data.sumaTotalPagado.toFixed(2) : '0.00'} €</li>`;
+                    html += '</ul>';
+                }
                 dashboardSummaryContentDiv.innerHTML = html;
             }
         } catch (error) {
@@ -513,33 +546,80 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Alumnos (Código existente) ---
-    async function showFormAlumno(idAlumno = null, alumnoData = null) {
-        const formAlumnoWrapper = document.getElementById('formAlumnoWrapper');
-        if (!formAlumnoWrapper) return;
-    
+    async function showFormAlumno(idAlumno = null, alumnoData = null, defaultClaseId = null) {
+        // Determine which wrapper to use. If called from coordinator's class view, use a local wrapper.
+        let currentFormWrapper = document.getElementById('formAlumnoWrapper'); // Default global wrapper
+        if (document.getElementById('coordinacion-clase-details-view') && document.getElementById('coordinacion-clase-details-view').contains(document.activeElement) && document.getElementById('formAlumnoWrapperCoord')) {
+            currentFormWrapper = document.getElementById('formAlumnoWrapperCoord');
+        }
+         if (!currentFormWrapper && document.getElementById('formAlumnoWrapperCoord') && selectedCoordClaseId) { // If adding from coord view, form wrapper might be specific
+            currentFormWrapper = document.getElementById('formAlumnoWrapperCoord');
+        }
+        if (!currentFormWrapper) { // Fallback to global if specific not found or not in context
+            currentFormWrapper = document.getElementById('formAlumnoWrapper');
+            if (!currentFormWrapper) {
+                console.error("Form wrapper for alumnos not found.");
+                return;
+            }
+        }
+
         const nombreExistente = alumnoData ? alumnoData.nombre_completo : '';
-        const claseIdExistente = alumnoData ? alumnoData.clase_id : '';
+        let claseIdExistente = alumnoData ? alumnoData.clase_id : defaultClaseId;
+        
         const apellidosExistente = alumnoData && alumnoData.nombre_completo ? alumnoData.nombre_completo.split(' ').slice(1).join(' ') : '';
         const soloNombreExistente = alumnoData && alumnoData.nombre_completo ? alumnoData.nombre_completo.split(' ')[0] : '';
     
         let opcionesClasesHtml = '';
+        let selectDisabled = false;
+
         if (currentUser.rol === 'TUTOR') {
             if (currentUser.claseId && currentUser.claseNombre) {
                 opcionesClasesHtml = `<option value="${currentUser.claseId}" selected>${currentUser.claseNombre} (Tu clase)</option>`;
+                selectDisabled = true; 
+                claseIdExistente = currentUser.claseId; 
             } else {
                 opcionesClasesHtml = `<option value="" disabled selected>No tienes clase asignada</option>`;
+                selectDisabled = true;
             }
         } else if (currentUser.rol === 'DIRECCION') {
             if (listaDeClasesGlobal.length === 0) {
                 try {
                     const dataClases = await apiFetch('/clases');
                     listaDeClasesGlobal = dataClases.clases || [];
-                } catch (error) { opcionesClasesHtml = `<option value="">Error cargando clases</option>`; }
+                } catch (error) { 
+                    opcionesClasesHtml = `<option value="">Error cargando clases</option>`; 
+                }
             }
             opcionesClasesHtml = '<option value="">-- Selecciona una clase --</option>';
             listaDeClasesGlobal.forEach(clase => {
-                opcionesClasesHtml += `<option value="${clase.id}" ${clase.id === claseIdExistente ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+                opcionesClasesHtml += `<option value="${clase.id}" ${clase.id == claseIdExistente ? 'selected' : ''}>${clase.nombre_clase}</option>`;
             });
+        } else if (currentUser.rol === 'COORDINACION') {
+            try {
+                // Fetch only coordinator's assigned classes for the dropdown
+                const dataClasesCoord = await apiFetch(`/coordinadores/${currentUser.id}/clases`);
+                const assignedClasses = dataClasesCoord.clases_asignadas || [];
+                if (assignedClasses.length > 0) {
+                    assignedClasses.forEach(clase => {
+                        opcionesClasesHtml += `<option value="${clase.id}" ${clase.id == claseIdExistente ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+                    });
+                     // Ensure defaultClaseId (from coordinator's specific class view) is selected if adding new
+                    if (!idAlumno && defaultClaseId) { // If creating new and defaultClaseId is provided
+                        claseIdExistente = defaultClaseId;
+                        // Rebuild optionsHtml to ensure the defaultClaseId is selected
+                        opcionesClasesHtml = '';
+                         assignedClasses.forEach(clase => {
+                            opcionesClasesHtml += `<option value="${clase.id}" ${clase.id == defaultClaseId ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+                        });
+                    }
+                } else {
+                    opcionesClasesHtml = `<option value="" disabled>No tienes clases asignadas</option>`;
+                    selectDisabled = true;
+                }
+            } catch (error) {
+                opcionesClasesHtml = `<option value="">Error cargando tus clases</option>`;
+                selectDisabled = true;
+            }
         }
     
         const formHtml = `
@@ -549,23 +629,35 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" id="alumnoId" name="alumnoId" value="${idAlumno || ''}">
                     <div><label for="nombreAlumno">Nombre:</label><input type="text" id="nombreAlumno" value="${soloNombreExistente}" required></div>
                     <div><label for="apellidosAlumno">Apellidos:</label><input type="text" id="apellidosAlumno" value="${apellidosExistente}" required></div>
-                    <div><label for="claseAlumno">Clase:</label><select id="claseAlumno" ${currentUser.rol === 'TUTOR' ? 'disabled' : ''} required>${opcionesClasesHtml}</select></div>
-                    <div class="form-buttons"><button type="submit" class="success">${idAlumno ? 'Guardar' : 'Crear'}</button><button type="button" id="btnCancelarFormAlumno" class="secondary">Cancelar</button></div>
+                    <div><label for="claseAlumno">Clase:</label><select id="claseAlumno" ${selectDisabled ? 'disabled' : ''} required>${opcionesClasesHtml}</select></div>
+                    <div class="form-buttons"><button type="submit" class="success" ${selectDisabled && !claseIdExistente ? 'disabled' : ''}>${idAlumno ? 'Guardar Cambios' : 'Crear Alumno'}</button><button type="button" id="btnCancelarFormAlumno" class="secondary">Cancelar</button></div>
                     <p id="formAlumnoError" class="error-message"></p>
                 </form>
             </div>`;
-        formAlumnoWrapper.innerHTML = formHtml;
-        document.getElementById('formGestionAlumno').addEventListener('submit', saveAlumno);
-        document.getElementById('btnCancelarFormAlumno').onclick = () => { formAlumnoWrapper.innerHTML = ''; };
+        currentFormWrapper.innerHTML = formHtml;
+        currentFormWrapper.style.display = 'block'; // Make sure it's visible
+        
+        const formElement = currentFormWrapper.querySelector('#formGestionAlumno'); // Query within the specific wrapper
+        if (formElement) {
+            formElement.addEventListener('submit', (e) => saveAlumno(e, currentFormWrapper === document.getElementById('formAlumnoWrapperCoord') ? selectedCoordClaseId : null));
+        }
+        const btnCancelar = currentFormWrapper.querySelector('#btnCancelarFormAlumno');
+        if (btnCancelar) {
+            btnCancelar.onclick = () => { currentFormWrapper.innerHTML = ''; currentFormWrapper.style.display = 'none'; };
+        }
     }
-    async function saveAlumno(event) {
+    async function saveAlumno(event, specificClaseIdForReload = null) {
         event.preventDefault();
-        const formAlumnoError = document.getElementById('formAlumnoError');
+        const formElement = event.target;
+        const formWrapper = formElement.closest('.form-container').parentElement; // Get the specific wrapper
+        const formAlumnoError = formWrapper.querySelector('#formAlumnoError');
+
         if (formAlumnoError) formAlumnoError.textContent = '';
-        const alumnoId = document.getElementById('alumnoId').value;
-        const nombre = document.getElementById('nombreAlumno').value.trim();
-        const apellidos = document.getElementById('apellidosAlumno').value.trim();
-        const clase_id = document.getElementById('claseAlumno').value;
+        const alumnoId = formWrapper.querySelector('#alumnoId').value;
+        const nombre = formWrapper.querySelector('#nombreAlumno').value.trim();
+        const apellidos = formWrapper.querySelector('#apellidosAlumno').value.trim();
+        const clase_id = formWrapper.querySelector('#claseAlumno').value;
+
         if (!nombre || !apellidos || !clase_id) {
             if (formAlumnoError) formAlumnoError.textContent = 'Todos los campos son obligatorios.';
             return;
@@ -579,17 +671,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         try {
             await apiFetch(endpoint, method, alumnoData);
-            document.getElementById('formAlumnoWrapper').innerHTML = '';
-            loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase'));
+            formWrapper.innerHTML = '';
+            formWrapper.style.display = 'none';
+            if (specificClaseIdForReload && currentUser.rol === 'COORDINACION') {
+                // If called from coordinator's class view, reload that specific class's student list
+                const alumnosListContainer = document.getElementById('coord-alumnos-list');
+                if (alumnosListContainer) {
+                    displayCoordinadorClaseAlumnos(specificClaseIdForReload, selectedCoordClaseNombre, alumnosListContainer);
+                }
+            } else {
+                // Fallback to general loadAlumnos if not in coordinator context or if specific reload target isn't clear
+                loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase'));
+            }
         } catch (error) {
             if (formAlumnoError) formAlumnoError.textContent = error.message || 'Error guardando alumno.';
         }
     }
-    async function deleteAlumno(idAlumno, nombreAlumno) {
+    async function deleteAlumno(idAlumno, nombreAlumno, specificClaseIdForReload = null) {
         if (!confirm(`¿Seguro que quieres eliminar al alumno "${nombreAlumno}"?`)) return;
         try {
             await apiFetch(`/alumnos/${idAlumno}`, 'DELETE');
-            loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase'));
+            if (specificClaseIdForReload && currentUser.rol === 'COORDINACION') {
+                 const alumnosListContainer = document.getElementById('coord-alumnos-list');
+                if (alumnosListContainer) {
+                    displayCoordinadorClaseAlumnos(specificClaseIdForReload, selectedCoordClaseNombre, alumnosListContainer);
+                }
+            } else {
+                loadAlumnos(sessionStorage.getItem('filtroAlumnosClaseId'), sessionStorage.getItem('filtroAlumnosNombreClase'));
+            }
         } catch (error) {
             showGlobalError(error.message || "Error al eliminar alumno.");
         }
@@ -760,27 +869,84 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Excursiones ---
-    async function showFormExcursion(idExcursion = null, excursionData = {}) {
-        const formExcursionWrapper = document.getElementById('formExcursionWrapper');
-        if (!formExcursionWrapper) return;
+    async function showFormExcursion(idExcursion = null, excursionData = {}, defaultParaClaseId = null) {
+        let currentFormWrapper = document.getElementById('formExcursionWrapper'); // Default
+        // Check if we are in the coordinator's specific class view context for excursions
+        if (document.getElementById('coordinacion-clase-details-view') && document.getElementById('coordinacion-clase-details-view').contains(document.activeElement) && document.getElementById('formExcursionWrapperCoord')) {
+            currentFormWrapper = document.getElementById('formExcursionWrapperCoord');
+        }
+        if (!currentFormWrapper && document.getElementById('formExcursionWrapperCoord') && selectedCoordClaseId) {
+             currentFormWrapper = document.getElementById('formExcursionWrapperCoord');
+        }
+         if (!currentFormWrapper) {
+            currentFormWrapper = document.getElementById('formExcursionWrapper');
+             if (!currentFormWrapper) { console.error("Form wrapper for excursions not found."); return; }
+        }
+
+        let paraClaseIdActual = excursionData.para_clase_id !== undefined ? excursionData.para_clase_id : defaultParaClaseId;
+
         let opcionesClasesHtml = '<option value="">-- Global (para todas las clases) --</option>';
+        let selectDisabled = false;
+
         if (currentUser.rol === 'DIRECCION') {
-             if (listaDeClasesGlobal.length === 0) {
+             if (listaDeClasesGlobal.length === 0) { // Populate if not already
                 try {
                     const dataClases = await apiFetch('/clases');
                     listaDeClasesGlobal = dataClases.clases || [];
                 } catch (error) { console.error("Error cargando clases para formExcursion:", error); }
             }
             listaDeClasesGlobal.forEach(clase => {
-                opcionesClasesHtml += `<option value="${clase.id}" ${excursionData.para_clase_id === clase.id ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+                opcionesClasesHtml += `<option value="${clase.id}" ${paraClaseIdActual === clase.id ? 'selected' : ''}>${clase.nombre_clase}</option>`;
             });
         } else if (currentUser.rol === 'TUTOR') {
             if (currentUser.claseId && currentUser.claseNombre) {
-                opcionesClasesHtml = `<option value="${currentUser.claseId}" selected>${currentUser.claseNombre} (Tu clase)</option>`;
+                // Tutor can only select their own class, or it defaults to global if not specified in excursionData
+                // For creating, it will be their class. For editing, it will be what it was.
+                if (idExcursion) { // Editing existing
+                     opcionesClasesHtml = `<option value="${currentUser.claseId}" ${paraClaseIdActual === currentUser.claseId ? 'selected' : ''}>${currentUser.claseNombre}</option>`;
+                     if(paraClaseIdActual === null) { // If it was global, they can see it as global
+                        opcionesClasesHtml = `<option value="">-- Global --</option>` + opcionesClasesHtml;
+                     }
+                } else { // Creating new
+                     opcionesClasesHtml = `<option value="${currentUser.claseId}" selected>${currentUser.claseNombre} (Tu clase)</option>`;
+                     paraClaseIdActual = currentUser.claseId;
+                }
+                // selectDisabled = true; // Tutor cannot change class from their own if it's for their class
             } else {
                 opcionesClasesHtml = `<option value="" disabled selected>No tienes clase asignada</option>`;
+                selectDisabled = true;
+            }
+        } else if (currentUser.rol === 'COORDINACION') {
+            try {
+                const dataClasesCoord = await apiFetch(`/coordinadores/${currentUser.id}/clases`);
+                const assignedClasses = dataClasesCoord.clases_asignadas || [];
+                if (assignedClasses.length > 0) {
+                    assignedClasses.forEach(clase => {
+                        opcionesClasesHtml += `<option value="${clase.id}" ${clase.id == paraClaseIdActual ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+                    });
+                }
+                 // If creating new and defaultParaClaseId is provided (from coordinator's class view)
+                if (!idExcursion && defaultParaClaseId !== null) {
+                    paraClaseIdActual = defaultParaClaseId;
+                     // Rebuild to ensure selection
+                    opcionesClasesHtml = '<option value="">-- Global (para todas las clases) --</option>';
+                    assignedClasses.forEach(clase => {
+                        opcionesClasesHtml += `<option value="${clase.id}" ${clase.id == defaultParaClaseId ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+                    });
+                } else if (idExcursion && paraClaseIdActual === null) {
+                    // If editing a global excursion, make sure "Global" is selected
+                    opcionesClasesHtml = '<option value="" selected>-- Global (para todas las clases) --</option>';
+                     assignedClasses.forEach(clase => {
+                        opcionesClasesHtml += `<option value="${clase.id}">${clase.nombre_clase}</option>`;
+                    });
+                }
+
+
+            } catch (error) {
+                 opcionesClasesHtml = '<option value="">Error cargando tus clases</option>';
             }
         }
+
         const formHtml = `
             <div class="form-container">
                 <h3>${idExcursion ? 'Editar Excursión' : 'Crear Excursión'}</h3>
@@ -797,24 +963,32 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div><label>Transporte:</label><select id="transporteExcursion" required><option value="">-- Selecciona --</option><option value="Autobús" ${excursionData.transporte === 'Autobús' ? 'selected' : ''}>Autobús</option><option value="Andando" ${excursionData.transporte === 'Andando' ? 'selected' : ''}>Andando</option></select></div>
                     <div><label>Justificación:</label><textarea id="justificacionExcursion" required>${excursionData.justificacion_texto || ''}</textarea></div>
                     <div><label>Notas:</label><textarea id="notasExcursion">${excursionData.notas_excursion || ''}</textarea></div>
-                    ${currentUser.rol === 'DIRECCION' ? `<div><label>Para Clase:</label><select id="paraClaseIdExcursion">${opcionesClasesHtml}</select></div>` : ''}
-                    ${currentUser.rol === 'TUTOR' && currentUser.claseId ? `<input type="hidden" id="paraClaseIdExcursion" value="${currentUser.claseId}"><p><em>Para tu clase: ${currentUser.claseNombre}.</em></p>` : ''}
-                    ${currentUser.rol === 'TUTOR' && !currentUser.claseId ? `<p class="error-message">No tienes clase asignada.</p>` : ''}
-                    <div class="form-buttons"><button type="submit" class="success" ${currentUser.rol === 'TUTOR' && !currentUser.claseId ? 'disabled' : ''}>${idExcursion ? 'Guardar' : 'Crear'}</button><button type="button" id="btnCancelarFormExcursion" class="secondary">Cancelar</button></div>
+                    ${ (currentUser.rol === 'DIRECCION' || currentUser.rol === 'COORDINACION') ? `<div><label>Para Clase:</label><select id="paraClaseIdExcursion" ${selectDisabled ? 'disabled':''}>${opcionesClasesHtml}</select></div>` : ''}
+                    ${currentUser.rol === 'TUTOR' && currentUser.claseId && paraClaseIdActual === currentUser.claseId ? `<input type="hidden" id="paraClaseIdExcursion" value="${currentUser.claseId}"><p><em>Excursión para tu clase: ${currentUser.claseNombre}.</em></p>` : ''}
+                    ${currentUser.rol === 'TUTOR' && paraClaseIdActual === null ? `<input type="hidden" id="paraClaseIdExcursion" value=""><p><em>Excursión Global (visible para tu clase).</em></p>`:''}
+                    ${currentUser.rol === 'TUTOR' && !currentUser.claseId ? `<p class="error-message">No tienes clase asignada para crear/editar excursiones específicas de clase.</p>` : ''}
+                    <div class="form-buttons"><button type="submit" class="success" ${selectDisabled && !currentUser.claseId ? 'disabled' : ''}>${idExcursion ? 'Guardar Cambios' : 'Crear Excursión'}</button><button type="button" id="btnCancelarFormExcursion" class="secondary">Cancelar</button></div>
                     <p id="formExcursionError" class="error-message"></p>
                 </form>
             </div>`;
-        formExcursionWrapper.innerHTML = formHtml;
-        formExcursionWrapper.style.display = 'block';
-        document.getElementById('formGestionExcursion').addEventListener('submit', saveExcursion);
-        document.getElementById('btnCancelarFormExcursion').onclick = () => { formExcursionWrapper.innerHTML = ''; formExcursionWrapper.style.display = 'none'; };
+        currentFormWrapper.innerHTML = formHtml;
+        currentFormWrapper.style.display = 'block';
+
+        const formElement = currentFormWrapper.querySelector('#formGestionExcursion');
+        if(formElement) formElement.addEventListener('submit', (e) => saveExcursion(e, currentFormWrapper === document.getElementById('formExcursionWrapperCoord') ? selectedCoordClaseId : null));
+        
+        const btnCancelar = currentFormWrapper.querySelector('#btnCancelarFormExcursion');
+        if(btnCancelar) btnCancelar.onclick = () => { currentFormWrapper.innerHTML = ''; currentFormWrapper.style.display = 'none'; };
     }
-    async function saveExcursion(event) {
+    async function saveExcursion(event, specificClaseIdForReload = null) {
         event.preventDefault();
-        const errorP = document.getElementById('formExcursionError');
+        const formElement = event.target;
+        const formWrapper = formElement.closest('.form-container').parentElement;
+        const errorP = formWrapper.querySelector('#formExcursionError');
+
         if(errorP) errorP.textContent = '';
-        const excursionId = document.getElementById('excursionId').value;
-        const paraClaseIdSelect = document.getElementById('paraClaseIdExcursion');
+        const excursionId = formWrapper.querySelector('#excursionId').value;
+        const paraClaseIdSelect = formWrapper.querySelector('#paraClaseIdExcursion');
         const excursionData = {
             nombre_excursion: document.getElementById('nombreExcursion').value,
             actividad_descripcion: document.getElementById('actividadExcursion').value,
@@ -822,28 +996,49 @@ document.addEventListener('DOMContentLoaded', () => {
             fecha_excursion: document.getElementById('fechaExcursion').value,
             hora_salida: document.getElementById('horaSalidaExcursion').value,
             hora_llegada: document.getElementById('horaLlegadaExcursion').value,
-            coste_excursion_alumno: parseFloat(document.getElementById('costeExcursion').value) || 0,
-            vestimenta: document.getElementById('vestimentaExcursion').value,
-            transporte: document.getElementById('transporteExcursion').value,
-            justificacion_texto: document.getElementById('justificacionExcursion').value,
-            notas_excursion: document.getElementById('notasExcursion').value,
-            para_clase_id: paraClaseIdSelect ? (paraClaseIdSelect.value || null) : (currentUser.rol === 'TUTOR' ? currentUser.claseId : null)
+            coste_excursion_alumno: parseFloat(formWrapper.querySelector('#costeExcursion').value) || 0,
+            vestimenta: formWrapper.querySelector('#vestimentaExcursion').value,
+            transporte: formWrapper.querySelector('#transporteExcursion').value,
+            justificacion_texto: formWrapper.querySelector('#justificacionExcursion').value,
+            notas_excursion: formWrapper.querySelector('#notasExcursion').value,
+            para_clase_id: paraClaseIdSelect ? (paraClaseIdSelect.value === "" ? null : parseInt(paraClaseIdSelect.value)) : (currentUser.rol === 'TUTOR' && currentUser.claseId ? currentUser.claseId : null)
         };
-        if (excursionData.para_clase_id === "") excursionData.para_clase_id = null;
+
+        // If paraClaseIdSelect is not found (e.g. for Tutor creating for their own class, or viewing global)
+        // and it's a new excursion, it might default to user's classId if tutor, or null.
+        // This logic needs to be robust for all roles.
+        if (!paraClaseIdSelect && currentUser.rol === 'TUTOR' && currentUser.claseId) {
+             if (!excursionId) excursionData.para_clase_id = currentUser.claseId; // Default to tutor's class if creating
+        } else if (!paraClaseIdSelect && currentUser.rol === 'TUTOR' && excursionId && excursionData.para_clase_id === undefined) {
+            // This case is tricky: editing a global excursion as a Tutor. para_clase_id should be null.
+            // The hidden input logic for tutor might need adjustment if they can edit global ones assigned to their class.
+            // For now, if paraClaseIdSelect is null, it implies it's either a hidden field or not applicable.
+            // The value from excursionData (if editing) or default (if creating) should be used.
+        }
+
+
         let method = 'POST';
         let endpoint = '/excursiones';
         if (excursionId) {
             method = 'PUT';
             endpoint = `/excursiones/${excursionId}`;
         }
-        const submitButton = event.target.querySelector('button[type="submit"]');
+        const submitButton = formWrapper.querySelector('button[type="submit"]');
         try {
             if(submitButton) submitButton.disabled = true;
             await apiFetch(endpoint, method, excursionData);
-            document.getElementById('formExcursionWrapper').innerHTML = '';
-            loadExcursiones(); 
+            formWrapper.innerHTML = '';
+            formWrapper.style.display = 'none';
+            if (specificClaseIdForReload && currentUser.rol === 'COORDINACION') {
+                const excursionesListContainer = document.getElementById('coord-excursiones-list');
+                if (excursionesListContainer) {
+                     displayCoordinadorClaseExcursiones(specificClaseIdForReload, selectedCoordClaseNombre, excursionesListContainer);
+                }
+            } else {
+                loadExcursiones(); 
+            }
         } catch (error) {
-            if(errorP) errorP.textContent = error.message || 'Error guardando.';
+            if(errorP) errorP.textContent = error.message || 'Error guardando excursión.';
         } finally {
             if(submitButton) submitButton.disabled = false;
         }
@@ -859,15 +1054,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const originalParaClaseId = (originalParaClaseIdStr === 'null' || originalParaClaseIdStr === '' || originalParaClaseIdStr === undefined) ? null : parseInt(originalParaClaseIdStr);
     
         if (currentUser.rol === 'DIRECCION') {
-            // Ensure listaDeClasesGlobal is populated
-            if (listaDeClasesGlobal.length === 0) {
+            // Ensure listaDeClasesGlobal is populated for DIRECCION
+            if (currentUser.rol === 'DIRECCION' && listaDeClasesGlobal.length === 0) {
                 try {
-                    const dataClases = await apiFetch('/clases');
-                    listaDeClasesGlobal = dataClases.clases || [];
-                } catch (error) {
-                    alert("Error cargando la lista de clases: " + error.message);
-                    return;
-                }
+                    const dataClasesDir = await apiFetch('/clases');
+                    listaDeClasesGlobal = dataClasesDir.clases || [];
+                } catch (error) { alert("Error cargando la lista de clases: " + error.message); return; }
+            }
+            // For COORDINACION, fetch their assigned classes for the modal
+            let classesForModal = [];
+            if (currentUser.rol === 'COORDINACION') {
+                try {
+                    const dataClasesCoord = await apiFetch(`/coordinadores/${currentUser.id}/clases`);
+                    classesForModal = dataClasesCoord.clases_asignadas || [];
+                } catch (error) { alert("Error cargando sus clases asignadas: " + error.message); return; }
+            } else {
+                classesForModal = listaDeClasesGlobal; // For DIRECCION
             }
     
             // Remove existing modal if any
@@ -903,19 +1105,25 @@ document.addEventListener('DOMContentLoaded', () => {
             select.style.marginBottom = '15px';
     
             const globalOption = document.createElement('option');
-            globalOption.value = "null"; // Store as string "null" for easy parsing
+            globalOption.value = "null"; 
             globalOption.textContent = '-- Global (ninguna clase específica) --';
             select.appendChild(globalOption);
     
-            listaDeClasesGlobal.forEach(clase => {
+            classesForModal.forEach(clase => {
                 const option = document.createElement('option');
                 option.value = clase.id;
                 option.textContent = clase.nombre_clase;
-                if (originalParaClaseId === clase.id) { // Pre-select if it was the original
+                // Pre-select logic: if original was for a class, and that class is in this list, select it.
+                // Otherwise, if original was global, "Global" option (already added) will be default or selected.
+                if (originalParaClaseId && originalParaClaseId === clase.id) {
                     option.selected = true;
                 }
                 select.appendChild(option);
             });
+             // If original was global, ensure "Global" option is selected
+            if (originalParaClaseId === null) {
+                globalOption.selected = true;
+            }
     
             const buttonsDiv = document.createElement('div');
             buttonsDiv.className = 'simple-modal-buttons';
@@ -2044,18 +2252,57 @@ document.addEventListener('DOMContentLoaded', () => {
     async function displayCoordinadorClaseAlumnos(claseId, claseNombre, containerElement) {
         containerElement.innerHTML = `<h4>Alumnos en ${claseNombre}</h4><p>Cargando alumnos...</p>`;
         try {
-            // For COORDINACION role, /api/alumnos endpoint expects claseId if the coordinator is not DIRECCION
-            const data = await apiFetch(`/alumnos?claseId=${claseId}`); 
+            const data = await apiFetch(`/alumnos?claseId=${claseId}`);
+            let html = `<div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h4>Alumnos en ${claseNombre}</h4>
+                            <button id="btnShowFormNuevoAlumnoCoord_${claseId}" class="success" style="margin-bottom:10px;">+ Añadir Alumno a ${claseNombre}</button>
+                        </div>`;
+
             if (data && data.alumnos && data.alumnos.length > 0) {
-                let html = '<table class="tabla-datos"><thead><tr><th>Nombre Completo</th></tr></thead><tbody>';
+                html += '<table class="tabla-datos"><thead><tr><th>Nombre Completo</th><th>Acciones</th></tr></thead><tbody>';
                 data.alumnos.forEach(alumno => {
-                    html += `<tr><td>${alumno.nombre_completo}</td></tr>`;
+                    html += `<tr data-alumno-id="${alumno.id}">
+                                <td>${alumno.nombre_completo}</td>
+                                <td class="actions-cell">
+                                    <button class="edit-alumno-coord warning" data-id="${alumno.id}" data-claseid="${alumno.clase_id}">Editar</button>
+                                    <button class="delete-alumno-coord danger" data-id="${alumno.id}" data-nombre="${alumno.nombre_completo}" data-claseid="${claseId}">Eliminar</button>
+                                </td>
+                             </tr>`;
                 });
                 html += '</tbody></table>';
-                containerElement.innerHTML = `<h4>Alumnos en ${claseNombre}</h4>${html}`;
             } else {
-                containerElement.innerHTML = `<h4>Alumnos en ${claseNombre}</h4><p>No hay alumnos en esta clase o no tiene acceso.</p>`;
+                html += '<p>No hay alumnos en esta clase o no tiene acceso.</p>';
             }
+            html += '<div id="formAlumnoWrapperCoord" class="form-wrapper" style="margin-top:20px;"></div>'; 
+            containerElement.innerHTML = html;
+
+            const btnNuevoAlumnoCoord = document.getElementById(`btnShowFormNuevoAlumnoCoord_${claseId}`);
+            if (btnNuevoAlumnoCoord) {
+                btnNuevoAlumnoCoord.onclick = () => {
+                    const formWrapperCoord = containerElement.querySelector('#formAlumnoWrapperCoord');
+                    showFormAlumno(null, null, claseId); 
+                };
+            }
+
+            containerElement.querySelectorAll('.edit-alumno-coord').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const alumnoId = e.target.dataset.id;
+                    const alumnoClaseId = parseInt(e.target.dataset.claseid);
+                    // Find alumno from the already fetched list for this class view
+                    const alumnoParaEditar = (data.alumnos || []).find(a => a.id == alumnoId);
+                     showFormAlumno(alumnoId, alumnoParaEditar, alumnoClaseId);
+                });
+            });
+
+            containerElement.querySelectorAll('.delete-alumno-coord').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const studentId = e.target.dataset.id;
+                    const studentName = e.target.dataset.nombre;
+                    const studentClaseId = parseInt(e.target.dataset.claseid);
+                    deleteAlumno(studentId, studentName, studentClaseId); 
+                });
+            });
+
         } catch (error) {
             console.error(`Error cargando alumnos para clase ${claseId} en vista coordinador:`, error);
             containerElement.innerHTML = `<p class="error-message">Error al cargar alumnos: ${error.message}</p>`;
@@ -2093,19 +2340,48 @@ document.addEventListener('DOMContentLoaded', () => {
                         const excursionNombre = e.target.dataset.excursionNombre;
                         
                         console.log(`Coordinador: Ver participaciones para Excursión ID ${excursionId} (${excursionNombre}), filtrado por Clase ID ${selectedCoordClaseId}`);
-                        // For future task:
-                        // sessionStorage.setItem('filtroParticipacionesExcursionId', excursionId);
-                        // sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionNombre);
-                        // // Crucially, set the class context for the participaciones view
-                        // sessionStorage.setItem('viewParticipacionesForClaseId', selectedCoordClaseId); 
-                        // navigateTo('participaciones');
-                        alert(`(Coordinador) Ver participaciones para Excursión ID ${excursionId}, filtrado por Clase ID ${selectedCoordClaseId}. (Implementación futura)`);
+                        
+                        sessionStorage.setItem('filtroParticipacionesExcursionId', excursionId);
+                        sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionNombre);
+                        sessionStorage.setItem('viewParticipacionesForClaseId', selectedCoordClaseId); 
+                        navigateTo('participaciones');
                     });
                 });
 
             } else {
-                containerElement.innerHTML = `<h4>Excursiones para ${claseNombre}</h4><p>No hay excursiones relevantes para esta clase.</p>`;
+                html += '<p>No hay excursiones relevantes para esta clase.</p>';
             }
+            html += '<div id="formExcursionWrapperCoord" class="form-wrapper" style="margin-top:20px;"></div>';
+            containerElement.innerHTML = html;
+
+            // Event listeners for new buttons
+            const btnNuevaExcursionCoord = document.getElementById('btnShowFormNuevaExcursionCoord');
+            if(btnNuevaExcursionCoord) {
+                btnNuevaExcursionCoord.onclick = () => {
+                    const formWrapper = containerElement.querySelector('#formExcursionWrapperCoord'); // Target local wrapper
+                    showFormExcursion(null, { para_clase_id: claseId }, claseId); // Default to current class for new excursion
+                };
+            }
+
+            containerElement.querySelectorAll('.edit-excursion-coord').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const excursionId = e.target.dataset.id;
+                    try {
+                        const excursionDataFull = await apiFetch(`/excursiones/${excursionId}`); 
+                        showFormExcursion(excursionId, excursionDataFull, excursionDataFull.para_clase_id);
+                    } catch (error) { showGlobalError("Error cargando datos de excursión para editar.", containerElement.querySelector('#formExcursionWrapperCoord')); }
+                });
+            });
+            containerElement.querySelectorAll('.delete-excursion-coord').forEach(button => {
+                 button.addEventListener('click', (e) => deleteExcursion(e.target.dataset.id, e.target.dataset.nombre));
+            });
+             containerElement.querySelectorAll('.duplicate-excursion-coord').forEach(button => {
+                button.addEventListener('click', (e) => handleDuplicateExcursion(e.target.dataset.id, e.target.dataset.nombre, e.target.dataset.originalClaseId));
+            });
+            containerElement.querySelectorAll('.share-excursion-coord').forEach(button => {
+                button.addEventListener('click', (e) => handleShareExcursion(e.target.dataset.id, e.target.dataset.nombre));
+            });
+            
         } catch (error) {
             console.error(`Error cargando excursiones para clase ${claseId} en vista coordinador:`, error);
             containerElement.innerHTML = `<p class="error-message">Error al cargar excursiones: ${error.message}</p>`;

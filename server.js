@@ -672,6 +672,11 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
         if (!req.user.claseId || req.user.claseId !== idClaseNum) {
             return res.status(403).json({ error: "Tutor solo puede importar alumnos a su clase asignada." });
         }
+    } else if (req.user.rol === 'COORDINACION') {
+        const assignedClaseIds = await getCoordinadorClases(req.user.id);
+        if (!assignedClaseIds.includes(idClaseNum)) {
+            return res.status(403).json({ error: "Coordinador solo puede importar alumnos a sus clases asignadas." });
+        }
     } else if (req.user.rol !== 'DIRECCION') {
         return res.status(403).json({ error: "Acción no autorizada." });
     }
@@ -795,6 +800,11 @@ const apellidos_para_ordenar_a_guardar = apellidos;
         if (!req.user.claseId || req.user.claseId !== idClaseNum) {
             return res.status(403).json({ error: "Tutor solo puede añadir alumnos a su clase asignada." });
         }
+    } else if (req.user.rol === 'COORDINACION') {
+        const assignedClaseIds = await getCoordinadorClases(req.user.id);
+        if (!assignedClaseIds.includes(idClaseNum)) {
+            return res.status(403).json({ error: "Coordinador solo puede añadir alumnos a sus clases asignadas." });
+        }
     } else if (req.user.rol !== 'DIRECCION') {
         return res.status(403).json({ error: "Acción no autorizada." });
     }
@@ -823,7 +833,159 @@ const apellidos_para_ordenar_a_guardar = apellidos;
 });
 console.log("Endpoint POST /api/alumnos (crear individual) definido.");
 
-// ... (PUT /api/alumnos/:id y DELETE /api/alumnos/:id PENDIENTES) ...
+// PUT /api/alumnos/:id - Actualizar un alumno existente
+app.put('/api/alumnos/:id', authenticateToken, async (req, res) => {
+    const alumnoId = parseInt(req.params.id);
+    if (isNaN(alumnoId)) {
+        return res.status(400).json({ error: "ID de alumno inválido." });
+    }
+
+    const { nombre, apellidos, clase_id: nueva_clase_id_str } = req.body;
+    console.log(`  Ruta: PUT /api/alumnos/${alumnoId}, Body:`, req.body);
+
+    if (!nombre || !apellidos) { // clase_id puede o no venir para una actualización
+        return res.status(400).json({ error: "Nombre y apellidos son requeridos." });
+    }
+    
+    const nombre_completo_a_guardar = `${nombre.trim()} ${apellidos.trim()}`;
+    const apellidos_para_ordenar_a_guardar = apellidos.trim();
+    let nueva_clase_id = nueva_clase_id_str ? parseInt(nueva_clase_id_str) : undefined;
+
+    if (nueva_clase_id_str && isNaN(nueva_clase_id)) {
+        return res.status(400).json({ error: "clase_id inválido." });
+    }
+
+    try {
+        const alumnoActual = await dbGetAsync("SELECT id, clase_id FROM alumnos WHERE id = ?", [alumnoId]);
+        if (!alumnoActual) {
+            return res.status(404).json({ error: "Alumno no encontrado." });
+        }
+
+        // RBAC: Verificar permisos para editar este alumno y para moverlo a la nueva clase si aplica
+        let puedeEditar = false;
+        if (req.user.rol === 'DIRECCION') {
+            puedeEditar = true;
+            if (nueva_clase_id !== undefined && nueva_clase_id !== alumnoActual.clase_id) {
+                const claseDestino = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [nueva_clase_id]);
+                if (!claseDestino) return res.status(400).json({ error: "La nueva clase de destino no existe." });
+            }
+        } else if (req.user.rol === 'TUTOR') {
+            if (alumnoActual.clase_id !== req.user.claseId) {
+                return res.status(403).json({ error: "Tutores solo pueden editar alumnos de su propia clase." });
+            }
+            if (nueva_clase_id !== undefined && nueva_clase_id !== alumnoActual.clase_id) {
+                return res.status(403).json({ error: "Tutores no pueden cambiar la clase de un alumno." });
+            }
+            puedeEditar = true;
+        } else if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            if (!assignedClaseIds.includes(alumnoActual.clase_id)) {
+                return res.status(403).json({ error: "Coordinadores solo pueden editar alumnos de sus clases asignadas." });
+            }
+            if (nueva_clase_id !== undefined && nueva_clase_id !== alumnoActual.clase_id) {
+                if (!assignedClaseIds.includes(nueva_clase_id)) {
+                    return res.status(403).json({ error: "Coordinadores solo pueden mover alumnos a otra de sus clases asignadas." });
+                }
+                const claseDestino = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [nueva_clase_id]);
+                 if (!claseDestino) return res.status(400).json({ error: "La nueva clase de destino no existe." });
+            }
+            puedeEditar = true;
+        }
+
+        if (!puedeEditar) { // Aunque algunas rutas ya retornan, esta es una salvaguarda general.
+            return res.status(403).json({ error: "No tiene permisos para modificar este alumno o asignarlo a la clase especificada." });
+        }
+        
+        // Verificar duplicados si el nombre o la clase cambian
+        if (nombre_completo_a_guardar.toLowerCase() !== alumnoActual.nombre_completo.toLowerCase() || (nueva_clase_id !== undefined && nueva_clase_id !== alumnoActual.clase_id)) {
+            const claseParaChequeo = nueva_clase_id !== undefined ? nueva_clase_id : alumnoActual.clase_id;
+            const alumnoExistenteEnClase = await dbGetAsync(
+                "SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ? AND id != ?",
+                [nombre_completo_a_guardar.toLowerCase(), claseParaChequeo, alumnoId]
+            );
+            if (alumnoExistenteEnClase) {
+                return res.status(409).json({ error: `Ya existe un alumno con el nombre '${nombre_completo_a_guardar}' en la clase de destino.` });
+            }
+        }
+
+
+        let updateFields = ["nombre_completo = ?", "apellidos_para_ordenar = ?"];
+        let updateParams = [nombre_completo_a_guardar, apellidos_para_ordenar_a_guardar];
+
+        if (nueva_clase_id !== undefined && nueva_clase_id !== alumnoActual.clase_id) {
+            updateFields.push("clase_id = ?");
+            updateParams.push(nueva_clase_id);
+        }
+        updateParams.push(alumnoId);
+
+        const sqlUpdate = `UPDATE alumnos SET ${updateFields.join(", ")} WHERE id = ?`;
+        await dbRunAsync(sqlUpdate, updateParams);
+
+        const alumnoActualizado = await dbGetAsync(
+            "SELECT a.id, a.nombre_completo, a.clase_id, c.nombre_clase FROM alumnos a JOIN clases c ON a.clase_id = c.id WHERE a.id = ?",
+            [alumnoId]
+        );
+        console.log(`  Alumno ID ${alumnoId} actualizado.`);
+        res.json({ message: "Alumno actualizado exitosamente", alumno: alumnoActualizado });
+
+    } catch (error) {
+        console.error(`  Error en PUT /api/alumnos/${alumnoId}:`, error.message);
+        if (error.message.includes("UNIQUE constraint failed")) { // Por si acaso, aunque ya se valida antes
+             return res.status(409).json({ error: "Error de constraint: nombre de alumno duplicado en la clase." });
+        }
+        res.status(500).json({ error: "Error interno del servidor al actualizar el alumno." });
+    }
+});
+console.log("Endpoint PUT /api/alumnos/:id definido.");
+
+// DELETE /api/alumnos/:id - Eliminar un alumno
+app.delete('/api/alumnos/:id', authenticateToken, async (req, res) => {
+    const alumnoId = parseInt(req.params.id);
+    if (isNaN(alumnoId)) {
+        return res.status(400).json({ error: "ID de alumno inválido." });
+    }
+    console.log(`  Ruta: DELETE /api/alumnos/${alumnoId}`);
+
+    try {
+        const alumno = await dbGetAsync("SELECT id, clase_id FROM alumnos WHERE id = ?", [alumnoId]);
+        if (!alumno) {
+            return res.status(404).json({ error: "Alumno no encontrado." });
+        }
+
+        // RBAC
+        let puedeEliminar = false;
+        if (req.user.rol === 'DIRECCION') {
+            puedeEliminar = true;
+        } else if (req.user.rol === 'TUTOR') {
+            if (alumno.clase_id === req.user.claseId) {
+                puedeEliminar = true;
+            }
+        } else if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            if (assignedClaseIds.includes(alumno.clase_id)) {
+                puedeEliminar = true;
+            }
+        }
+
+        if (!puedeEliminar) {
+            return res.status(403).json({ error: "No tiene permisos para eliminar este alumno." });
+        }
+        
+        // ON DELETE CASCADE en participaciones_excursion debería encargarse de borrar esas entradas.
+        const result = await dbRunAsync("DELETE FROM alumnos WHERE id = ?", [alumnoId]);
+        if (result.changes === 0) {
+            return res.status(404).json({ error: "Alumno no encontrado para eliminar (posiblemente ya eliminado)." });
+        }
+
+        console.log(`  Alumno ID ${alumnoId} eliminado.`);
+        res.status(200).json({ message: "Alumno eliminado exitosamente." });
+
+    } catch (error) {
+        console.error(`  Error en DELETE /api/alumnos/${alumnoId}:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al eliminar el alumno." });
+    }
+});
+console.log("Endpoint DELETE /api/alumnos/:id definido.");
 
 
 // --- Gestión de Excursiones ---
@@ -931,6 +1093,20 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
         } else {
             finalParaClaseId = null; // Excursión global (o no especificada para_clase_id) creada por Dirección
         }
+    } else if (req.user.rol === 'COORDINACION') {
+        if (para_clase_id !== undefined && para_clase_id !== null && String(para_clase_id).trim() !== '') {
+            const idClaseNum = parseInt(para_clase_id);
+            if (isNaN(idClaseNum)) {
+                 return res.status(400).json({ error: "ID de para_clase_id inválido." });
+            }
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            if (!assignedClaseIds.includes(idClaseNum)) {
+                return res.status(403).json({ error: "Coordinadores solo pueden crear excursiones para sus clases asignadas." });
+            }
+            finalParaClaseId = idClaseNum;
+        } else {
+            finalParaClaseId = null; // Excursión global creada por Coordinación
+        }
     } else {
         return res.status(403).json({ error: "Rol no autorizado para crear excursiones." });
     }
@@ -982,12 +1158,12 @@ app.get('/api/excursiones', authenticateToken, async (req, res) => {
     const params = [];
 
     try {
-        if (req.user.rol === 'DIRECCION') {
+        if (req.user.rol === 'DIRECCION' || req.user.rol === 'TESORERIA') {
             sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
                    FROM excursiones e 
                    JOIN usuarios u ON e.creada_por_usuario_id = u.id 
                    LEFT JOIN clases c ON e.para_clase_id = c.id`;
-            // No additional WHERE for DIRECCION initially, fetches all.
+            // No additional WHERE for DIRECCION or TESORERIA initially, fetches all.
         } else if (req.user.rol === 'TUTOR') {
             if (!req.user.claseId) {
                 console.warn(`  Tutor ${req.user.email} (ID: ${req.user.id}) no tiene claseId en el token o asignada. Devolviendo lista vacía de excursiones.`);
@@ -1097,6 +1273,13 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
                 (excursionActual.para_clase_id === req.user.claseId && req.user.claseId)) {
                 puedeEditar = true;
             }
+        } else if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            if (excursionActual.creada_por_usuario_id === req.user.id ||
+                excursionActual.para_clase_id === null ||
+                (excursionActual.para_clase_id && assignedClaseIds.includes(excursionActual.para_clase_id))) {
+                puedeEditar = true;
+            }
         }
         if (!puedeEditar) {
             return res.status(403).json({ error: "No tiene permisos para modificar esta excursión." });
@@ -1181,6 +1364,16 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
                     if (!claseDestino) {
                         return res.status(400).json({ error: `La clase de destino con ID ${valueToUpdate} no existe.` });
                     }
+                } else if (req.user.rol === 'COORDINACION' && campo === 'para_clase_id' && valueToUpdate !== null) {
+                    const idClaseNum = parseInt(valueToUpdate);
+                     if (isNaN(idClaseNum)) { // Should have been caught by general validation, but good to double check
+                        return res.status(400).json({ error: "ID de para_clase_id inválido para coordinador." });
+                    }
+                    const assignedClaseIds = await getCoordinadorClases(req.user.id);
+                    if (!assignedClaseIds.includes(idClaseNum)) {
+                         return res.status(403).json({ error: "Coordinadores solo pueden asignar excursiones a una de sus clases asignadas." });
+                    }
+                    // If valueToUpdate is null (making it global), it's allowed for COORDINACION if they can edit the excursion.
                 }
                 
                 setClauses.push(`${campo} = ?`);
@@ -1242,6 +1435,11 @@ app.delete('/api/excursiones/:id', authenticateToken, async (req, res) => {
             puedeEliminar = true;
         } else if (req.user.rol === 'TUTOR') {
             // Tutor solo puede eliminar si la creó él
+            if (excursion.creada_por_usuario_id === req.user.id) {
+                puedeEliminar = true;
+            }
+        } else if (req.user.rol === 'COORDINACION') {
+            // Coordinador solo puede eliminar si la creó él (as per instructions)
             if (excursion.creada_por_usuario_id === req.user.id) {
                 puedeEliminar = true;
             }
@@ -1311,7 +1509,15 @@ app.post('/api/excursiones/:id/duplicate', authenticateToken, async (req, res) =
             } else {
                 return res.status(403).json({ error: "Tutores no pueden duplicar excursiones destinadas a otras clases específicas." });
             }
+        } else if (duplicatorUserRol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(duplicatorUserId);
+            if (originalExcursion.para_clase_id === null || assignedClaseIds.includes(originalExcursion.para_clase_id)) {
+                canDuplicate = true;
+            } else {
+                 return res.status(403).json({ error: "Coordinadores solo pueden duplicar excursiones globales o de sus clases asignadas." });
+            }
         }
+
 
         if (!canDuplicate) {
             return res.status(403).json({ error: "No tiene permisos para duplicar esta excursión." });
@@ -1348,12 +1554,30 @@ app.post('/api/excursiones/:id/duplicate', authenticateToken, async (req, res) =
                 finalParaClaseId = null; 
             } else if (duplicatorUserRol === 'TUTOR') {
                 if (!duplicatorUserClaseId) {
-                    if (originalExcursion.para_clase_id !== null) { // Tutor sin clase intentando duplicar una de clase sin especificar target
+                    if (originalExcursion.para_clase_id !== null) { 
                          return res.status(400).json({ error: "Tutor sin clase asignada debe especificar target_clase_id (nulo para global) si la excursión original era para una clase." });
                     }
-                    finalParaClaseId = null; // Tutor sin clase, duplica global a global
+                    finalParaClaseId = null; 
                 } else {
-                    finalParaClaseId = duplicatorUserClaseId; // Defaults to tutor's own class
+                    finalParaClaseId = duplicatorUserClaseId; 
+                }
+            } else if (duplicatorUserRol === 'COORDINACION') {
+                 const assignedClaseIds = await getCoordinadorClases(duplicatorUserId);
+                if (target_clase_id !== undefined && target_clase_id !== null && String(target_clase_id).trim() !== '') { // User specified a target
+                    const idClaseNum = parseInt(target_clase_id);
+                     if (isNaN(idClaseNum)) return res.status(400).json({ error: "target_clase_id (coordinador) inválido." });
+                    if (!assignedClaseIds.includes(idClaseNum)) {
+                        return res.status(403).json({ error: "Coordinadores solo pueden asignar la excursión duplicada a una de sus clases asignadas." });
+                    }
+                    finalParaClaseId = idClaseNum;
+                } else if (target_clase_id === null || (target_clase_id !== undefined && String(target_clase_id).trim() === '')) { // User specified global
+                    finalParaClaseId = null;
+                } else { // target_clase_id is undefined (not provided) - Default logic for COORDINACION
+                    if (originalExcursion.para_clase_id !== null && assignedClaseIds.includes(originalExcursion.para_clase_id)) {
+                        finalParaClaseId = originalExcursion.para_clase_id; // Default to original's class if it was one of theirs
+                    } else {
+                        finalParaClaseId = null; // Default to global
+                    }
                 }
             }
         }
@@ -1463,6 +1687,11 @@ app.post('/api/excursiones/:id/share', authenticateToken, async (req, res) => {
                  if (!req.user.claseId) { // Tutor must have a class to view a class-specific excursion for their class
                     return res.status(403).json({ error: "Tutor sin clase asignada no puede acceder a esta excursión específica de clase." });
                  }
+                canViewOriginal = true;
+            }
+        } else if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            if (originalExcursion.para_clase_id === null || assignedClaseIds.includes(originalExcursion.para_clase_id)) {
                 canViewOriginal = true;
             }
         }
@@ -1900,6 +2129,14 @@ app.post('/api/participaciones', authenticateToken, async (req, res) => {
             if (excursion.para_clase_id !== null && excursion.para_clase_id !== req.user.claseId) {
                 return res.status(403).json({ error: "Tutores solo pueden gestionar participaciones para excursiones globales o de su propia clase." });
             }
+        } else if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            if (!assignedClaseIds.includes(alumno.clase_id)) {
+                return res.status(403).json({ error: "Coordinadores solo pueden gestionar participaciones de alumnos de sus clases asignadas." });
+            }
+            if (excursion.para_clase_id !== null && !assignedClaseIds.includes(excursion.para_clase_id)) {
+                 return res.status(403).json({ error: "Coordinadores solo pueden gestionar participaciones para excursiones globales o de sus clases asignadas." });
+            }
         } else if (req.user.rol !== 'DIRECCION') {
             return res.status(403).json({ error: "Rol no autorizado para esta acción." });
         }
@@ -2043,6 +2280,106 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
                 WHERE para_clase_id IS NULL AND fecha_excursion >= date('now') 
                 ORDER BY fecha_excursion ASC`;
             dashboardData.proximasExcursiones = await dbAllAsync(sqlProximasExcursionesDireccion);
+        } else if (req.user.rol === 'COORDINACION') {
+            dashboardData.mensaje = "Resumen del dashboard para Coordinador";
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            dashboardData.totalClasesCoordinadas = assignedClaseIds.length;
+            dashboardData.clasesCoordinadasDetalles = [];
+            dashboardData.proximasExcursionesCoordinador = [];
+
+            if (assignedClaseIds.length > 0) {
+                for (const claseId of assignedClaseIds) {
+                    const claseInfo = await dbGetAsync("SELECT nombre_clase FROM clases WHERE id = ?", [claseId]);
+                    const numAlumnosRow = await dbGetAsync("SELECT COUNT(*) as count FROM alumnos WHERE clase_id = ?", [claseId]);
+                    dashboardData.clasesCoordinadasDetalles.push({
+                        claseId: claseId,
+                        nombreClase: claseInfo ? claseInfo.nombre_clase : 'Desconocida',
+                        numAlumnos: numAlumnosRow ? numAlumnosRow.count : 0
+                    });
+                }
+
+                let sqlProximasExcursionesCoord = `
+                    SELECT e.id, e.nombre_excursion, e.fecha_excursion, e.para_clase_id, c.nombre_clase as nombre_clase_destino 
+                    FROM excursiones e 
+                    LEFT JOIN clases c ON e.para_clase_id = c.id 
+                    WHERE e.fecha_excursion >= date('now') AND (e.para_clase_id IS NULL`;
+                
+                const placeholders = assignedClaseIds.map(() => '?').join(',');
+                sqlProximasExcursionesCoord += ` OR e.para_clase_id IN (${placeholders})) ORDER BY e.fecha_excursion ASC`;
+                
+                const paramsForExcursions = [...assignedClaseIds]; // Spread to create a new array for params
+                dashboardData.proximasExcursionesCoordinador = await dbAllAsync(sqlProximasExcursionesCoord, paramsForExcursions);
+            }
+            // If assignedClaseIds is empty, proximasExcursionesCoordinador will only fetch global ones
+            else {
+                 const sqlProximasExcursionesCoordGlobal = `
+                    SELECT e.id, e.nombre_excursion, e.fecha_excursion, e.para_clase_id, c.nombre_clase as nombre_clase_destino 
+                    FROM excursiones e 
+                    LEFT JOIN clases c ON e.para_clase_id = c.id 
+                    WHERE e.fecha_excursion >= date('now') AND e.para_clase_id IS NULL 
+                    ORDER BY e.fecha_excursion ASC`;
+                dashboardData.proximasExcursionesCoordinador = await dbAllAsync(sqlProximasExcursionesCoordGlobal);
+            }
+        } else if (req.user.rol === 'TESORERIA') {
+            // Data for TESORERIA
+            const totalExcursionesRow = await dbGetAsync("SELECT COUNT(*) as count FROM excursiones");
+            dashboardData.totalExcursiones = totalExcursionesRow ? totalExcursionesRow.count : 0;
+
+            const totalAlumnosConPagoRow = await dbGetAsync(
+                `SELECT COUNT(DISTINCT alumno_id) as count 
+                 FROM participaciones_excursion 
+                 WHERE pago_realizado = 'Sí' OR pago_realizado = 'Parcial'`
+            );
+            dashboardData.totalAlumnosConPago = totalAlumnosConPagoRow ? totalAlumnosConPagoRow.count : 0;
+
+            const sumaTotalPagadoRow = await dbGetAsync(
+                `SELECT SUM(cantidad_pagada) as total 
+                 FROM participaciones_excursion`
+            );
+            dashboardData.sumaTotalPagado = sumaTotalPagadoRow && sumaTotalPagadoRow.total !== null ? sumaTotalPagadoRow.total : 0;
+            
+        } else if (req.user.rol === 'COORDINACION') {
+            dashboardData.mensaje = "Resumen del dashboard para Coordinador";
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+            dashboardData.totalClasesCoordinadas = assignedClaseIds.length;
+            dashboardData.clasesCoordinadasDetalles = [];
+            dashboardData.proximasExcursionesCoordinador = [];
+
+            if (assignedClaseIds.length > 0) {
+                for (const claseId of assignedClaseIds) {
+                    const claseInfo = await dbGetAsync("SELECT nombre_clase FROM clases WHERE id = ?", [claseId]);
+                    const numAlumnosRow = await dbGetAsync("SELECT COUNT(*) as count FROM alumnos WHERE clase_id = ?", [claseId]);
+                    dashboardData.clasesCoordinadasDetalles.push({
+                        claseId: claseId,
+                        nombreClase: claseInfo ? claseInfo.nombre_clase : 'Desconocida',
+                        numAlumnos: numAlumnosRow ? numAlumnosRow.count : 0
+                    });
+                }
+
+                let sqlProximasExcursionesCoord = `
+                    SELECT e.id, e.nombre_excursion, e.fecha_excursion, e.para_clase_id, c.nombre_clase as nombre_clase_destino 
+                    FROM excursiones e 
+                    LEFT JOIN clases c ON e.para_clase_id = c.id 
+                    WHERE e.fecha_excursion >= date('now') AND (e.para_clase_id IS NULL`;
+                
+                const placeholders = assignedClaseIds.map(() => '?').join(',');
+                sqlProximasExcursionesCoord += ` OR e.para_clase_id IN (${placeholders})) ORDER BY e.fecha_excursion ASC`;
+                
+                const paramsForExcursions = [...assignedClaseIds];
+                dashboardData.proximasExcursionesCoordinador = await dbAllAsync(sqlProximasExcursionesCoord, paramsForExcursions);
+            }
+            // If assignedClaseIds is empty, proximasExcursionesCoordinador will only fetch global ones
+            else {
+                 const sqlProximasExcursionesCoordGlobal = `
+                    SELECT e.id, e.nombre_excursion, e.fecha_excursion, e.para_clase_id, c.nombre_clase as nombre_clase_destino 
+                    FROM excursiones e 
+                    LEFT JOIN clases c ON e.para_clase_id = c.id 
+                    WHERE e.fecha_excursion >= date('now') AND e.para_clase_id IS NULL 
+                    ORDER BY e.fecha_excursion ASC`;
+                dashboardData.proximasExcursionesCoordinador = await dbAllAsync(sqlProximasExcursionesCoordGlobal);
+            }
+
+
         } else {
             // Potentially handle other roles or return a more generic summary if needed
             // For now, just the base totalClases and message will be sent.
