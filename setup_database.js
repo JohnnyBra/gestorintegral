@@ -33,15 +33,17 @@ CREATE TABLE IF NOT EXISTS usuarios (
     email TEXT UNIQUE NOT NULL,
     nombre_completo TEXT NOT NULL,
     password_hash TEXT NOT NULL,
-    rol TEXT NOT NULL CHECK(rol IN ('DIRECCION', 'TUTOR', 'TESORERIA', 'COORDINACION'))
+    rol TEXT NOT NULL CHECK(rol IN ('DIRECCION', 'TUTOR', 'TESORERIA'))
 );
 
 CREATE TABLE IF NOT EXISTS clases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre_clase TEXT UNIQUE NOT NULL,
     tutor_id INTEGER, -- ID del usuario que es tutor
+    ciclo_id INTEGER,
     FOREIGN KEY (tutor_id) REFERENCES usuarios(id) ON DELETE SET NULL 
-        ON UPDATE CASCADE -- Si el ID del usuario tutor cambia, se actualiza aquí
+        ON UPDATE CASCADE, -- Si el ID del usuario tutor cambia, se actualiza aquí
+    FOREIGN KEY (ciclo_id) REFERENCES ciclos(id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS alumnos (
@@ -103,35 +105,14 @@ CREATE TABLE IF NOT EXISTS participaciones_excursion (
     UNIQUE (alumno_id, excursion_id)
 );
 
-CREATE TABLE IF NOT EXISTS coordinador_clases (
-    coordinador_id INTEGER NOT NULL,
-    clase_id INTEGER NOT NULL,
-    FOREIGN KEY (coordinador_id) REFERENCES usuarios(id) ON DELETE CASCADE,
-    FOREIGN KEY (clase_id) REFERENCES clases(id) ON DELETE CASCADE,
-    PRIMARY KEY (coordinador_id, clase_id)
-);
-
 CREATE TABLE IF NOT EXISTS ciclos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre_ciclo TEXT UNIQUE NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS ciclo_clases_definicion (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ciclo_id INTEGER NOT NULL,
-    nombre_patron_clase TEXT NOT NULL,
-    FOREIGN KEY (ciclo_id) REFERENCES ciclos(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS usuario_ciclos_coordinador (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    coordinador_usuario_id INTEGER NOT NULL,
-    ciclo_id INTEGER NOT NULL,
-    FOREIGN KEY (coordinador_usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
-    FOREIGN KEY (ciclo_id) REFERENCES ciclos(id) ON DELETE CASCADE,
-    UNIQUE (coordinador_usuario_id, ciclo_id)
-);
 `;
+
+// Las tablas coordinador_clases, ciclo_clases_definicion, y usuario_ciclos_coordinador han sido eliminadas.
 
 function crearTablas() {
     db.exec(sqlCrearTablas, async (err) => {
@@ -139,6 +120,8 @@ function crearTablas() {
             console.error("Error al crear tablas:", err.message);
         } else {
             console.log("Tablas creadas o ya existentes.");
+            // La tabla ciclos se crea aquí si no existe.
+            // Las tablas relacionadas con COORDINACION ya no se crean.
             await insertarDatosIniciales(); 
         }
         cerrarDB(); 
@@ -173,26 +156,40 @@ async function insertarDatosIniciales() {
         });
     };
 
-    const insertClase = (nombreClase, tutorId) => {
+    const insertClase = (nombreClase, tutorId, cicloId) => {
         return new Promise((resolve, reject) => {
-            db.get("SELECT id, tutor_id FROM clases WHERE lower(nombre_clase) = lower(?)", [nombreClase.toLowerCase()], (err, row) => {
+            db.get("SELECT id, tutor_id, ciclo_id FROM clases WHERE lower(nombre_clase) = lower(?)", [nombreClase.toLowerCase()], (err, row) => {
                 if (err) return reject(new Error(`Error consultando clase ${nombreClase}: ${err.message}`));
                 if (row) {
                     console.log(`Clase ${nombreClase} ya existe con ID: ${row.id}.`);
+                    let updates = [];
+                    let params = [];
                     if (tutorId !== undefined && row.tutor_id !== tutorId) {
-                        db.run("UPDATE clases SET tutor_id = ? WHERE id = ?", [tutorId, row.id], function(errUpdate) {
-                            if (errUpdate) console.error(`Error actualizando tutor para clase ${nombreClase}: ${errUpdate.message}`);
-                            else console.log(`Clase ${nombreClase} actualizada con tutor ID ${tutorId}.`);
+                        updates.push("tutor_id = ?");
+                        params.push(tutorId);
+                    }
+                    // Check and add ciclo_id to updates if it's different
+                    if (cicloId !== undefined && row.ciclo_id !== cicloId) {
+                        updates.push("ciclo_id = ?");
+                        params.push(cicloId);
+                    }
+
+                    if (updates.length > 0) {
+                        params.push(row.id); // Add the class ID for the WHERE clause
+                        db.run(`UPDATE clases SET ${updates.join(", ")} WHERE id = ?`, params, function(errUpdate) {
+                            if (errUpdate) console.error(`Error actualizando clase ${nombreClase}: ${errUpdate.message}`);
+                            else console.log(`Clase ${nombreClase} actualizada. Tutor ID: ${tutorId}, Ciclo ID: ${cicloId}.`);
                             resolve(row.id);
                         });
                     } else {
+                        // No updates needed
                         resolve(row.id);
                     }
                 } else {
-                     db.run(`INSERT INTO clases (nombre_clase, tutor_id) VALUES (?, ?)`,
-                        [nombreClase.toUpperCase(), tutorId], function (errInsert) {
+                     db.run(`INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)`,
+                        [nombreClase.toUpperCase(), tutorId, cicloId], function (errInsert) {
                             if (errInsert) return reject(new Error(`Error insertando clase ${nombreClase}: ${errInsert.message}`));
-                            console.log(`Clase '${nombreClase}' creada con ID: ${this.lastID} y tutor ID: ${tutorId}`);
+                            console.log(`Clase '${nombreClase}' creada con ID: ${this.lastID}, tutor ID: ${tutorId}, ciclo ID: ${cicloId}`);
                             resolve(this.lastID);
                         }
                     );
@@ -214,36 +211,32 @@ async function insertarDatosIniciales() {
         const passwordTutor = "password";   // ¡CAMBIA ESTO por una contraseña segura!
         const idTutorEjemplo = await insertUsuario(emailTutor, nombreTutor, passwordTutor, "TUTOR");
 
-        // 3. Crear Clase de Ejemplo y asignarla al Tutor de Ejemplo
-        if (idTutorEjemplo) { 
-            await insertClase("1A PRIMARIA", idTutorEjemplo); 
-        }
-        await insertClase("INFANTIL 4B", null);
+        // PASO PREVIO A INSERTAR CLASES: Asegurar que los ciclos y sus IDs están listos
+        // El script original ya lo hace en el paso "4. Insertar Ciclos", así que mantenemos ese orden.
+        // Solo nos aseguramos que cicloIds esté poblado antes de llamar a insertClase con cicloId.
 
-        // 4. Insertar Ciclos
+        // 4. Insertar Ciclos (Este paso es crucial que esté ANTES de insertar clases con ciclo_id)
         const ciclosData = ['Infantil', 'Primer ciclo', 'Segundo ciclo', 'Tercer ciclo'];
-        const cicloIds = {};
+        const cicloIds = {}; // Mapa para guardar los IDs de los ciclos insertados/existentes
         for (const nombreCiclo of ciclosData) {
-            const cicloId = await insertCiclo(nombreCiclo);
+            const cicloId = await insertCiclo(nombreCiclo); // insertCiclo ya está definido globalmente
             cicloIds[nombreCiclo] = cicloId;
         }
+        
+        // 3. Crear Clases de Ejemplo y asignarlas al Tutor y Ciclo correspondientes
+        // Ahora este paso viene DESPUÉS de que cicloIds se haya poblado.
+        if (idTutorEjemplo) { 
+            await insertClase("1A PRIMARIA", idTutorEjemplo, cicloIds['Primer ciclo']); 
+        } else {
+            // Si el tutor de ejemplo no se pudo crear por alguna razón,
+            // igualmente creamos la clase, pero sin tutor asignado.
+            console.log("Tutor de ejemplo no encontrado, insertando 1A PRIMARIA sin tutor pero con ciclo.");
+            await insertClase("1A PRIMARIA", null, cicloIds['Primer ciclo']);
+        }
+        await insertClase("INFANTIL 4B", null, cicloIds['Infantil']);
 
-        // 5. Insertar Definiciones de Clases para Ciclos
-        // Asegúrate que los IDs corresponden a los insertados o consultados arriba
-        if (cicloIds['Infantil']) await insertCicloClaseDefinicion(cicloIds['Infantil'], 'INFANTIL%');
-        if (cicloIds['Primer ciclo']) {
-            await insertCicloClaseDefinicion(cicloIds['Primer ciclo'], 'PRIMARIA 1%'); // Corregido para incluir %
-            await insertCicloClaseDefinicion(cicloIds['Primer ciclo'], 'PRIMARIA 2%'); // Corregido para incluir %
-        }
-        if (cicloIds['Segundo ciclo']) {
-            await insertCicloClaseDefinicion(cicloIds['Segundo ciclo'], 'PRIMARIA 3%'); // Corregido para incluir %
-            await insertCicloClaseDefinicion(cicloIds['Segundo ciclo'], 'PRIMARIA 4%'); // Corregido para incluir %
-        }
-        if (cicloIds['Tercer ciclo']) {
-            await insertCicloClaseDefinicion(cicloIds['Tercer ciclo'], 'PRIMARIA 5%'); // Corregido para incluir %
-            await insertCicloClaseDefinicion(cicloIds['Tercer ciclo'], 'PRIMARIA 6%'); // Corregido para incluir %
-        }
-
+        // Ya no se insertan datos en ciclo_clases_definicion, coordinador_clases, o usuario_ciclos_coordinador.
+        // Tampoco se crean usuarios de ejemplo con rol COORDINACION.
 
     } catch (error) {
         console.error("Error durante la inserción de datos iniciales:", error.message);
@@ -268,25 +261,7 @@ const insertCiclo = (nombreCiclo) => {
     });
 };
 
-const insertCicloClaseDefinicion = (cicloId, nombrePatron) => {
-    return new Promise((resolve, reject) => {
-        db.get("SELECT id FROM ciclo_clases_definicion WHERE ciclo_id = ? AND lower(nombre_patron_clase) = lower(?)", 
-               [cicloId, nombrePatron.toLowerCase()], (err, row) => {
-            if (err) return reject(new Error(`Error consultando definicion ${nombrePatron} para ciclo ${cicloId}: ${err.message}`));
-            if (row) {
-                console.log(`Definicion ${nombrePatron} para ciclo ${cicloId} ya existe.`);
-                resolve(row.id);
-            } else {
-                db.run(`INSERT INTO ciclo_clases_definicion (ciclo_id, nombre_patron_clase) VALUES (?, ?)`, 
-                       [cicloId, nombrePatron], function (errInsert) {
-                    if (errInsert) return reject(new Error(`Error insertando definicion ${nombrePatron} para ciclo ${cicloId}: ${errInsert.message}`));
-                    console.log(`Definicion '${nombrePatron}' para ciclo ID ${cicloId} creada con ID: ${this.lastID}`);
-                    resolve(this.lastID);
-                });
-            }
-        });
-    });
-};
+// La función insertCicloClaseDefinicion ya no es necesaria y se ha eliminado.
 
 function cerrarDB() {
     db.close((err) => {
