@@ -233,7 +233,33 @@ async function insertarDatosIniciales() {
             console.log("Tutor de ejemplo no encontrado, insertando 1A PRIMARIA sin tutor pero con ciclo.");
             await insertClase("1A PRIMARIA", null, cicloIds['Primer ciclo']);
         }
-        await insertClase("INFANTIL 4B", null, cicloIds['Infantil']);
+        
+        // Insertar clases de ejemplo
+        // Ciclo Infantil
+        await insertClase("INFANTIL 3A", null, cicloIds['Infantil']);
+        await insertClase("INFANTIL 3B", null, cicloIds['Infantil']);
+        await insertClase("INFANTIL 4A", null, cicloIds['Infantil']);
+        await insertClase("INFANTIL 4B", null, cicloIds['Infantil']); // Ya existente, se verificará y actualizará si es necesario
+        await insertClase("INFANTIL 5A", null, cicloIds['Infantil']);
+        await insertClase("INFANTIL 5B", null, cicloIds['Infantil']);
+
+        // Primer Ciclo
+        await insertClase("PRIMARIA 1B", null, cicloIds['Primer ciclo']);
+        await insertClase("PRIMARIA 2A", null, cicloIds['Primer ciclo']);
+        await insertClase("PRIMARIA 2B", null, cicloIds['Primer ciclo']);
+        // PRIMARIA 1A ya se inserta arriba con el tutor de ejemplo o null.
+
+        // Segundo Ciclo
+        await insertClase("PRIMARIA 3A", null, cicloIds['Segundo ciclo']);
+        await insertClase("PRIMARIA 3B", null, cicloIds['Segundo ciclo']);
+        await insertClase("PRIMARIA 4A", null, cicloIds['Segundo ciclo']);
+        await insertClase("PRIMARIA 4B", null, cicloIds['Segundo ciclo']);
+        
+        // Tercer Ciclo
+        await insertClase("PRIMARIA 5A", null, cicloIds['Tercer ciclo']);
+        await insertClase("PRIMARIA 5B", null, cicloIds['Tercer ciclo']);
+        await insertClase("PRIMARIA 6A", null, cicloIds['Tercer ciclo']);
+        await insertClase("PRIMARIA 6B", null, cicloIds['Tercer ciclo']);
 
         // Ya no se insertan datos en ciclo_clases_definicion, coordinador_clases, o usuario_ciclos_coordinador.
         // Tampoco se crean usuarios de ejemplo con rol COORDINACION.
