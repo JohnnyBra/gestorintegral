@@ -803,8 +803,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let paraClaseIdActual = excursionData.para_clase_id !== undefined ? excursionData.para_clase_id : defaultParaClaseId;
-        if (idExcursion && excursionData.para_clase_id === null) { // Editing a global excursion
-            paraClaseIdActual = ""; // Set to empty string to match the "Global" option value
+        // If editing an existing "Global" excursion, paraClaseIdActual will be null.
+        // For tutors, this should map to "Mi Ciclo" (value "ciclo") by default if creating new.
+        if (!idExcursion && currentUser.rol === 'TUTOR' && paraClaseIdActual === null) {
+            paraClaseIdActual = "ciclo"; 
+        } else if (idExcursion && excursionData.para_clase_id === null && currentUser.rol === 'TUTOR') {
+            paraClaseIdActual = "ciclo"; // Map existing global to "Mi Ciclo" for tutors
         }
 
 
@@ -818,36 +822,33 @@ document.addEventListener('DOMContentLoaded', () => {
                     listaDeClasesGlobal = dataClases.clases || [];
                 } catch (error) { console.error("Error cargando clases para formExcursion:", error); }
             }
-            opcionesClasesHtml = '<option value="">-- Global (para todas las clases) --</option>';
+            opcionesClasesHtml = `<option value="" ${paraClaseIdActual === null || paraClaseIdActual === "" ? 'selected' : ''}>-- Global (para todas las clases) --</option>`;
             listaDeClasesGlobal.forEach(clase => {
                 opcionesClasesHtml += `<option value="${clase.id}" ${paraClaseIdActual == clase.id ? 'selected' : ''}>${clase.nombre_clase}</option>`;
             });
         } else if (currentUser.rol === 'TUTOR') {
-            opcionesClasesHtml = '<option value="">-- Global (para todas las clases) --</option>';
+            opcionesClasesHtml = ''; // Reset for tutor
+             // "Mi Ciclo" option is default for new or if editing a global/cycle-wide excursion
+            opcionesClasesHtml += `<option value="ciclo" ${paraClaseIdActual === "ciclo" ? 'selected' : ''}>Mi Ciclo (Todas las clases de mi ciclo)</option>`;
+
             if (!currentUser.claseId) {
                 console.warn("Tutor sin clase asignada intentando crear/editar excursión.");
-                // Tutor sin clase solo puede crear/ver globales
-                selectDisabled = true; // No puede cambiar de "Global" si no tiene clase
-                 if (paraClaseIdActual !== "" && paraClaseIdActual !== null) { // Si está editando una excursión que era para una clase específica (raro si no tiene clase)
-                    opcionesClasesHtml += `<option value="${paraClaseIdActual}" selected disabled>Clase ID ${paraClaseIdActual} (No accesible)</option>`;
-                 }
+                // selectDisabled = true; // Tutor sin clase solo puede seleccionar "Mi Ciclo" (que será global)
             } else {
-                if (listaDeClasesGlobal.length === 0) { // Asegurarse de tener la lista de clases
+                 if (listaDeClasesGlobal.length === 0) {
                     try {
                         const dataTodasClases = await apiFetch('/clases');
                         listaDeClasesGlobal = dataTodasClases.clases || [];
                     } catch (error) {
                         console.error("Error cargando todas las clases para el tutor:", error);
-                        opcionesClasesHtml += `<option value="${currentUser.claseId}" ${paraClaseIdActual == currentUser.claseId ? 'selected' : ''}>${currentUser.claseNombre} (Mi Clase)</option>`;
-                        // Podría añadir un mensaje de error o deshabilitar si falla la carga de clases
                     }
                 }
                 
-                const tutorClaseActual = listaDeClasesGlobal.find(clase => clase.id === currentUser.claseId);
-                const tutorCicloId = tutorClaseActual ? tutorClaseActual.ciclo_id : null;
-
                 // Añadir la clase propia del tutor
                 opcionesClasesHtml += `<option value="${currentUser.claseId}" ${paraClaseIdActual == currentUser.claseId ? 'selected' : ''}>${currentUser.claseNombre} (Mi Clase)</option>`;
+
+                const tutorClaseActual = listaDeClasesGlobal.find(clase => clase.id === currentUser.claseId);
+                const tutorCicloId = tutorClaseActual ? tutorClaseActual.ciclo_id : null;
 
                 if (tutorCicloId) {
                     const clasesDelMismoCiclo = listaDeClasesGlobal.filter(clase => clase.ciclo_id === tutorCicloId && clase.id !== currentUser.claseId);
@@ -855,23 +856,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         opcionesClasesHtml += `<option value="${clase.id}" ${paraClaseIdActual == clase.id ? 'selected' : ''}>${clase.nombre_clase} (Mismo Ciclo)</option>`;
                     });
                 }
-                selectDisabled = false; // Permitir selección
+                selectDisabled = false; 
             }
         }
 
         let paraClaseSelectHtml = '';
         if (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR') {
             paraClaseSelectHtml = `<div><label>Para Clase:</label><select id="paraClaseIdExcursion" ${selectDisabled ? 'disabled':''}>${opcionesClasesHtml}</select></div>`;
-        } else if (currentUser.rol === 'TUTOR' && !currentUser.claseId) {
-            // Si el tutor no tiene clase, pero está creando/editando, y para_clase_id no es global (null o "")
-            // Podría ser que esté editando una excursión que era de su clase anterior.
-            // En este caso, el select de arriba ya se encarga, pero si se quisiera un mensaje específico:
-            if (paraClaseIdActual !== "" && paraClaseIdActual !== null) {
-                 paraClaseSelectHtml = `<p class="error-message">No tienes clase asignada. Esta excursión es para una clase específica no accesible.</p>
-                                       <input type="hidden" id="paraClaseIdExcursion" value="${paraClaseIdActual}">`;
-            } else { // Es global
-                 paraClaseSelectHtml = `<div><label>Para Clase:</label><select id="paraClaseIdExcursion" disabled><option value="" selected>-- Global (para todas las clases) --</option></select></div>`;
-            }
         }
 
 
@@ -892,7 +883,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div><label>Justificación:</label><textarea id="justificacionExcursion" required>${excursionData.justificacion_texto || ''}</textarea></div>
                     <div><label>Notas:</label><textarea id="notasExcursion">${excursionData.notas_excursion || ''}</textarea></div>
                     ${paraClaseSelectHtml}
-                    ${currentUser.rol === 'TUTOR' && !currentUser.claseId && (paraClaseIdActual === "" || paraClaseIdActual === null) ? `<p><em>Como tutor sin clase asignada, solo puedes crear/editar excursiones globales.</em></p>` : ''}
                     <div class="form-buttons"><button type="submit" class="success">${idExcursion ? 'Guardar Cambios' : 'Crear Excursión'}</button><button type="button" id="btnCancelarFormExcursion" class="secondary">Cancelar</button></div>
                     <p id="formExcursionError" class="error-message"></p>
                 </form>
@@ -914,25 +904,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if(errorP) errorP.textContent = '';
         const excursionId = formWrapper.querySelector('#excursionId').value;
-        const paraClaseIdSelect = formWrapper.querySelector('#paraClaseIdExcursion'); // Ahora siempre debería ser un select si el rol lo permite
+        const paraClaseIdSelect = formWrapper.querySelector('#paraClaseIdExcursion');
         
         let para_clase_id_valor;
         if (paraClaseIdSelect) {
-            para_clase_id_valor = paraClaseIdSelect.value === "" ? null : parseInt(paraClaseIdSelect.value);
-        } else if (currentUser.rol === 'TUTOR' && currentUser.claseId) {
-            // Este caso podría ser si el select no se renderizó por alguna razón, pero el tutor tiene clase.
-            // O si estamos editando una excursión que era de su clase y el select no se mostró (lógica anterior)
-            // Para la nueva lógica, el select siempre se muestra para TUTOR.
-            // Si el select no existe, pero es tutor, y estamos creando (no hay excursionId), default a su clase
-            if (!excursionId) para_clase_id_valor = currentUser.claseId;
-            else { // Editando, y no hay select, es un caso raro. Intentar tomar el valor de excursionData si está disponible.
-                const originalExcursionData = JSON.parse(sessionStorage.getItem(`editExcursionData_${excursionId}`) || '{}');
-                para_clase_id_valor = originalExcursionData.para_clase_id !== undefined ? originalExcursionData.para_clase_id : null;
+            const selectedValue = paraClaseIdSelect.value;
+            if (selectedValue === "ciclo" || selectedValue === "") { // "ciclo" es el nuevo valor para ciclo/global por tutor, "" es el viejo global
+                para_clase_id_valor = null;
+            } else {
+                para_clase_id_valor = parseInt(selectedValue);
             }
-        } else { // Si no hay select y no es tutor con clase (ej. tutor sin clase creando global)
-            para_clase_id_valor = null;
+        } else { // Fallback, aunque el select debería estar siempre para roles permitidos
+             const originalExcursionData = excursionId ? JSON.parse(sessionStorage.getItem(`editExcursionData_${excursionId}`) || '{}') : {};
+             para_clase_id_valor = originalExcursionData.para_clase_id !== undefined ? originalExcursionData.para_clase_id : null;
+             if (currentUser.rol === 'TUTOR' && !excursionId && currentUser.claseId) { // Creando y es tutor con clase, sin select? (raro)
+                para_clase_id_valor = null; // Default a ciclo/global si no hay select.
+             }
         }
-
 
         const excursionData = {
             nombre_excursion: document.getElementById('nombreExcursion').value,
@@ -948,10 +936,10 @@ document.addEventListener('DOMContentLoaded', () => {
             notas_excursion: formWrapper.querySelector('#notasExcursion').value,
             para_clase_id: para_clase_id_valor
         };
-        if (excursionId) { // Guardar datos originales para referencia en save si es necesario
+
+        if (excursionId) { 
             sessionStorage.setItem(`editExcursionData_${excursionId}`, JSON.stringify(excursionData));
         }
-
 
         let method = 'POST';
         let endpoint = '/excursiones';
