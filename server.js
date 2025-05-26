@@ -426,7 +426,7 @@ console.log("Endpoint GET /api/usuarios/tutores definido.");
 app.get('/api/clases', authenticateToken, async (req, res) => {
     console.log("  Ruta: GET /api/clases, Usuario:", req.user.email, "Rol:", req.user.rol);
     try {
-        let sql = `SELECT c.id, c.nombre_clase, c.tutor_id, u.nombre_completo as nombre_tutor, u.email as email_tutor
+        let sql = `SELECT c.id, c.nombre_clase, c.tutor_id, c.ciclo_id, u.nombre_completo as nombre_tutor, u.email as email_tutor
                    FROM clases c LEFT JOIN usuarios u ON c.tutor_id = u.id`;
         const params = [];
 
