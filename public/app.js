@@ -806,7 +806,14 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 tituloSeccionAlumnos += ` (Todas las Clases)`;
             }
+        } else if (currentUser.rol === 'COORDINACION') {
+            alumnosContentDiv.innerHTML = importCsvHtml + "<p>Como coordinador, por favor, seleccione una clase de su sección 'Coordinación' para ver los alumnos.</p>";
+            poblarSelectorClaseDestinoCSV();
+            const formImp = document.getElementById('formImportarAlumnosCSV');
+            if (formImp) formImp.addEventListener('submit', handleImportAlumnosCSV);
+            return;
         }
+
         if (queryParams.toString()) endpoint += `?${queryParams.toString()}`;
         try {
             const dataAlumnos = await apiFetch(endpoint);
@@ -1834,34 +1841,174 @@ document.addEventListener('DOMContentLoaded', () => {
             managementSection.style.borderTop = '1px solid #ccc';
             formAdminUsuarioWrapper.appendChild(managementSection);
             renderCoordinatorClassManagementSection(userId, initialUserData.nombre_completo, managementSection);
+
+            // Add Ciclos Management Section
+            const ciclosManagementSection = document.createElement('div');
+            ciclosManagementSection.id = `coordinadorCiclosManagementSection_${userId}`; // Unique ID per user form
+            ciclosManagementSection.style.marginTop = '30px'; // Add some space
+            ciclosManagementSection.style.paddingTop = '20px';
+            ciclosManagementSection.style.borderTop = '2px dashed #bbb'; // Visually distinct
+            formAdminUsuarioWrapper.appendChild(ciclosManagementSection);
+            renderCiclosManagementSection(userId, initialUserData.nombre_completo, ciclosManagementSection);
         }
     }
 
     async function renderCoordinatorClassManagementSection(coordinadorId, coordinadorName, parentElement) {
-        parentElement.innerHTML = `<h4>Gestión de Clases Asignadas para: ${coordinadorName} (ID: ${coordinadorId})</h4>
-            <div id="assignedClassesListContainer" style="margin-bottom: 20px;"></div>
-            <div id="assignNewClassFormContainer"></div>
-            <p id="coordinatorClassManagementError" class="error-message" style="margin-top: 10px;"></p>`;
+        parentElement.innerHTML = `<h4>Gestión de Clases Directamente Asignadas para: ${coordinadorName} (ID: ${coordinadorId})</h4>
+            <div id="assignedClassesListContainer_${coordinadorId}" style="margin-bottom: 20px;"></div>
+            <div id="assignNewClassFormContainer_${coordinadorId}"></div>
+            <p id="coordinatorClassManagementError_${coordinadorId}" class="error-message" style="margin-top: 10px;"></p>`;
         
-        await loadAndDisplayAssignedClasses(coordinadorId, document.getElementById('assignedClassesListContainer'));
-        await loadAndDisplayAssignableClasses(coordinadorId, document.getElementById('assignNewClassFormContainer'));
+        const assignedClassesContainer = document.getElementById(`assignedClassesListContainer_${coordinadorId}`);
+        const assignableClassesContainer = document.getElementById(`assignNewClassFormContainer_${coordinadorId}`);
+
+        if (assignedClassesContainer) await loadAndDisplayAssignedClasses(coordinadorId, assignedClassesContainer);
+        if (assignableClassesContainer) await loadAndDisplayAssignableClasses(coordinadorId, assignableClassesContainer);
     }
+    
+    async function renderCiclosManagementSection(coordinadorId, coordinadorName, parentElement) {
+        parentElement.innerHTML = `
+            <h4 style="color: #337ab7;">Gestión de Ciclos Educativos Asignados para: ${coordinadorName} (ID: ${coordinadorId})</h4>
+            <p style="font-size:0.9em; color:#555;">Los coordinadores tendrán acceso a todas las clases que pertenezcan a los ciclos asignados aquí, además de las clases directamente asignadas arriba.</p>
+            <div id="assignedCiclosListContainer_${coordinadorId}" style="margin-bottom: 20px;"></div>
+            <div id="assignNewCicloFormContainer_${coordinadorId}"></div>
+            <p id="cicloManagementError_${coordinadorId}" class="error-message" style="margin-top: 10px;"></p>`;
+        
+        const assignedCiclosContainer = document.getElementById(`assignedCiclosListContainer_${coordinadorId}`);
+        const assignableCiclosContainer = document.getElementById(`assignNewCicloFormContainer_${coordinadorId}`);
+
+        if (assignedCiclosContainer) await loadAndDisplayAssignedCiclos(coordinadorId, assignedCiclosContainer);
+        if (assignableCiclosContainer) await loadAndDisplayAssignableCiclos(coordinadorId, assignableCiclosContainer);
+    }
+
+    async function loadAndDisplayAssignedCiclos(coordinadorId, container) {
+        if (!container) { console.error(`Contenedor para ciclos asignados de ${coordinadorId} no encontrado.`); return; }
+        container.innerHTML = '<p><em>Cargando ciclos asignados...</em></p>';
+        try {
+            const data = await apiFetch(`/coordinadores/${coordinadorId}/ciclos`);
+            const assignedCiclos = data.ciclos_asignados || [];
+            if (assignedCiclos.length === 0) {
+                container.innerHTML = '<p>No hay ciclos asignados actualmente a este coordinador.</p>';
+                return;
+            }
+            let html = '<h5>Ciclos Educativos Asignados:</h5><ul class="simple-list">';
+            assignedCiclos.forEach(ciclo => {
+                html += `<li>
+                    ${ciclo.nombre_ciclo} (ID: ${ciclo.id})
+                    <button class="unassign-ciclo-coordinador danger" data-ciclo-id="${ciclo.id}" data-coordinador-id="${coordinadorId}" style="margin-left: 10px; padding: 3px 8px; font-size: 0.8em;">Desasignar Ciclo</button>
+                </li>`;
+            });
+            html += '</ul>';
+            container.innerHTML = html;
+
+            container.querySelectorAll('.unassign-ciclo-coordinador').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const cicloId = e.target.dataset.cicloId;
+                    // coordinadorId is already available in the outer scope of this specific call
+                    if (confirm(`¿Seguro que quieres desasignar el ciclo ID ${cicloId} del coordinador?`)) {
+                        await handleUnassignCicloFromCoordinator(coordinadorId, cicloId);
+                    }
+                });
+            });
+        } catch (error) {
+            console.error(`Error cargando ciclos asignados para coordinador ${coordinadorId}:`, error);
+            container.innerHTML = `<p class="error-message">Error al cargar ciclos asignados: ${error.message}</p>`;
+        }
+    }
+    
+    async function loadAndDisplayAssignableCiclos(coordinadorId, container) {
+        if (!container) { console.error(`Contenedor para ciclos asignables de ${coordinadorId} no encontrado.`); return; }
+        container.innerHTML = '<p><em>Cargando ciclos disponibles para asignar...</em></p>';
+        try {
+            const [allCiclosData, assignedCiclosData] = await Promise.all([
+                apiFetch('/ciclos'), 
+                apiFetch(`/coordinadores/${coordinadorId}/ciclos`)
+            ]);
+
+            const allCiclos = allCiclosData.ciclos || [];
+            const assignedCicloIds = (assignedCiclosData.ciclos_asignados || []).map(c => c.id);
+            
+            const assignableCiclos = allCiclos.filter(ciclo => !assignedCicloIds.includes(ciclo.id));
+
+            if (assignableCiclos.length === 0) {
+                container.innerHTML = '<p>No hay más ciclos educativos disponibles para asignar a este coordinador.</p>';
+                return;
+            }
+
+            let html = '<h5>Asignar Nuevo Ciclo Educativo:</h5>';
+            html += `<select id="selectAssignableCicloForCoordinator_${coordinadorId}" style="margin-right: 10px;">`;
+            assignableCiclos.forEach(ciclo => {
+                html += `<option value="${ciclo.id}">${ciclo.nombre_ciclo}</option>`;
+            });
+            html += `</select>`;
+            html += `<button id="btnAssignCicloToCoordinator_${coordinadorId}" class="success">Asignar Ciclo Seleccionado</button>`;
+            container.innerHTML = html;
+
+            const assignButton = document.getElementById(`btnAssignCicloToCoordinator_${coordinadorId}`);
+            if (assignButton) {
+                 assignButton.addEventListener('click', async () => {
+                    const selectElement = document.getElementById(`selectAssignableCicloForCoordinator_${coordinadorId}`);
+                    if (selectElement && selectElement.value) {
+                        await handleAssignCicloToCoordinator(coordinadorId, selectElement.value);
+                    } else {
+                        alert("Por favor, selecciona un ciclo para asignar.");
+                    }
+                });
+            }
+        } catch (error) {
+            console.error(`Error cargando ciclos para asignar a coordinador ${coordinadorId}:`, error);
+            container.innerHTML = `<p class="error-message">Error al cargar ciclos para asignar: ${error.message}</p>`;
+        }
+    }
+
+    async function handleAssignCicloToCoordinator(coordinadorId, cicloId) {
+        const errorP = document.getElementById(`cicloManagementError_${coordinadorId}`);
+        if(errorP) errorP.textContent = '';
+        try {
+            await apiFetch(`/coordinadores/${coordinadorId}/ciclos`, 'POST', { ciclo_id: parseInt(cicloId) });
+            const assignedContainer = document.getElementById(`assignedCiclosListContainer_${coordinadorId}`);
+            const assignableContainer = document.getElementById(`assignNewCicloFormContainer_${coordinadorId}`);
+            if (assignedContainer) await loadAndDisplayAssignedCiclos(coordinadorId, assignedContainer);
+            if (assignableContainer) await loadAndDisplayAssignableCiclos(coordinadorId, assignableContainer);
+            if (errorP) showTemporaryStatusInElement(errorP, "Ciclo asignado exitosamente.", false, 3000);
+        } catch (error) {
+            console.error(`Error asignando ciclo ${cicloId} a coordinador ${coordinadorId}:`, error);
+            if(errorP) errorP.textContent = `Error al asignar ciclo: ${error.message}`;
+        }
+    }
+    
+    async function handleUnassignCicloFromCoordinator(coordinadorId, cicloId) {
+        const errorP = document.getElementById(`cicloManagementError_${coordinadorId}`);
+        if(errorP) errorP.textContent = '';
+        try {
+            await apiFetch(`/coordinadores/${coordinadorId}/ciclos/${cicloId}`, 'DELETE');
+            const assignedContainer = document.getElementById(`assignedCiclosListContainer_${coordinadorId}`);
+            const assignableContainer = document.getElementById(`assignNewCicloFormContainer_${coordinadorId}`);
+            if (assignedContainer) await loadAndDisplayAssignedCiclos(coordinadorId, assignedContainer);
+            if (assignableContainer) await loadAndDisplayAssignableCiclos(coordinadorId, assignableContainer);
+            if (errorP) showTemporaryStatusInElement(errorP, "Ciclo desasignado exitosamente.", false, 3000);
+        } catch (error) {
+            console.error(`Error desasignando ciclo ${cicloId} de coordinador ${coordinadorId}:`, error);
+            if(errorP) errorP.textContent = `Error al desasignar ciclo: ${error.message}`;
+        }
+    }
+
 
     async function loadAndDisplayAssignedClasses(coordinadorId, container) {
         if (!container) return;
-        container.innerHTML = '<p><em>Cargando clases asignadas...</em></p>';
+        container.innerHTML = '<p><em>Cargando clases directamente asignadas...</em></p>';
         try {
             const data = await apiFetch(`/coordinadores/${coordinadorId}/clases`);
             const assignedClasses = data.clases_asignadas || [];
             if (assignedClasses.length === 0) {
-                container.innerHTML = '<p>No hay clases asignadas actualmente a este coordinador.</p>';
+                container.innerHTML = '<p>No hay clases directamente asignadas a este coordinador.</p>';
                 return;
             }
-            let html = '<h5>Clases Asignadas:</h5><ul class="simple-list">';
+            let html = '<h5>Clases Directamente Asignadas:</h5><ul class="simple-list">';
             assignedClasses.forEach(clase => {
                 html += `<li>
                     ${clase.nombre_clase} (Tutor: ${clase.nombre_tutor || 'No asignado'})
-                    <button class="unassign-clase-coordinador danger" data-clase-id="${clase.id}" style="margin-left: 10px; padding: 3px 8px; font-size: 0.8em;">Desasignar</button>
+                    <button class="unassign-clase-coordinador danger" data-clase-id="${clase.id}" data-coordinador-id="${coordinadorId}" style="margin-left: 10px; padding: 3px 8px; font-size: 0.8em;">Desasignar Clase Directa</button>
                 </li>`;
             });
             html += '</ul>';
@@ -1877,13 +2024,13 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } catch (error) {
             console.error("Error cargando clases asignadas:", error);
-            container.innerHTML = `<p class="error-message">Error al cargar clases asignadas: ${error.message}</p>`;
+            container.innerHTML = `<p class="error-message">Error al cargar clases directamente asignadas: ${error.message}</p>`;
         }
     }
 
     async function loadAndDisplayAssignableClasses(coordinadorId, container) {
         if (!container) return;
-        container.innerHTML = '<p><em>Cargando clases disponibles para asignar...</em></p>';
+        container.innerHTML = '<p><em>Cargando clases disponibles para asignación directa...</em></p>';
         try {
             const [allClassesData, assignedClassesData] = await Promise.all([
                 apiFetch('/clases'),
@@ -1896,17 +2043,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const assignableClasses = allClasses.filter(clase => !assignedClassIds.includes(clase.id));
 
             if (assignableClasses.length === 0) {
-                container.innerHTML = '<p>No hay más clases disponibles para asignar a este coordinador.</p>';
+                container.innerHTML = '<p>No hay más clases disponibles para asignación directa a este coordinador.</p>';
                 return;
             }
 
-            let html = '<h5>Asignar Nueva Clase:</h5>';
+            let html = '<h5>Asignar Nueva Clase (Directa):</h5>';
             html += `<select id="selectAssignableClassForCoordinator_${coordinadorId}" style="margin-right: 10px;">`;
             assignableClasses.forEach(clase => {
                 html += `<option value="${clase.id}">${clase.nombre_clase}</option>`;
             });
             html += `</select>`;
-            html += `<button id="btnAssignClassToCoordinator_${coordinadorId}" class="success">Asignar Clase Seleccionada</button>`;
+            html += `<button id="btnAssignClassToCoordinator_${coordinadorId}" class="success">Asignar Clase Directa Seleccionada</button>`;
             container.innerHTML = html;
 
             const assignButton = document.getElementById(`btnAssignClassToCoordinator_${coordinadorId}`);
@@ -1916,13 +2063,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (selectElement && selectElement.value) {
                         await handleAssignClassToCoordinator(coordinadorId, selectElement.value);
                     } else {
-                        alert("Por favor, selecciona una clase para asignar.");
+                        alert("Por favor, selecciona una clase para asignación directa.");
                     }
                 });
             }
         } catch (error) {
-            console.error("Error cargando clases para asignar:", error);
-            container.innerHTML = `<p class="error-message">Error al cargar clases para asignar: ${error.message}</p>`;
+            console.error("Error cargando clases para asignación directa:", error);
+            container.innerHTML = `<p class="error-message">Error al cargar clases para asignación directa: ${error.message}</p>`;
         }
     }
     
@@ -1936,10 +2083,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const assignableContainer = document.getElementById('assignNewClassFormContainer');
             if (assignedContainer) await loadAndDisplayAssignedClasses(coordinadorId, assignedContainer);
             if (assignableContainer) await loadAndDisplayAssignableClasses(coordinadorId, assignableContainer);
-            if (errorP) showTemporaryStatusInElement(errorP, "Clase asignada.", false, 2000);
+            if (errorP) showTemporaryStatusInElement(errorP, "Clase directa asignada.", false, 2000);
         } catch (error) {
-            console.error(`Error asignando clase ${claseId} a coordinador ${coordinadorId}:`, error);
-            if(errorP) errorP.textContent = `Error al asignar clase: ${error.message}`;
+            console.error(`Error asignando clase directa ${claseId} a coordinador ${coordinadorId}:`, error);
+            if(errorP) errorP.textContent = `Error al asignar clase directa: ${error.message}`;
         }
     }
     
@@ -1953,10 +2100,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const assignableContainer = document.getElementById('assignNewClassFormContainer');
             if (assignedContainer) await loadAndDisplayAssignedClasses(coordinadorId, assignedContainer);
             if (assignableContainer) await loadAndDisplayAssignableClasses(coordinadorId, assignableContainer);
-            if (errorP) showTemporaryStatusInElement(errorP, "Clase desasignada.", false, 2000);
+            if (errorP) showTemporaryStatusInElement(errorP, "Clase directa desasignada.", false, 2000);
         } catch (error) {
-            console.error(`Error desasignando clase ${claseId} de coordinador ${coordinadorId}:`, error);
-            if(errorP) errorP.textContent = `Error al desasignar clase: ${error.message}`;
+            console.error(`Error desasignando clase directa ${claseId} de coordinador ${coordinadorId}:`, error);
+            if(errorP) errorP.textContent = `Error al desasignar clase directa: ${error.message}`;
         }
     }
 
@@ -2312,6 +2459,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function displayCoordinadorClaseExcursiones(claseId, claseNombre, containerElement) {
         containerElement.innerHTML = `<h4>Excursiones para ${claseNombre}</h4><p>Cargando excursiones...</p>`;
         try {
+            let html = '';
             // The /api/excursiones endpoint for COORDINACION already filters by their assigned classes + global ones.
             // We need to further filter client-side for *this specific* claseId or global.
             const data = await apiFetch('/excursiones'); 
@@ -2321,7 +2469,7 @@ document.addEventListener('DOMContentLoaded', () => {
             );
 
             if (relevantExcursiones.length > 0) {
-                let html = '<table class="tabla-datos"><thead><tr><th>Nombre Excursión</th><th>Fecha</th><th>Lugar</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody>';
+                html = '<table class="tabla-datos"><thead><tr><th>Nombre Excursión</th><th>Fecha</th><th>Lugar</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody>';
                 relevantExcursiones.forEach(ex => {
                     html += `<tr>
                                 <td>${ex.nombre_excursion}</td>
