@@ -72,58 +72,47 @@ function dbAllAsync(sql, params = []) {
     });
 }
 
-// Helper function to get classes assigned to a coordinator
-async function getCoordinadorClases(coordinadorId) {
+// Helper function to get class IDs from the same cycle as the tutor's class
+async function getTutorCicloClaseIds(tutorClaseId) {
     if (!db) {
-        console.error("getCoordinadorClases: La base de datos no está inicializada.");
+        console.error("[getTutorCicloClaseIds] La base de datos no está inicializada.");
+        return [];
+    }
+    if (!tutorClaseId) {
+        console.log("[getTutorCicloClaseIds] tutorClaseId no proporcionado.");
         return [];
     }
 
-    let allClaseIds = new Set();
-
     try {
-        // 1. Fetch directly assigned class IDs
-        const directAssignmentsSql = "SELECT clase_id FROM coordinador_clases WHERE coordinador_id = ?";
-        const directRows = await dbAllAsync(directAssignmentsSql, [coordinadorId]);
-        directRows.forEach(row => allClaseIds.add(row.clase_id));
-        console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}: Directamente asignadas IDs: ${directRows.map(r => r.clase_id).join(', ')}`);
+        console.log(`[getTutorCicloClaseIds] Buscando ciclo_id para tutorClaseId: ${tutorClaseId}`);
+        const claseInfo = await dbGetAsync("SELECT ciclo_id FROM clases WHERE id = ?", [tutorClaseId]);
 
-        // 2. Fetch assigned ciclo_ids
-        const cycleAssignmentsSql = "SELECT ciclo_id FROM usuario_ciclos_coordinador WHERE coordinador_usuario_id = ?";
-        const cycleRows = await dbAllAsync(cycleAssignmentsSql, [coordinadorId]);
-        const cicloIds = cycleRows.map(row => row.ciclo_id);
-        console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}: Ciclos asignados IDs: ${cicloIds.join(', ')}`);
-
-        // 3. For each ciclo_id, fetch patterns and then matching class IDs
-        if (cicloIds.length > 0) {
-            const patternSql = "SELECT nombre_patron_clase FROM ciclo_clases_definicion WHERE ciclo_id = ?";
-            const classesSql = "SELECT id FROM clases WHERE nombre_clase LIKE ?";
-
-            for (const cicloId of cicloIds) {
-                console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}: Procesando ciclo ID ${cicloId}`);
-                const patternRows = await dbAllAsync(patternSql, [cicloId]);
-                const patterns = patternRows.map(row => row.nombre_patron_clase);
-                console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}, Ciclo ${cicloId}: Patrones encontrados: ${patterns.join(', ')}`);
-
-                for (const pattern of patterns) {
-                    console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}, Ciclo ${cicloId}: Buscando clases con patrón '${pattern}'`);
-                    const classRows = await dbAllAsync(classesSql, [pattern]);
-                    classRows.forEach(row => allClaseIds.add(row.id));
-                     console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}, Ciclo ${cicloId}, Patrón '${pattern}': Clases encontradas IDs: ${classRows.map(r => r.id).join(', ') || 'Ninguna'}`);
-                }
-            }
+        if (!claseInfo || claseInfo.ciclo_id === null || claseInfo.ciclo_id === undefined) {
+            console.log(`[getTutorCicloClaseIds] No se encontró ciclo_id para tutorClaseId: ${tutorClaseId} o ciclo_id es NULL.`);
+            return [];
         }
+        const cicloId = claseInfo.ciclo_id;
+        console.log(`[getTutorCicloClaseIds] Encontrado ciclo_id: ${cicloId} para tutorClaseId: ${tutorClaseId}`);
+
+        const clasesDelCicloRows = await dbAllAsync("SELECT id FROM clases WHERE ciclo_id = ?", [cicloId]);
         
-        const uniqueClaseIdsArray = Array.from(allClaseIds);
-        console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}: IDs de clase finales (únicos): ${uniqueClaseIdsArray.join(', ')}`);
-        return uniqueClaseIdsArray;
+        if (!clasesDelCicloRows || clasesDelCicloRows.length === 0) {
+            console.log(`[getTutorCicloClaseIds] No se encontraron clases para ciclo_id: ${cicloId}`);
+            return [];
+        }
+
+        const cicloClaseIds = clasesDelCicloRows.map(row => row.id);
+        console.log(`[getTutorCicloClaseIds] Clases encontradas en el mismo ciclo (${cicloId}): ${cicloClaseIds.join(', ')} (excluyendo la propia clase del tutor si no está en este ciclo, lo cual no debería pasar)`);
+        // La función debe devolver todas las clases del ciclo, incluyendo la del tutor.
+        return cicloClaseIds;
 
     } catch (error) {
-        console.error(`Error obteniendo clases para coordinador ${coordinadorId}:`, error.message, error.stack);
-        return []; // Return empty on error, or re-throw if critical
+        console.error(`[getTutorCicloClaseIds] Error obteniendo clases del ciclo para tutorClaseId ${tutorClaseId}:`, error.message);
+        return []; // Return empty on error
     }
 }
-console.log(" Paso 5: Helpers de BD con Promesas definidos (incluyendo getCoordinadorClases).");
+
+console.log(" Paso 5: Helpers de BD con Promesas definidos (incluyendo getCoordinadorClases y getTutorCicloClaseIds).");
 
 // --- Definición de Rutas de la API ---
 console.log(" Paso 6: Definiendo rutas de API...");
@@ -192,7 +181,7 @@ app.post('/api/usuarios', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: "Email, nombre_completo, password y rol son requeridos." });
     }
 
-    const allowedRolesToCreate = ['TUTOR', 'TESORERIA', 'COORDINACION'];
+    const allowedRolesToCreate = ['TUTOR', 'TESORERIA']; // COORDINACION eliminado
     if (!allowedRolesToCreate.includes(rol)) {
         return res.status(400).json({ error: `Rol inválido. Roles permitidos: ${allowedRolesToCreate.join(', ')}.` });
     }
@@ -300,10 +289,11 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: "No se puede modificar un usuario con rol DIRECCION o a sí mismo mediante esta vía." });
         }
         
-        const allowedRolesToUpdate = ['TUTOR', 'TESORERIA', 'COORDINACION'];
+        const allowedRolesToUpdate = ['TUTOR', 'TESORERIA']; // COORDINACION eliminado
         // Se pueden modificar usuarios con estos roles. Si se proporciona un newRol, también debe ser uno de estos.
-        if (!allowedRolesToUpdate.includes(userToUpdate.rol) && userToUpdate.rol !== null) { // Permitir modificar si el rol actual es null por alguna razón
-             return res.status(403).json({ error: `Solo se pueden modificar usuarios con roles ${allowedRolesToUpdate.join(', ')}.` });
+        // Si el rol actual es COORDINACION, ahora se permite su modificación (ya no está protegido como DIRECCION).
+        if (!allowedRolesToUpdate.includes(userToUpdate.rol) && userToUpdate.rol !== null && userToUpdate.rol !== 'COORDINACION') {
+             return res.status(403).json({ error: `Solo se pueden modificar usuarios con roles ${allowedRolesToUpdate.join(', ')} o COORDINACION (para cambiarlo a otro rol).` });
         }
 
 
@@ -334,8 +324,9 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
         }
 
         if (newRol !== undefined && newRol !== userToUpdate.rol) {
-            if (!allowedRolesToUpdate.includes(newRol)) {
-                return res.status(400).json({ error: `Nuevo rol inválido. Roles permitidos para asignación: ${allowedRolesToUpdate.join(', ')}.` });
+            const validNewRoles = ['TUTOR', 'TESORERIA']; // COORDINACION no es un nuevo rol válido
+            if (!validNewRoles.includes(newRol)) {
+                return res.status(400).json({ error: `Nuevo rol inválido. Roles permitidos para asignación: ${validNewRoles.join(', ')}.` });
             }
             // Si el rol anterior era TUTOR y el nuevo rol NO es TUTOR, desasignar de clase.
             if (userToUpdate.rol === 'TUTOR' && newRol !== 'TUTOR') {
@@ -435,24 +426,14 @@ console.log("Endpoint GET /api/usuarios/tutores definido.");
 app.get('/api/clases', authenticateToken, async (req, res) => {
     console.log("  Ruta: GET /api/clases, Usuario:", req.user.email, "Rol:", req.user.rol);
     try {
-        let sql = `SELECT c.id, c.nombre_clase, c.tutor_id, u.nombre_completo as nombre_tutor, u.email as email_tutor
+        let sql = `SELECT c.id, c.nombre_clase, c.tutor_id, c.ciclo_id, u.nombre_completo as nombre_tutor, u.email as email_tutor
                    FROM clases c LEFT JOIN usuarios u ON c.tutor_id = u.id`;
         const params = [];
 
-        if (req.user.rol === 'COORDINACION') {
-            const assignedClaseIds = await getCoordinadorClases(req.user.id);
-            if (assignedClaseIds.length === 0) {
-                return res.json({ clases: [] });
-            }
-            // Dynamically create placeholders for IN clause
-            const placeholders = assignedClaseIds.map(() => '?').join(',');
-            sql += ` WHERE c.id IN (${placeholders})`;
-            params.push(...assignedClaseIds);
-        }
+        // COORDINACION block removed.
         // For DIRECCION or TUTOR (or other future roles that see all classes), no additional WHERE clause is needed unless specified.
-        // Currently, TUTORs also see all classes in this specific endpoint, which might be by design or an oversight.
-        // If TUTORs should only see their class, this needs further adjustment.
-        // For now, adhering to the existing implicit behavior for TUTOR and explicit for DIRECCION and COORDINACION.
+        // TUTORs currently see all classes in this endpoint. This behavior is maintained.
+        // DIRECCION also sees all classes.
 
         sql += " ORDER BY c.nombre_clase ASC";
         const clases = await dbAllAsync(sql, params);
@@ -1103,13 +1084,31 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
 
     if (req.user.rol === 'TUTOR') {
         if (!req.user.claseId) {
+            // Este chequeo es importante. Si un tutor no tiene claseId, no puede determinar su ciclo.
             return res.status(403).json({ error: "Tutor no asignado a ninguna clase. No puede crear excursiones." });
         }
-        // Si para_clase_id se envía en el body para un tutor, DEBE coincidir con su clase.
-        if (para_clase_id !== undefined && para_clase_id !== null && parseInt(para_clase_id) !== req.user.claseId) {
-            return res.status(403).json({ error: "Tutores solo pueden crear excursiones para su propia clase." });
+
+        if (para_clase_id === null) { // Excursión explícitamente global
+            finalParaClaseId = null;
+        } else if (para_clase_id !== undefined && String(para_clase_id).trim() !== '') {
+            const parsedParaClaseId = parseInt(para_clase_id);
+            if (isNaN(parsedParaClaseId)) {
+                return res.status(400).json({ error: "ID de para_clase_id inválido." });
+            }
+
+            if (parsedParaClaseId === req.user.claseId) {
+                finalParaClaseId = parsedParaClaseId;
+            } else {
+                const cicloClaseIds = await getTutorCicloClaseIds(req.user.claseId);
+                if (cicloClaseIds && cicloClaseIds.includes(parsedParaClaseId)) {
+                    finalParaClaseId = parsedParaClaseId;
+                } else {
+                    return res.status(403).json({ error: "Tutores solo pueden crear excursiones para su propia clase, para clases de su mismo ciclo, o globales (especificando null)." });
+                }
+            }
+        } else { // No se proporcionó para_clase_id o era string vacío, default a la clase del tutor
+            finalParaClaseId = req.user.claseId;
         }
-        finalParaClaseId = req.user.claseId; // Tutor siempre crea para su clase.
     } else if (req.user.rol === 'DIRECCION') {
         if (para_clase_id !== undefined && para_clase_id !== null && String(para_clase_id).trim() !== '') {
             const idClaseNum = parseInt(para_clase_id);
@@ -1208,9 +1207,26 @@ app.get('/api/excursiones', authenticateToken, async (req, res) => {
             sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
                    FROM excursiones e 
                    JOIN usuarios u ON e.creada_por_usuario_id = u.id 
-                   LEFT JOIN clases c ON e.para_clase_id = c.id 
-                   WHERE e.para_clase_id IS NULL OR e.para_clase_id = ?`;
+                   LEFT JOIN clases c ON e.para_clase_id = c.id`; // WHERE clause will be built below
+            
+            let whereClauses = ["(e.para_clase_id IS NULL OR e.para_clase_id = ?)"];
             params.push(req.user.claseId);
+
+            // Get other class IDs from the same cycle
+            const cicloClaseIds = await getTutorCicloClaseIds(req.user.claseId);
+            console.log(`[GET /api/excursiones - TUTOR] Clase ID: ${req.user.claseId}, Clases del mismo ciclo: ${cicloClaseIds.join(', ')}`);
+
+            if (cicloClaseIds && cicloClaseIds.length > 0) {
+                // Filter out the tutor's own class ID from cicloClaseIds to avoid redundancy in SQL query, though SQL would handle it.
+                const otherCicloClaseIds = cicloClaseIds.filter(id => id !== req.user.claseId);
+                if (otherCicloClaseIds.length > 0) {
+                    const placeholders = otherCicloClaseIds.map(() => '?').join(',');
+                    whereClauses.push(`e.para_clase_id IN (${placeholders})`);
+                    params.push(...otherCicloClaseIds);
+                }
+            }
+            sql += ` WHERE ${whereClauses.join(' OR ')}`;
+
         } else if (req.user.rol === 'COORDINACION') {
             const assignedClaseIds = await getCoordinadorClases(req.user.id);
             sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
@@ -1305,8 +1321,14 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
         if (req.user.rol === 'DIRECCION') {
             puedeEditar = true;
         } else if (req.user.rol === 'TUTOR') {
-            if (excursionActual.creada_por_usuario_id === req.user.id || 
-                (excursionActual.para_clase_id === req.user.claseId && req.user.claseId)) {
+            if (!req.user.claseId && excursionActual.para_clase_id !== null && excursionActual.creada_por_usuario_id !== req.user.id) {
+                // Tutor sin clase no puede editar excursiones de clase que no creó él
+                 return res.status(403).json({ error: "Tutor sin clase asignada no puede editar esta excursión específica de clase si no la creó." });
+            }
+            const cicloClaseIds = req.user.claseId ? await getTutorCicloClaseIds(req.user.claseId) : [];
+            if (excursionActual.creada_por_usuario_id === req.user.id ||
+                (excursionActual.para_clase_id === req.user.claseId && req.user.claseId) ||
+                (excursionActual.para_clase_id !== null && cicloClaseIds && cicloClaseIds.includes(excursionActual.para_clase_id))) {
                 puedeEditar = true;
             }
         } else if (req.user.rol === 'COORDINACION') {
@@ -1385,16 +1407,25 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
                 }
 
                 if (req.user.rol === 'TUTOR' && campo === 'para_clase_id') {
-                    const nuevoParaClaseId = valueToUpdate === null ? null : parseInt(valueToUpdate);
-                    if (nuevoParaClaseId !== req.user.claseId && nuevoParaClaseId !== null) { 
-                         if(excursionActual.creada_por_usuario_id !== req.user.id){
-                            return res.status(403).json({ error: "Tutores solo pueden asignar excursiones a su propia clase o hacerlas globales si las crearon." });
-                         }
+                    const nuevoParaClaseIdNum = valueToUpdate === null ? null : parseInt(valueToUpdate);
+                    
+                    if (nuevoParaClaseIdNum === null) { // Intentando hacerla global
+                        if (excursionActual.creada_por_usuario_id !== req.user.id) {
+                            return res.status(403).json({ error: "Tutores solo pueden hacer global una excursión si la crearon ellos mismos." });
+                        }
+                        // Si la creó él, puede hacerla global, así que valueToUpdate (null) es válido.
+                    } else { // Intentando asignar a una clase específica
+                        if (!req.user.claseId) { // Tutor sin clase no puede asignar a ninguna clase
+                            return res.status(403).json({ error: "Tutor sin clase asignada no puede asignar la excursión a una clase específica." });
+                        }
+                        const cicloClaseIds = await getTutorCicloClaseIds(req.user.claseId);
+                        if (nuevoParaClaseIdNum !== req.user.claseId && !(cicloClaseIds && cicloClaseIds.includes(nuevoParaClaseIdNum))) {
+                            return res.status(403).json({ error: "Tutores solo pueden asignar excursiones a su propia clase, a clases de su ciclo, o hacerlas globales (si las crearon)." });
+                        }
+                        // Si es su clase o una clase de su ciclo, valueToUpdate (ID de clase) es válido.
                     }
-                     if (nuevoParaClaseId !== null && !req.user.claseId) {
-                         return res.status(403).json({ error: "Tutor no puede asignar excursión a una clase si no tiene clase asignada." });
-                     }
                 }
+                
                 if (req.user.rol === 'DIRECCION' && campo === 'para_clase_id' && valueToUpdate !== null) {
                     const claseDestino = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [parseInt(valueToUpdate)]);
                     if (!claseDestino) {
@@ -1543,7 +1574,13 @@ app.post('/api/excursiones/:id/duplicate', authenticateToken, async (req, res) =
             } else if (originalExcursion.para_clase_id === duplicatorUserClaseId) { // Excursion for tutor's own class
                 canDuplicate = true;
             } else {
-                return res.status(403).json({ error: "Tutores no pueden duplicar excursiones destinadas a otras clases específicas." });
+                // NUEVO: Permitir duplicar si la excursión original es de una clase de su ciclo
+                const cicloClaseIds = duplicatorUserClaseId ? await getTutorCicloClaseIds(duplicatorUserClaseId) : [];
+                if (cicloClaseIds && cicloClaseIds.includes(originalExcursion.para_clase_id)) {
+                    canDuplicate = true;
+                } else {
+                    return res.status(403).json({ error: "Tutores no pueden duplicar excursiones destinadas a clases específicas fuera de su ciclo o si no tienen clase asignada." });
+                }
             }
         } else if (duplicatorUserRol === 'COORDINACION') {
             const assignedClaseIds = await getCoordinadorClases(duplicatorUserId);
@@ -1578,24 +1615,32 @@ app.post('/api/excursiones/:id/duplicate', authenticateToken, async (req, res) =
                 if (!duplicatorUserClaseId) {
                      return res.status(403).json({ error: "Tutor sin clase asignada no puede asignar la excursión duplicada a una clase específica." });
                 }
-                if (idClaseNum !== duplicatorUserClaseId) {
-                    return res.status(403).json({ error: "Tutores solo pueden asignar la excursión duplicada a su propia clase." });
+                if (!duplicatorUserClaseId) { // Should be caught by canDuplicate logic earlier, but defensive check
+                     return res.status(403).json({ error: "Tutor sin clase asignada no puede asignar la excursión duplicada a una clase específica." });
                 }
-                finalParaClaseId = idClaseNum;
+                const cicloClaseIds = await getTutorCicloClaseIds(duplicatorUserClaseId);
+                if (idClaseNum === duplicatorUserClaseId || (cicloClaseIds && cicloClaseIds.includes(idClaseNum))) {
+                    finalParaClaseId = idClaseNum;
+                } else {
+                    return res.status(403).json({ error: "Tutores solo pueden asignar la excursión duplicada a su propia clase o a clases de su mismo ciclo." });
+                }
             }
-        } else if (target_clase_id === null || (target_clase_id !== undefined && String(target_clase_id).trim() === '')) { 
+        } else if (target_clase_id === null || (target_clase_id !== undefined && String(target_clase_id).trim() === '')) {
+            // User explicitly wants to make it global
             finalParaClaseId = null;
-        } else { // target_clase_id is undefined (not provided in body)
+        } else { // target_clase_id is undefined (not provided in body) - default logic
             if (duplicatorUserRol === 'DIRECCION') {
-                finalParaClaseId = null; 
+                finalParaClaseId = null; // Dirección duplica como global por defecto si no se especifica target
             } else if (duplicatorUserRol === 'TUTOR') {
                 if (!duplicatorUserClaseId) {
-                    if (originalExcursion.para_clase_id !== null) { 
-                         return res.status(400).json({ error: "Tutor sin clase asignada debe especificar target_clase_id (nulo para global) si la excursión original era para una clase." });
+                     // Si el tutor no tiene clase, y la excursión original era para una clase, debe especificar target_clase_id.
+                     // Si la original era global, puede duplicarla como global.
+                    if (originalExcursion.para_clase_id !== null) {
+                         return res.status(400).json({ error: "Tutor sin clase asignada debe especificar target_clase_id (puede ser nulo para global) si la excursión original era para una clase." });
                     }
-                    finalParaClaseId = null; 
+                    finalParaClaseId = null; // Default a global si el tutor no tiene clase y la original era global
                 } else {
-                    finalParaClaseId = duplicatorUserClaseId; 
+                    finalParaClaseId = duplicatorUserClaseId; // Default a la clase del tutor
                 }
             } else if (duplicatorUserRol === 'COORDINACION') {
                  const assignedClaseIds = await getCoordinadorClases(duplicatorUserId);
@@ -2505,211 +2550,11 @@ app.get('/api/tesoreria/excursiones-pasadas', authenticateToken, async (req, res
 });
 console.log("Endpoint GET /api/tesoreria/excursiones-pasadas definido.");
 
-// --- Coordinator Class Assignment Routes ---
-console.log("Definiendo rutas de asignación de clases a coordinadores...");
+// --- Ciclos & (No longer) Coordinator Cycle Assignment Routes ---
+// Note: The related console log for coordinator assignment routes will be removed with the routes themselves.
+// The "Definiendo rutas de gestión de Ciclos..." log remains as GET /api/ciclos is kept.
+console.log("Definiendo rutas de gestión de Ciclos...");
 
-// POST /api/coordinadores/:coordinador_id/clases - Assign Class to Coordinator
-app.post('/api/coordinadores/:coordinador_id/clases', authenticateToken, async (req, res) => {
-    console.log("  Ruta: POST /api/coordinadores/:coordinador_id/clases, Usuario:", req.user.email);
-    if (req.user.rol !== 'DIRECCION') {
-        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede asignar clases a coordinadores.' });
-    }
-
-    const coordinadorId = parseInt(req.params.coordinador_id);
-    const { clase_id: claseId } = req.body;
-
-    if (isNaN(coordinadorId)) {
-        return res.status(400).json({ error: "ID de coordinador inválido." });
-    }
-    if (claseId === undefined || isNaN(parseInt(claseId))) {
-        return res.status(400).json({ error: "clase_id es requerido en el body y debe ser un número." });
-    }
-    const claseIdNum = parseInt(claseId);
-
-    try {
-        // Validate coordinator
-        const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
-        if (!coordinador) {
-            return res.status(404).json({ error: "Usuario coordinador no encontrado." });
-        }
-        if (coordinador.rol !== 'COORDINACION') {
-            return res.status(400).json({ error: "El usuario especificado no tiene el rol de COORDINACION." });
-        }
-
-        // Validate class
-        const clase = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [claseIdNum]);
-        if (!clase) {
-            return res.status(404).json({ error: "Clase no encontrada." });
-        }
-
-        // Check if assignment already exists
-        const existingAssignment = await dbGetAsync(
-            "SELECT * FROM coordinador_clases WHERE coordinador_id = ? AND clase_id = ?",
-            [coordinadorId, claseIdNum]
-        );
-        if (existingAssignment) {
-            return res.status(409).json({ error: "Esta clase ya está asignada a este coordinador." });
-        }
-
-        // Insert new assignment
-        await dbRunAsync(
-            "INSERT INTO coordinador_clases (coordinador_id, clase_id) VALUES (?, ?)",
-            [coordinadorId, claseIdNum]
-        );
-        
-        console.log(`  Clase ID ${claseIdNum} asignada a Coordinador ID ${coordinadorId} por ${req.user.email}`);
-        res.status(201).json({ coordinador_id: coordinadorId, clase_id: claseIdNum, message: "Clase asignada al coordinador exitosamente." });
-
-    } catch (error) {
-        console.error("  Error en POST /api/coordinadores/:coordinador_id/clases:", error.message, error.stack);
-        if (error.message.includes("UNIQUE constraint failed")) { // Should be caught by pre-check, but as a fallback
-            return res.status(409).json({ error: "Esta clase ya está asignada a este coordinador (constraint)." });
-        }
-        res.status(500).json({ error: "Error interno del servidor al asignar la clase.", detalles: error.message });
-    }
-});
-console.log("Endpoint POST /api/coordinadores/:coordinador_id/clases definido.");
-
-// DELETE /api/coordinadores/:coordinador_id/clases/:clase_id - Unassign Class from Coordinator
-app.delete('/api/coordinadores/:coordinador_id/clases/:clase_id', authenticateToken, async (req, res) => {
-    console.log("  Ruta: DELETE /api/coordinadores/:coordinador_id/clases/:clase_id, Usuario:", req.user.email);
-    if (req.user.rol !== 'DIRECCION') {
-        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede desasignar clases.' });
-    }
-
-    const coordinadorId = parseInt(req.params.coordinador_id);
-    const claseId = parseInt(req.params.clase_id);
-
-    if (isNaN(coordinadorId)) {
-        return res.status(400).json({ error: "ID de coordinador inválido." });
-    }
-    if (isNaN(claseId)) {
-        return res.status(400).json({ error: "ID de clase inválido." });
-    }
-
-    try {
-        // It's not strictly necessary to validate if the coordinator is indeed 'COORDINACION' here for deletion,
-        // as the record itself defines the link. If the link exists, it can be deleted.
-        // However, validating that the class exists could be useful.
-        const clase = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [claseId]);
-        if (!clase) {
-            // If the class doesn't exist, the assignment also can't exist in a consistent DB.
-            // Or one might choose to proceed with deletion attempt anyway.
-            // For now, we'll proceed, as the FK constraint on `coordinador_clases` should handle inconsistencies.
-        }
-
-        const result = await dbRunAsync(
-            "DELETE FROM coordinador_clases WHERE coordinador_id = ? AND clase_id = ?",
-            [coordinadorId, claseId]
-        );
-
-        if (result.changes === 0) {
-            return res.status(404).json({ error: "Asignación no encontrada para eliminar." });
-        }
-        
-        console.log(`  Clase ID ${claseId} desasignada del Coordinador ID ${coordinadorId} por ${req.user.email}`);
-        res.status(200).json({ message: "Clase desasignada del coordinador exitosamente." });
-        // Alternative: res.status(204).send();
-
-    } catch (error) {
-        console.error("  Error en DELETE /api/coordinadores/:coordinador_id/clases/:clase_id:", error.message, error.stack);
-        res.status(500).json({ error: "Error interno del servidor al desasignar la clase.", detalles: error.message });
-    }
-});
-console.log("Endpoint DELETE /api/coordinadores/:coordinador_id/clases/:clase_id definido.");
-
-// GET /api/coordinadores/:coordinador_id/clases - List Classes for a Coordinator
-app.get('/api/coordinadores/:coordinador_id/clases', authenticateToken, async (req, res) => {
-    console.log("  Ruta: GET /api/coordinadores/:coordinador_id/clases, Usuario:", req.user.email);
-    const coordinadorId = parseInt(req.params.coordinador_id);
-
-    if (isNaN(coordinadorId)) {
-        return res.status(400).json({ error: "ID de coordinador inválido." });
-    }
-
-    // Authorization logic
-    if (req.user.rol === 'DIRECCION') {
-        // Allow access
-    } else if (req.user.rol === 'COORDINACION') {
-        if (req.user.id !== coordinadorId) {
-            return res.status(403).json({ error: 'Acceso no autorizado.' });
-        }
-        // Allow access
-    } else {
-        return res.status(403).json({ error: 'Acceso no autorizado.' });
-    }
-
-    // const coordinadorId = parseInt(req.params.coordinador_id); // Moved up
-    // if (isNaN(coordinadorId)) { // Moved up
-    //     return res.status(400).json({ error: "ID de coordinador inválido." });
-    // } // <<< THIS BRACE WAS REMOVED
-
-    try {
-        const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
-        if (!coordinador) {
-            return res.status(404).json({ error: "Usuario coordinador no encontrado." });
-        }
-        // No need to check coordinador.rol !== 'COORDINACION' here if access is already granted by the logic above.
-        // If it's DIRECCION, they can see any coordinator's classes.
-        // If it's COORDINACION, they can only see their own, which is already checked.
-
-        const sql = `
-            SELECT c.id, c.nombre_clase, c.tutor_id, u_tutor.nombre_completo as nombre_tutor
-            FROM clases c
-            JOIN coordinador_clases cc ON c.id = cc.clase_id
-            LEFT JOIN usuarios u_tutor ON c.tutor_id = u_tutor.id
-            WHERE cc.coordinador_id = ?
-            ORDER BY c.nombre_clase ASC;
-        `;
-        const clasesAsignadas = await dbAllAsync(sql, [coordinadorId]);
-        
-        res.json({ clases_asignadas: clasesAsignadas });
-
-    } catch (error) {
-        console.error("  Error en GET /api/coordinadores/:coordinador_id/clases:", error.message, error.stack);
-        res.status(500).json({ error: "Error interno del servidor al obtener las clases del coordinador.", detalles: error.message });
-    }
-});
-console.log("Endpoint GET /api/coordinadores/:coordinador_id/clases definido.");
-
-// GET /api/clases/:clase_id/coordinadores - List Coordinators for a Class
-app.get('/api/clases/:clase_id/coordinadores', authenticateToken, async (req, res) => {
-    console.log("  Ruta: GET /api/clases/:clase_id/coordinadores, Usuario:", req.user.email);
-    if (req.user.rol !== 'DIRECCION') {
-        return res.status(403).json({ error: 'Acceso no autorizado.' });
-    }
-
-    const claseId = parseInt(req.params.clase_id);
-    if (isNaN(claseId)) {
-        return res.status(400).json({ error: "ID de clase inválido." });
-    }
-
-    try {
-        const clase = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [claseId]);
-        if (!clase) {
-            return res.status(404).json({ error: "Clase no encontrada." });
-        }
-
-        const sql = `
-            SELECT u.id, u.nombre_completo, u.email, u.rol
-            FROM usuarios u
-            JOIN coordinador_clases cc ON u.id = cc.coordinador_id
-            WHERE cc.clase_id = ? AND u.rol = 'COORDINACION'
-            ORDER BY u.nombre_completo ASC;
-        `;
-        const coordinadoresAsignados = await dbAllAsync(sql, [claseId]);
-        
-        res.json({ coordinadores_asignados: coordinadoresAsignados });
-
-    } catch (error) {
-        console.error("  Error en GET /api/clases/:clase_id/coordinadores:", error.message, error.stack);
-        res.status(500).json({ error: "Error interno del servidor al obtener los coordinadores de la clase.", detalles: error.message });
-    }
-});
-console.log("Endpoint GET /api/clases/:clase_id/coordinadores definido.");
-
-// --- Ciclos & Coordinator Cycle Assignment Routes ---
-console.log("Definiendo rutas de gestión de Ciclos y asignación a coordinadores...");
 
 // GET /api/ciclos - List all educational cycles
 app.get('/api/ciclos', authenticateToken, async (req, res) => {
@@ -2724,136 +2569,10 @@ app.get('/api/ciclos', authenticateToken, async (req, res) => {
 });
 console.log("Endpoint GET /api/ciclos definido.");
 
-// GET /api/coordinadores/:coordinador_id/ciclos - List cycles assigned to a specific coordinator
-app.get('/api/coordinadores/:coordinador_id/ciclos', authenticateToken, async (req, res) => {
-    console.log("  Ruta: GET /api/coordinadores/:coordinador_id/ciclos, Usuario:", req.user.email);
-    if (req.user.rol !== 'DIRECCION') {
-        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede ver asignaciones de ciclos.' });
-    }
-
-    const coordinadorId = parseInt(req.params.coordinador_id);
-    if (isNaN(coordinadorId)) {
-        return res.status(400).json({ error: "ID de coordinador inválido." });
-    }
-
-    try {
-        const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
-        if (!coordinador) {
-            return res.status(404).json({ error: "Usuario coordinador no encontrado." });
-        }
-        // No es estrictamente necesario chequear rol COORDINACION aquí si solo DIRECCION puede acceder.
-
-        const sql = `
-            SELECT c.id, c.nombre_ciclo
-            FROM ciclos c
-            JOIN usuario_ciclos_coordinador ucc ON c.id = ucc.ciclo_id
-            WHERE ucc.coordinador_usuario_id = ?
-            ORDER BY c.id ASC;
-        `;
-        const ciclosAsignados = await dbAllAsync(sql, [coordinadorId]);
-        res.json({ ciclos_asignados: ciclosAsignados });
-
-    } catch (error) {
-        console.error("  Error en GET /api/coordinadores/:coordinador_id/ciclos:", error.message, error.stack);
-        res.status(500).json({ error: "Error interno del servidor al obtener los ciclos asignados.", detalles: error.message });
-    }
-});
-console.log("Endpoint GET /api/coordinadores/:coordinador_id/ciclos definido.");
-
-// POST /api/coordinadores/:coordinador_id/ciclos - Assign a cycle to a coordinator
-app.post('/api/coordinadores/:coordinador_id/ciclos', authenticateToken, async (req, res) => {
-    console.log("  Ruta: POST /api/coordinadores/:coordinador_id/ciclos, Usuario:", req.user.email);
-    if (req.user.rol !== 'DIRECCION') {
-        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede asignar ciclos.' });
-    }
-
-    const coordinadorId = parseInt(req.params.coordinador_id);
-    const { ciclo_id: cicloId } = req.body;
-
-    if (isNaN(coordinadorId)) {
-        return res.status(400).json({ error: "ID de coordinador inválido." });
-    }
-    if (cicloId === undefined || isNaN(parseInt(cicloId))) {
-        return res.status(400).json({ error: "ciclo_id es requerido en el body y debe ser un número." });
-    }
-    const cicloIdNum = parseInt(cicloId);
-
-    try {
-        const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
-        if (!coordinador) {
-            return res.status(404).json({ error: "Usuario coordinador no encontrado." });
-        }
-        if (coordinador.rol !== 'COORDINACION') {
-            return res.status(400).json({ error: "El usuario especificado no tiene el rol de COORDINACION." });
-        }
-
-        const ciclo = await dbGetAsync("SELECT id FROM ciclos WHERE id = ?", [cicloIdNum]);
-        if (!ciclo) {
-            return res.status(404).json({ error: "Ciclo no encontrado." });
-        }
-
-        const existingAssignment = await dbGetAsync(
-            "SELECT id FROM usuario_ciclos_coordinador WHERE coordinador_usuario_id = ? AND ciclo_id = ?",
-            [coordinadorId, cicloIdNum]
-        );
-        if (existingAssignment) {
-            return res.status(409).json({ error: "Este ciclo ya está asignado a este coordinador." });
-        }
-
-        const result = await dbRunAsync(
-            "INSERT INTO usuario_ciclos_coordinador (coordinador_usuario_id, ciclo_id) VALUES (?, ?)",
-            [coordinadorId, cicloIdNum]
-        );
-        
-        console.log(`  Ciclo ID ${cicloIdNum} asignado a Coordinador ID ${coordinadorId} por ${req.user.email}`);
-        res.status(201).json({ id: result.lastID, coordinador_usuario_id: coordinadorId, ciclo_id: cicloIdNum, message: "Ciclo asignado al coordinador exitosamente." });
-
-    } catch (error) {
-        console.error("  Error en POST /api/coordinadores/:coordinador_id/ciclos:", error.message, error.stack);
-        if (error.message.includes("UNIQUE constraint failed")) {
-            return res.status(409).json({ error: "Este ciclo ya está asignado a este coordinador (constraint)." });
-        }
-        res.status(500).json({ error: "Error interno del servidor al asignar el ciclo.", detalles: error.message });
-    }
-});
-console.log("Endpoint POST /api/coordinadores/:coordinador_id/ciclos definido.");
-
-// DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id - Unassign a cycle from a coordinator
-app.delete('/api/coordinadores/:coordinador_id/ciclos/:ciclo_id', authenticateToken, async (req, res) => {
-    console.log("  Ruta: DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id, Usuario:", req.user.email);
-    if (req.user.rol !== 'DIRECCION') {
-        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede desasignar ciclos.' });
-    }
-
-    const coordinadorId = parseInt(req.params.coordinador_id);
-    const cicloId = parseInt(req.params.ciclo_id);
-
-    if (isNaN(coordinadorId)) {
-        return res.status(400).json({ error: "ID de coordinador inválido." });
-    }
-    if (isNaN(cicloId)) {
-        return res.status(400).json({ error: "ID de ciclo inválido." });
-    }
-
-    try {
-        const result = await dbRunAsync(
-            "DELETE FROM usuario_ciclos_coordinador WHERE coordinador_usuario_id = ? AND ciclo_id = ?",
-            [coordinadorId, cicloId]
-        );
-
-        if (result.changes === 0) {
-            return res.status(404).json({ error: "Asignación de ciclo no encontrada para eliminar." });
-        }
-        
-        console.log(`  Ciclo ID ${cicloId} desasignado del Coordinador ID ${coordinadorId} por ${req.user.email}`);
-        res.status(200).json({ message: "Ciclo desasignado del coordinador exitosamente." });
-
-    } catch (error) {
-        console.error("  Error en DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id:", error.message, error.stack);
-        res.status(500).json({ error: "Error interno del servidor al desasignar el ciclo.", detalles: error.message });
-    }
-});
-console.log("Endpoint DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id definido.");
+// The following coordinator-specific cycle assignment routes are now removed:
+// - GET /api/coordinadores/:coordinador_id/ciclos
+// - POST /api/coordinadores/:coordinador_id/ciclos
+// - DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id
 
 
 console.log("Paso 17: Todas las definiciones de rutas de API (o sus placeholders) completadas.");
