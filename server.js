@@ -76,15 +76,51 @@ function dbAllAsync(sql, params = []) {
 async function getCoordinadorClases(coordinadorId) {
     if (!db) {
         console.error("getCoordinadorClases: La base de datos no está inicializada.");
-        return []; // Return empty array or throw error as appropriate
+        return [];
     }
-    const sql = "SELECT clase_id FROM coordinador_clases WHERE coordinador_id = ?";
+
+    let allClaseIds = new Set();
+
     try {
-        const rows = await dbAllAsync(sql, [coordinadorId]);
-        return rows.map(row => row.clase_id);
+        // 1. Fetch directly assigned class IDs
+        const directAssignmentsSql = "SELECT clase_id FROM coordinador_clases WHERE coordinador_id = ?";
+        const directRows = await dbAllAsync(directAssignmentsSql, [coordinadorId]);
+        directRows.forEach(row => allClaseIds.add(row.clase_id));
+        console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}: Directamente asignadas IDs: ${directRows.map(r => r.clase_id).join(', ')}`);
+
+        // 2. Fetch assigned ciclo_ids
+        const cycleAssignmentsSql = "SELECT ciclo_id FROM usuario_ciclos_coordinador WHERE coordinador_usuario_id = ?";
+        const cycleRows = await dbAllAsync(cycleAssignmentsSql, [coordinadorId]);
+        const cicloIds = cycleRows.map(row => row.ciclo_id);
+        console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}: Ciclos asignados IDs: ${cicloIds.join(', ')}`);
+
+        // 3. For each ciclo_id, fetch patterns and then matching class IDs
+        if (cicloIds.length > 0) {
+            const patternSql = "SELECT nombre_patron_clase FROM ciclo_clases_definicion WHERE ciclo_id = ?";
+            const classesSql = "SELECT id FROM clases WHERE nombre_clase LIKE ?";
+
+            for (const cicloId of cicloIds) {
+                console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}: Procesando ciclo ID ${cicloId}`);
+                const patternRows = await dbAllAsync(patternSql, [cicloId]);
+                const patterns = patternRows.map(row => row.nombre_patron_clase);
+                console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}, Ciclo ${cicloId}: Patrones encontrados: ${patterns.join(', ')}`);
+
+                for (const pattern of patterns) {
+                    console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}, Ciclo ${cicloId}: Buscando clases con patrón '${pattern}'`);
+                    const classRows = await dbAllAsync(classesSql, [pattern]);
+                    classRows.forEach(row => allClaseIds.add(row.id));
+                     console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}, Ciclo ${cicloId}, Patrón '${pattern}': Clases encontradas IDs: ${classRows.map(r => r.id).join(', ') || 'Ninguna'}`);
+                }
+            }
+        }
+        
+        const uniqueClaseIdsArray = Array.from(allClaseIds);
+        console.log(`[getCoordinadorClases] Coordinador ${coordinadorId}: IDs de clase finales (únicos): ${uniqueClaseIdsArray.join(', ')}`);
+        return uniqueClaseIdsArray;
+
     } catch (error) {
-        console.error(`Error obteniendo clases para coordinador ${coordinadorId}:`, error.message);
-        return []; // Or throw error
+        console.error(`Error obteniendo clases para coordinador ${coordinadorId}:`, error.message, error.stack);
+        return []; // Return empty on error, or re-throw if critical
     }
 }
 console.log(" Paso 5: Helpers de BD con Promesas definidos (incluyendo getCoordinadorClases).");
@@ -2671,6 +2707,153 @@ app.get('/api/clases/:clase_id/coordinadores', authenticateToken, async (req, re
     }
 });
 console.log("Endpoint GET /api/clases/:clase_id/coordinadores definido.");
+
+// --- Ciclos & Coordinator Cycle Assignment Routes ---
+console.log("Definiendo rutas de gestión de Ciclos y asignación a coordinadores...");
+
+// GET /api/ciclos - List all educational cycles
+app.get('/api/ciclos', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/ciclos, Usuario:", req.user.email);
+    try {
+        const ciclos = await dbAllAsync("SELECT id, nombre_ciclo FROM ciclos ORDER BY id ASC");
+        res.json({ ciclos });
+    } catch (error) {
+        console.error("  Error en GET /api/ciclos:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al obtener los ciclos.", detalles: error.message });
+    }
+});
+console.log("Endpoint GET /api/ciclos definido.");
+
+// GET /api/coordinadores/:coordinador_id/ciclos - List cycles assigned to a specific coordinator
+app.get('/api/coordinadores/:coordinador_id/ciclos', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/coordinadores/:coordinador_id/ciclos, Usuario:", req.user.email);
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede ver asignaciones de ciclos.' });
+    }
+
+    const coordinadorId = parseInt(req.params.coordinador_id);
+    if (isNaN(coordinadorId)) {
+        return res.status(400).json({ error: "ID de coordinador inválido." });
+    }
+
+    try {
+        const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
+        if (!coordinador) {
+            return res.status(404).json({ error: "Usuario coordinador no encontrado." });
+        }
+        // No es estrictamente necesario chequear rol COORDINACION aquí si solo DIRECCION puede acceder.
+
+        const sql = `
+            SELECT c.id, c.nombre_ciclo
+            FROM ciclos c
+            JOIN usuario_ciclos_coordinador ucc ON c.id = ucc.ciclo_id
+            WHERE ucc.coordinador_usuario_id = ?
+            ORDER BY c.id ASC;
+        `;
+        const ciclosAsignados = await dbAllAsync(sql, [coordinadorId]);
+        res.json({ ciclos_asignados: ciclosAsignados });
+
+    } catch (error) {
+        console.error("  Error en GET /api/coordinadores/:coordinador_id/ciclos:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al obtener los ciclos asignados.", detalles: error.message });
+    }
+});
+console.log("Endpoint GET /api/coordinadores/:coordinador_id/ciclos definido.");
+
+// POST /api/coordinadores/:coordinador_id/ciclos - Assign a cycle to a coordinator
+app.post('/api/coordinadores/:coordinador_id/ciclos', authenticateToken, async (req, res) => {
+    console.log("  Ruta: POST /api/coordinadores/:coordinador_id/ciclos, Usuario:", req.user.email);
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede asignar ciclos.' });
+    }
+
+    const coordinadorId = parseInt(req.params.coordinador_id);
+    const { ciclo_id: cicloId } = req.body;
+
+    if (isNaN(coordinadorId)) {
+        return res.status(400).json({ error: "ID de coordinador inválido." });
+    }
+    if (cicloId === undefined || isNaN(parseInt(cicloId))) {
+        return res.status(400).json({ error: "ciclo_id es requerido en el body y debe ser un número." });
+    }
+    const cicloIdNum = parseInt(cicloId);
+
+    try {
+        const coordinador = await dbGetAsync("SELECT id, rol FROM usuarios WHERE id = ?", [coordinadorId]);
+        if (!coordinador) {
+            return res.status(404).json({ error: "Usuario coordinador no encontrado." });
+        }
+        if (coordinador.rol !== 'COORDINACION') {
+            return res.status(400).json({ error: "El usuario especificado no tiene el rol de COORDINACION." });
+        }
+
+        const ciclo = await dbGetAsync("SELECT id FROM ciclos WHERE id = ?", [cicloIdNum]);
+        if (!ciclo) {
+            return res.status(404).json({ error: "Ciclo no encontrado." });
+        }
+
+        const existingAssignment = await dbGetAsync(
+            "SELECT id FROM usuario_ciclos_coordinador WHERE coordinador_usuario_id = ? AND ciclo_id = ?",
+            [coordinadorId, cicloIdNum]
+        );
+        if (existingAssignment) {
+            return res.status(409).json({ error: "Este ciclo ya está asignado a este coordinador." });
+        }
+
+        const result = await dbRunAsync(
+            "INSERT INTO usuario_ciclos_coordinador (coordinador_usuario_id, ciclo_id) VALUES (?, ?)",
+            [coordinadorId, cicloIdNum]
+        );
+        
+        console.log(`  Ciclo ID ${cicloIdNum} asignado a Coordinador ID ${coordinadorId} por ${req.user.email}`);
+        res.status(201).json({ id: result.lastID, coordinador_usuario_id: coordinadorId, ciclo_id: cicloIdNum, message: "Ciclo asignado al coordinador exitosamente." });
+
+    } catch (error) {
+        console.error("  Error en POST /api/coordinadores/:coordinador_id/ciclos:", error.message, error.stack);
+        if (error.message.includes("UNIQUE constraint failed")) {
+            return res.status(409).json({ error: "Este ciclo ya está asignado a este coordinador (constraint)." });
+        }
+        res.status(500).json({ error: "Error interno del servidor al asignar el ciclo.", detalles: error.message });
+    }
+});
+console.log("Endpoint POST /api/coordinadores/:coordinador_id/ciclos definido.");
+
+// DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id - Unassign a cycle from a coordinator
+app.delete('/api/coordinadores/:coordinador_id/ciclos/:ciclo_id', authenticateToken, async (req, res) => {
+    console.log("  Ruta: DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id, Usuario:", req.user.email);
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Solo el rol DIRECCION puede desasignar ciclos.' });
+    }
+
+    const coordinadorId = parseInt(req.params.coordinador_id);
+    const cicloId = parseInt(req.params.ciclo_id);
+
+    if (isNaN(coordinadorId)) {
+        return res.status(400).json({ error: "ID de coordinador inválido." });
+    }
+    if (isNaN(cicloId)) {
+        return res.status(400).json({ error: "ID de ciclo inválido." });
+    }
+
+    try {
+        const result = await dbRunAsync(
+            "DELETE FROM usuario_ciclos_coordinador WHERE coordinador_usuario_id = ? AND ciclo_id = ?",
+            [coordinadorId, cicloId]
+        );
+
+        if (result.changes === 0) {
+            return res.status(404).json({ error: "Asignación de ciclo no encontrada para eliminar." });
+        }
+        
+        console.log(`  Ciclo ID ${cicloId} desasignado del Coordinador ID ${coordinadorId} por ${req.user.email}`);
+        res.status(200).json({ message: "Ciclo desasignado del coordinador exitosamente." });
+
+    } catch (error) {
+        console.error("  Error en DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al desasignar el ciclo.", detalles: error.message });
+    }
+});
+console.log("Endpoint DELETE /api/coordinadores/:coordinador_id/ciclos/:ciclo_id definido.");
 
 
 console.log("Paso 17: Todas las definiciones de rutas de API (o sus placeholders) completadas.");
