@@ -110,6 +110,27 @@ CREATE TABLE IF NOT EXISTS coordinador_clases (
     FOREIGN KEY (clase_id) REFERENCES clases(id) ON DELETE CASCADE,
     PRIMARY KEY (coordinador_id, clase_id)
 );
+
+CREATE TABLE IF NOT EXISTS ciclos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre_ciclo TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ciclo_clases_definicion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ciclo_id INTEGER NOT NULL,
+    nombre_patron_clase TEXT NOT NULL,
+    FOREIGN KEY (ciclo_id) REFERENCES ciclos(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS usuario_ciclos_coordinador (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    coordinador_usuario_id INTEGER NOT NULL,
+    ciclo_id INTEGER NOT NULL,
+    FOREIGN KEY (coordinador_usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (ciclo_id) REFERENCES ciclos(id) ON DELETE CASCADE,
+    UNIQUE (coordinador_usuario_id, ciclo_id)
+);
 `;
 
 function crearTablas() {
@@ -185,7 +206,7 @@ async function insertarDatosIniciales() {
         const emailDireccion = "jefatura@colegiolahispanidad.es"; // Cambia esto
         const nombreDireccion = "Dirección del Centro"; // Cambia esto
         const passwordDireccion = "Hispanidad1973@"; // ¡CAMBIA ESTO por una contraseña segura!
-        const idDireccion = await insertUsuario(emailDireccion, nombreDireccion, passwordDireccion, "DIRECCION");
+        await insertUsuario(emailDireccion, nombreDireccion, passwordDireccion, "DIRECCION");
 
         // 2. Crear usuario Tutor de Ejemplo (MODIFICA ESTOS VALORES)
         const emailTutor = "palomino@colegiolahispanidad.es"; // Cambia esto
@@ -197,12 +218,75 @@ async function insertarDatosIniciales() {
         if (idTutorEjemplo) { 
             await insertClase("1A PRIMARIA", idTutorEjemplo); 
         }
-        await insertClase("INFANTIL 4B", null); 
+        await insertClase("INFANTIL 4B", null);
+
+        // 4. Insertar Ciclos
+        const ciclosData = ['Infantil', 'Primer ciclo', 'Segundo ciclo', 'Tercer ciclo'];
+        const cicloIds = {};
+        for (const nombreCiclo of ciclosData) {
+            const cicloId = await insertCiclo(nombreCiclo);
+            cicloIds[nombreCiclo] = cicloId;
+        }
+
+        // 5. Insertar Definiciones de Clases para Ciclos
+        // Asegúrate que los IDs corresponden a los insertados o consultados arriba
+        if (cicloIds['Infantil']) await insertCicloClaseDefinicion(cicloIds['Infantil'], 'INFANTIL%');
+        if (cicloIds['Primer ciclo']) {
+            await insertCicloClaseDefinicion(cicloIds['Primer ciclo'], 'PRIMARIA 1%'); // Corregido para incluir %
+            await insertCicloClaseDefinicion(cicloIds['Primer ciclo'], 'PRIMARIA 2%'); // Corregido para incluir %
+        }
+        if (cicloIds['Segundo ciclo']) {
+            await insertCicloClaseDefinicion(cicloIds['Segundo ciclo'], 'PRIMARIA 3%'); // Corregido para incluir %
+            await insertCicloClaseDefinicion(cicloIds['Segundo ciclo'], 'PRIMARIA 4%'); // Corregido para incluir %
+        }
+        if (cicloIds['Tercer ciclo']) {
+            await insertCicloClaseDefinicion(cicloIds['Tercer ciclo'], 'PRIMARIA 5%'); // Corregido para incluir %
+            await insertCicloClaseDefinicion(cicloIds['Tercer ciclo'], 'PRIMARIA 6%'); // Corregido para incluir %
+        }
+
 
     } catch (error) {
         console.error("Error durante la inserción de datos iniciales:", error.message);
     }
 }
+
+const insertCiclo = (nombreCiclo) => {
+    return new Promise((resolve, reject) => {
+        db.get("SELECT id FROM ciclos WHERE lower(nombre_ciclo) = lower(?)", [nombreCiclo.toLowerCase()], (err, row) => {
+            if (err) return reject(new Error(`Error consultando ciclo ${nombreCiclo}: ${err.message}`));
+            if (row) {
+                console.log(`Ciclo ${nombreCiclo} ya existe con ID: ${row.id}.`);
+                resolve(row.id);
+            } else {
+                db.run(`INSERT INTO ciclos (nombre_ciclo) VALUES (?)`, [nombreCiclo], function (errInsert) {
+                    if (errInsert) return reject(new Error(`Error insertando ciclo ${nombreCiclo}: ${errInsert.message}`));
+                    console.log(`Ciclo '${nombreCiclo}' creado con ID: ${this.lastID}`);
+                    resolve(this.lastID);
+                });
+            }
+        });
+    });
+};
+
+const insertCicloClaseDefinicion = (cicloId, nombrePatron) => {
+    return new Promise((resolve, reject) => {
+        db.get("SELECT id FROM ciclo_clases_definicion WHERE ciclo_id = ? AND lower(nombre_patron_clase) = lower(?)", 
+               [cicloId, nombrePatron.toLowerCase()], (err, row) => {
+            if (err) return reject(new Error(`Error consultando definicion ${nombrePatron} para ciclo ${cicloId}: ${err.message}`));
+            if (row) {
+                console.log(`Definicion ${nombrePatron} para ciclo ${cicloId} ya existe.`);
+                resolve(row.id);
+            } else {
+                db.run(`INSERT INTO ciclo_clases_definicion (ciclo_id, nombre_patron_clase) VALUES (?, ?)`, 
+                       [cicloId, nombrePatron], function (errInsert) {
+                    if (errInsert) return reject(new Error(`Error insertando definicion ${nombrePatron} para ciclo ${cicloId}: ${errInsert.message}`));
+                    console.log(`Definicion '${nombrePatron}' para ciclo ID ${cicloId} creada con ID: ${this.lastID}`);
+                    resolve(this.lastID);
+                });
+            }
+        });
+    });
+};
 
 function cerrarDB() {
     db.close((err) => {
