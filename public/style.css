@@ -544,27 +544,40 @@ td input[type="number"].quick-edit { max-width: 70px; }
 }
 
 /* Sidebar Toggle Button Styling */
+/* Old styles for .sidebar-toggle-button that were inside @media (max-width: 768px) are removed. */
+/* New general styles for .sidebar-toggle-button: */
 .sidebar-toggle-button {
-    display: none; /* Hidden by default, shown in media query */
-    background: none;
+    position: fixed; 
+    top: 15px;
+    left: 15px;
+    z-index: 1005; 
+    background-color: #36454F; 
+    color: #ecf0f1; 
     border: none;
-    font-size: 24px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 20px; 
     cursor: pointer;
-    color: #333; /* Match header text or choose a suitable color */
-    padding: 0 10px; /* Some padding for easier clicking */
-    /* Positioning will be handled in the media query or header context */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: background-color 0.3s ease;
+}
+.sidebar-toggle-button:hover {
+    background-color: #4A5A67; 
+}
+
+/* Style for the new main application title */
+#main-app-title {
+    font-size: 1.4em; 
+    color: #333; 
+    margin: 0; 
+    margin-right: auto; 
+    line-height: normal; 
+    font-weight: 500; 
 }
 
 /* Responsive adjustments for mobile/tablet */
 @media (max-width: 768px) {
-    .sidebar-toggle-button {
-        display: block;
-        position: absolute; /* Position it within the header */
-        left: 15px;
-        top: 50%;
-        transform: translateY(-50%); /* Center vertically */
-        z-index: 1001; /* Ensure it's above the sidebar if sidebar has its own z-index */
-    }
+    /* .sidebar-toggle-button specific styles removed from here as it's globally styled now */
 
     .sidebar {
         position: fixed;
@@ -594,7 +607,8 @@ td input[type="number"].quick-edit { max-width: 70px; }
 
     /* Adjust header padding if toggle button takes space on the left */
     header.main-header {
-        padding-left: 50px; /* Make space for the toggle button */
+        /* padding-left: 50px; /* OLD - Make space for the toggle button - REMOVED */
+        padding-left: 15px; /* Or whatever default padding is desired now */
     }
 
     /* --- Table Responsiveness --- */

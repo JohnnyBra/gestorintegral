@@ -8,6 +8,7 @@
     </head>
 <body>
     <div class="app-container">
+        <button id="sidebarToggle" class="sidebar-toggle-button">&#9776;</button> <!-- MOVED HERE -->
         <aside class="sidebar">
             <div class="logo-container">
                 <div class="logo-text"><img src="folder/logo.jpg" alt="GestorPlus Logo"></div>
@@ -32,7 +33,8 @@
 
         <div class="main-panel">
             <header class="main-header">
-                <button id="sidebarToggle" class="sidebar-toggle-button">&#9776;</button>
+                <!-- Button removed from here -->
+                <h1 id="main-app-title">Gestor de excursiones del Colegio La Hispanidad</h1>
                 <div id="auth-status">
                     <span id="userInfoDisplay">Por favor, inicia sesión.</span>
                     <button id="auth_button">Iniciar Sesión</button>
@@ -124,6 +126,7 @@
             <h4 id="modal-excursion-title"></h4>
             <p><strong>Fecha:</strong> <span id="modal-excursion-date"></span></p>
             <p><strong>Lugar:</strong> <span id="modal-excursion-place"></span></p>
+            <p><strong>Participan:</strong> <span id="modal-excursion-participants"></span></p>
             <p><strong>Descripción:</strong> <span id="modal-excursion-description"></span></p>
             <p><strong>Hora Salida:</strong> <span id="modal-excursion-hora-salida"></span></p>
             <p><strong>Hora Llegada:</strong> <span id="modal-excursion-hora-llegada"></span></p>

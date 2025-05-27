@@ -28,8 +28,19 @@ console.log(` Paso 2: Express app creada. Puerto: ${PORT}. JWT_SECRET ${JWT_SECR
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public'))); // Para servir tu frontend
-console.log(" Paso 3: Middlewares globales (cors, json, urlencoded, static) configurados.");
+
+// Middleware for static file request logging
+app.use((req, res, next) => {
+    if (req.path.endsWith('.css') || req.path.endsWith('.js') || req.path.endsWith('.ico')) {
+        console.log(`[Static Debug] Request received for: ${req.path}`);
+    }
+    next();
+});
+
+const publicPath = path.join(__dirname, 'public');
+console.log(`[Static Debug] Attempting to serve static files from resolved path: ${publicPath}`);
+app.use(express.static(publicPath)); 
+console.log(" Paso 3: Middlewares globales (cors, json, urlencoded, static) configurados. Static path logged.");
 
 // --- Variable para la instancia de la Base de Datos (se inicializará después) ---
 let db;
@@ -112,7 +123,82 @@ async function getTutorCicloClaseIds(tutorClaseId) {
     }
 }
 
-console.log(" Paso 5: Helpers de BD con Promesas definidos (incluyendo getCoordinadorClases y getTutorCicloClaseIds).");
+// Helper function to get participating scope details for an excursion
+async function getExcursionScopeDetails(excursion, dbGetAsync) {
+    let participating_scope_type = "Desconocido";
+    let participating_scope_name = "N/A";
+
+    if (!excursion || typeof excursion.creada_por_usuario_id === 'undefined') {
+        console.warn("[getExcursionScopeDetails] Excursion object or creada_por_usuario_id is missing.");
+        return { participating_scope_type, participating_scope_name };
+    }
+
+    try {
+        if (excursion.para_clase_id !== null && excursion.para_clase_id !== undefined) {
+            participating_scope_type = "class";
+            const claseInfo = await dbGetAsync(
+                `SELECT c.nombre_clase, ci.nombre_ciclo 
+                 FROM clases c 
+                 LEFT JOIN ciclos ci ON c.ciclo_id = ci.id 
+                 WHERE c.id = ?`,
+                [excursion.para_clase_id]
+            );
+            if (claseInfo) {
+                participating_scope_name = claseInfo.nombre_clase || "Clase Desconocida";
+                if (claseInfo.nombre_ciclo) {
+                    participating_scope_name += ` (${claseInfo.nombre_ciclo})`;
+                }
+            } else {
+                participating_scope_name = "Clase Específica (Detalles no encontrados)";
+            }
+        } else { // Global excursion (para_clase_id IS NULL)
+            const creator = await dbGetAsync("SELECT rol FROM usuarios WHERE id = ?", [excursion.creada_por_usuario_id]);
+            if (creator) {
+                switch (creator.rol) {
+                    case 'DIRECCION':
+                        participating_scope_type = "all";
+                        participating_scope_name = "Todos los ciclos";
+                        break;
+                    case 'TESORERIA':
+                        participating_scope_type = "all";
+                        participating_scope_name = "Todos los ciclos (Tesorería)";
+                        break;
+                    case 'COORDINACION': // Defensive
+                        participating_scope_type = "all";
+                        participating_scope_name = "Global (Coordinación)";
+                        break;
+                    case 'TUTOR':
+                        participating_scope_type = "cycle";
+                        // Find the tutor's class, then their cycle
+                        const tutorClase = await dbGetAsync("SELECT ciclo_id FROM clases WHERE tutor_id = ?", [excursion.creada_por_usuario_id]);
+                        if (tutorClase && tutorClase.ciclo_id) {
+                            const cicloTutor = await dbGetAsync("SELECT nombre_ciclo FROM ciclos WHERE id = ?", [tutorClase.ciclo_id]);
+                            if (cicloTutor && cicloTutor.nombre_ciclo) {
+                                participating_scope_name = `${cicloTutor.nombre_ciclo} (Todas las clases del ciclo)`;
+                            } else {
+                                participating_scope_name = "Ciclo del creador (Todas las clases del ciclo)";
+                            }
+                        } else {
+                            participating_scope_name = "Ciclo del creador no encontrado (Todas las clases del ciclo)";
+                        }
+                        break;
+                    default:
+                        participating_scope_type = "unknown_rol";
+                        participating_scope_name = `Global (Rol Creador: ${creator.rol})`;
+                }
+            } else {
+                participating_scope_name = "Global (Creador no encontrado)";
+            }
+        }
+    } catch (error) {
+        console.error(`[getExcursionScopeDetails] Error determining scope for excursion ID ${excursion.id}:`, error.message);
+        // Keep default values: "Desconocido", "N/A"
+    }
+    return { participating_scope_type, participating_scope_name };
+}
+
+
+console.log(" Paso 5: Helpers de BD con Promesas definidos (incluyendo getCoordinadorClases, getTutorCicloClaseIds y getExcursionScopeDetails).");
 
 // --- Definición de Rutas de la API ---
 console.log(" Paso 6: Definiendo rutas de API...");
@@ -1245,8 +1331,17 @@ app.get('/api/excursiones', authenticateToken, async (req, res) => {
         }
         
         sql += " ORDER BY e.fecha_excursion DESC, e.id DESC";
-        const excursiones = await dbAllAsync(sql, params);
-        console.log(`  Excursiones encontradas: ${excursiones.length} para rol ${req.user.rol} (Clase ID del tutor si aplica: ${req.user.claseId || 'N/A'})`);
+        let excursiones = await dbAllAsync(sql, params);
+        console.log(`  Excursiones encontradas (antes de scope): ${excursiones.length} para rol ${req.user.rol} (Clase ID del tutor si aplica: ${req.user.claseId || 'N/A'})`);
+
+        if (excursiones && excursiones.length > 0) {
+            excursiones = await Promise.all(excursiones.map(async (excursion) => {
+                const scopeDetails = await getExcursionScopeDetails(excursion, dbGetAsync);
+                return { ...excursion, ...scopeDetails };
+            }));
+        }
+        
+        console.log(`  Excursiones devueltas (después de scope): ${excursiones.length}`);
         res.json({ excursiones });
 
     } catch (error) {
@@ -1277,26 +1372,44 @@ app.get('/api/excursiones/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: "Excursión no encontrada." });
         }
 
-        // RBAC
-        if (req.user.rol === 'DIRECCION') {
-            // Dirección tiene acceso
+        // RBAC - Check original access logic first
+        let canAccess = false;
+        if (req.user.rol === 'DIRECCION' || req.user.rol === 'TESORERIA') { // TESORERIA can also view any single excursion
+            canAccess = true;
         } else if (req.user.rol === 'TUTOR') {
-            if (excursion.para_clase_id !== null && excursion.para_clase_id !== req.user.claseId) {
-                 // Si la excursión es para una clase específica, y no es la del tutor, denegar.
-                return res.status(403).json({ error: "Tutores solo pueden ver excursiones globales o de su propia clase." });
+            if (!req.user.claseId && excursion.para_clase_id !== null) {
+                 return res.status(403).json({ error: "Tutor sin clase asignada no puede ver excursiones específicas de clase." });
             }
-            if (excursion.para_clase_id !== null && !req.user.claseId) {
-                // Si la excursión es para una clase específica, pero el tutor no tiene clase asignada.
-                return res.status(403).json({ error: "Tutor no asignado a una clase no puede ver excursiones de clase." });
+            // Tutor can see global excursions (para_clase_id is NULL)
+            // Or excursions for their own class
+            // Or excursions for other classes within their cycle
+            if (excursion.para_clase_id === null || excursion.para_clase_id === req.user.claseId) {
+                canAccess = true;
+            } else {
+                const cicloClaseIds = req.user.claseId ? await getTutorCicloClaseIds(req.user.claseId) : [];
+                if (cicloClaseIds && cicloClaseIds.includes(excursion.para_clase_id)) {
+                    canAccess = true;
+                }
             }
-        } else {
-            // Otros roles no definidos no tienen acceso
-            return res.status(403).json({ error: "Rol no autorizado." });
+        } else if (req.user.rol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(req.user.id);
+             // Coordinator can see global excursions
+             // Or excursions for one of their assigned classes
+            if (excursion.para_clase_id === null || (excursion.para_clase_id && assignedClaseIds.includes(excursion.para_clase_id))) {
+                canAccess = true;
+            }
         }
 
-        res.json(excursion);
+        if (!canAccess) {
+            return res.status(403).json({ error: "No tiene permisos para ver esta excursión." });
+        }
+
+        const scopeDetails = await getExcursionScopeDetails(excursion, dbGetAsync);
+        const excursionConScope = { ...excursion, ...scopeDetails };
+
+        res.json(excursionConScope);
     } catch (error) {
-        console.error(`  Error en GET /api/excursiones/${excursionId}:`, error.message);
+        console.error(`  Error en GET /api/excursiones/${excursionId}:`, error.message, error.stack);
         res.status(500).json({ error: "Error interno del servidor al obtener la excursión." });
     }
 });
