@@ -1934,4 +1934,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- INICIALIZACIÓN DE LA APP ---
     checkInitialLoginState();
 
+    // --- Sidebar Toggle Functionality ---
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebar = document.querySelector('.sidebar');
+
+    if (sidebarToggle && sidebar) {
+        sidebarToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            document.body.classList.toggle('body-sidebar-open');
+        });
+
+        // Optional: Close sidebar when a nav link is clicked on mobile
+        const navLinksForToggle = document.querySelectorAll('#main-nav-sidebar nav ul li a');
+        navLinksForToggle.forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                    document.body.classList.remove('body-sidebar-open');
+                }
+            });
+        });
+    } else {
+        console.warn("Sidebar toggle button or sidebar element not found.");
+    }
+
 }); // Fin de DOMContentLoaded
