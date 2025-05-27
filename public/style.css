@@ -587,6 +587,11 @@ td input[type="number"].quick-edit { max-width: 70px; }
         overflow: hidden;
     }
 
+    /* Change toggle button color for contrast when sidebar is open */
+    body.body-sidebar-open .sidebar-toggle-button {
+        color: #FFFFFF; /* White color for good contrast */
+    }
+
     /* Adjust header padding if toggle button takes space on the left */
     header.main-header {
         padding-left: 50px; /* Make space for the toggle button */
