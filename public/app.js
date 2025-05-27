@@ -245,8 +245,22 @@ document.addEventListener('DOMContentLoaded', () => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const section = link.dataset.section;
-            if (currentToken || section === 'login') navigateTo(section); 
-            else { navigateTo('login'); }
+            if (currentToken || section === 'login') {
+                navigateTo(section);
+            } else {
+                navigateTo('login');
+            }
+
+            // --- Auto-collapse sidebar on mobile when a nav link is clicked ---
+            // Ensure sidebarToggle and sidebar are defined (they are at the top of DOMContentLoaded)
+            if (sidebarToggle && sidebar) {
+                const isMobileView = getComputedStyle(sidebarToggle).display !== 'none';
+                if (isMobileView && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                    document.body.classList.remove('body-sidebar-open');
+                }
+            }
+            // --- End auto-collapse logic ---
         });
     });
 
@@ -1933,5 +1947,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- INICIALIZACIÓN DE LA APP ---
     checkInitialLoginState();
+
+    // --- Sidebar Toggle Functionality ---
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebar = document.querySelector('.sidebar');
+
+    if (sidebarToggle && sidebar) {
+        sidebarToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            document.body.classList.toggle('body-sidebar-open');
+        });
+
+        // The logic for closing sidebar on navLink click has been moved into the main
+        // navLinks.forEach event listener earlier in the script (around line 260-270).
+        // This keeps all navLink click logic consolidated.
+    } else {
+        console.warn("Sidebar toggle button or sidebar element not found."); // navLinks check removed as it's not relevant here anymore
+    }
 
 }); // Fin de DOMContentLoaded
