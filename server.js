@@ -28,8 +28,19 @@ console.log(` Paso 2: Express app creada. Puerto: ${PORT}. JWT_SECRET ${JWT_SECR
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public'))); // Para servir tu frontend
-console.log(" Paso 3: Middlewares globales (cors, json, urlencoded, static) configurados.");
+
+// Middleware for static file request logging
+app.use((req, res, next) => {
+    if (req.path.endsWith('.css') || req.path.endsWith('.js') || req.path.endsWith('.ico')) {
+        console.log(`[Static Debug] Request received for: ${req.path}`);
+    }
+    next();
+});
+
+const publicPath = path.join(__dirname, 'public');
+console.log(`[Static Debug] Attempting to serve static files from resolved path: ${publicPath}`);
+app.use(express.static(publicPath)); 
+console.log(" Paso 3: Middlewares globales (cors, json, urlencoded, static) configurados. Static path logged.");
 
 // --- Variable para la instancia de la Base de Datos (se inicializará después) ---
 let db;
