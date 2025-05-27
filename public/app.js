@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalExcursionTransporte = document.getElementById('modal-excursion-transporte');
     const modalExcursionJustificacion = document.getElementById('modal-excursion-justificacion');
     const modalExcursionNotas = document.getElementById('modal-excursion-notas');
+    const modalExcursionParticipants = document.getElementById('modal-excursion-participants'); // Added for new field
     const modalCloseButton = document.getElementById('modal-close-button');
 
     console.log("app.js cargado y DOMContentLoaded disparado. API_BASE_URL:", API_BASE_URL);
@@ -327,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </ul>`;
                     if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
                         html += '<h5>Próximas Excursiones (Global):</h5><ul>';
-                        data.proximasExcursiones.forEach(ex => html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'})</li>`);
+                        data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
                         html += '</ul>';
                     } else { html += '<p>No hay próximas excursiones generales.</p>';}
                 }
@@ -338,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </ul>`;
                     if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
                         html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
-                        data.proximasExcursiones.forEach(ex => html += `<li>${ex.nombre_excursion} (${ex.fecha_excursion || 'N/D'}) ${ex.para_clase_id === currentUser.claseId ? '(Específica tuya)' : (ex.para_clase_id === null ? '(Global)' : '(Otra clase)')}</li>`);
+                        data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
                         html += '</ul>';
                     } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
         
@@ -1268,7 +1269,7 @@ document.addEventListener('DOMContentLoaded', () => {
                          accionesHtml += ` <button class="share-excursion primary" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}">Compartir</button>`;
                     }
 
-                    html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
+                        <td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.participating_scope_name || 'N/A'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
                 });
             } else { html += '<tr><td colspan="6" style="text-align:center;">No hay excursiones.</td></tr>'; }
             html += '</tbody></table>';
@@ -1845,6 +1846,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(modalExcursionTransporte) modalExcursionTransporte.textContent = excursionData.transporte || 'N/A';
         if(modalExcursionJustificacion) modalExcursionJustificacion.textContent = excursionData.justificacion_texto || 'N/A';
         if(modalExcursionNotas) modalExcursionNotas.textContent = excursionData.notas_excursion || 'N/A';
+        if(modalExcursionParticipants) modalExcursionParticipants.textContent = excursionData.participating_scope_name || 'N/A'; // Added
         
         excursionDetailModal.style.display = 'block'; 
     }
