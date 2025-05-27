@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- URLs y Selectores del DOM ---
-    const API_BASE_URL = `http://192.168.1.7:3000/api`; // Tu IP específica
+    const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:3000/api`;
 
     const loginSection = document.getElementById('login-section');
     const loginForm = document.getElementById('loginForm');
