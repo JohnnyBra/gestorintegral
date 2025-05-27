@@ -339,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </ul>`;
                     if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
                         html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
-                        data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
+                        data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.nombre_clase_destino  || 'Scope N/A'}</li>`);
                         html += '</ul>';
                     } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
         
