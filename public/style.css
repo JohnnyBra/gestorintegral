@@ -607,8 +607,23 @@ td input[type="number"].quick-edit { max-width: 70px; }
 
     /* Adjust header padding if toggle button takes space on the left */
     header.main-header {
-        /* padding-left: 50px; /* OLD - Make space for the toggle button - REMOVED */
-        padding-left: 15px; /* Or whatever default padding is desired now */
+        padding-left: 60px; /* Consistent padding to avoid overlap with fixed sidebar toggle */
+        flex-wrap: wrap; /* Allow header items to wrap */
+        justify-content: space-between; /* Adjust alignment for wrapped items */
+    }
+    #main-app-title {
+        /* Ensure main-app-title is not overly shrunk if header becomes too narrow before wrapping in the 768px query */
+        flex-shrink: 0; /* Prevent shrinking if space is tight before wrapping point */
+        order: 1; /* Ensure title comes first */
+        width: 100%; /* Allow title to take full width if it wraps */
+        text-align: center; /* Center title when it wraps */
+        margin-bottom: 10px; /* Add space below title when wrapped */
+        margin-right: 0; /* Reset margin-right for wrapping */
+    }
+    #auth-status {
+        order: 2; /* Auth status comes after title */
+        width: 100%; /* Allow auth status to take full width if it wraps */
+        justify-content: center; /* Center auth status items when wrapped */
     }
 
     /* --- Table Responsiveness --- */
@@ -662,10 +677,21 @@ td input[type="number"].quick-edit { max-width: 70px; }
         padding: 15px;
     }
     header.main-header { /* Further adjust header for very small screens */
-        padding: 8px 15px;
-        padding-left: 45px; /* if toggle button is still present */
+        padding: 8px 15px; /* General padding */
+        padding-left: 60px; /* Consistent padding to avoid overlap with fixed sidebar toggle */
+    }
+     /* Reset title and auth-status stacking for very small screens if they are already full width from 768px */
+    /* No changes needed here for #main-app-title width and #auth-status width as they will behave based on the 768px rules unless overridden */
+    /* Text alignment and margins for #main-app-title are already handled in the 768px block for wrapped state */
+    /* And reset here if they are not full width */
+    #main-app-title {
+        text-align: left; /* Reset text-align for title if not full width */
+        margin-bottom: 0; /* Reset margin-bottom for title if not full width */
+        margin-right: auto; /* Re-apply for default behavior if not wrapped */
     }
     #auth-status {
+        /* width: auto; /* Already auto from default stylesheet if not 100% from 768px rules */
+        justify-content: flex-end; /* Re-apply for default behavior if not wrapped */
         font-size: 0.9em; /* Reduce font size of auth status slightly */
     }
     #auth_button, #signout_button {
@@ -717,6 +743,9 @@ td input[type="number"].quick-edit { max-width: 70px; }
     /* Adjust main section H2 further if needed */
     .main-section h2 {
         font-size: 1.3em;
+    }
+    #main-app-title { /* Further reduce title font on very small screens */
+        font-size: 1.2em; 
     }
 
     /* Adjust form input/select padding for very small screens */
