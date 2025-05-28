@@ -6,9 +6,11 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
-const fs = require('fs'); // La mantengo porque estaba en tu archivo original
-const PdfPrinter = require('pdfmake'); // Esta es tu instancia principal de PdfPrinter
-const vfsFonts = require('pdfmake/build/vfs_fonts.js'); // Carga las fuentes virtuales
+const fs = require('fs'); 
+const PdfPrinter = require('pdfmake');
+const vfsFontsModule = require('pdfmake/build/vfs_fonts.js'); // Renombrado para claridad
+
+console.log("Intentando configurar PdfPrinter.vfs...");
 
 // Intenta asignar VFS
 if (vfsFontsModule && vfsFontsModule.pdfMake && typeof vfsFontsModule.pdfMake.vfs === 'object') {
