@@ -6,19 +6,31 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
+const fs = require('fs'); // Keep fs if it was there
 const PdfPrinter = require('pdfmake');
-const fs = require('fs'); // Required for vfs_fonts
+
+// Import pdfMake and vfsFonts
+const pdfMake = require('pdfmake/build/pdfmake.js'); 
+const vfsFonts = require('pdfmake/build/vfs_fonts.js');
+
+// Set the vfs data to pdfMake
+if (pdfMake.vfs !== vfsFonts.pdfMake.vfs) {
+    pdfMake.vfs = vfsFonts.pdfMake.vfs;
+}
+
+// Define font descriptors using font names from vfs
+const fonts = {
+    Roboto: { 
+        normal: 'Roboto-Regular.ttf',
+        bold: 'Roboto-Medium.ttf',
+        italics: 'Roboto-Italic.ttf',
+        bolditalics: 'Roboto-MediumItalic.ttf'
+    }
+};
+
+const printer = new PdfPrinter(fonts);
 
 const app = express();
-
-const printer = new PdfPrinter({
-    Roboto: {
-        normal: Buffer.from(require('pdfmake/build/vfs_fonts.js').pdfMake.vfs['Roboto-Regular.ttf'], 'base64'),
-        bold: Buffer.from(require('pdfmake/build/vfs_fonts.js').pdfMake.vfs['Roboto-Medium.ttf'], 'base64'),
-        italics: Buffer.from(require('pdfmake/build/vfs_fonts.js').pdfMake.vfs['Roboto-Italic.ttf'], 'base64'),
-        bolditalics: Buffer.from(require('pdfmake/build/vfs_fonts.js').pdfMake.vfs['Roboto-MediumItalic.ttf'], 'base64')
-    }
-});
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV";
 
