@@ -444,8 +444,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         </select>
                     </div>
                     <div class="form-buttons">
-                        <button type="submit" class="success">${idClase ? 'Guardar Cambios' : 'Crear Clase'}</button>
-                        <button type="button" id="btnCancelarFormClase" class="secondary">Cancelar</button>
+                        <button type="submit" class="success"><i class="fas ${idClase ? 'fa-save' : 'fa-plus'}"></i> ${idClase ? 'Guardar Cambios' : 'Crear Clase'}</button>
+                        <button type="button" id="btnCancelarFormClase" class="secondary"><i class="fas fa-times"></i> Cancelar</button>
                     </div>
                     <p id="formClaseError" class="error-message"></p>
                 </form>
@@ -518,13 +518,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await apiFetch('/clases');
             listaDeClasesGlobal = data.clases || []; // Populate global list
             let html = '<h3>Listado de Clases</h3>';
-            if (currentUser.rol === 'DIRECCION') html += `<button id="btnShowFormNuevaClase" class="success" style="margin-bottom:15px;">+ Añadir Nueva Clase</button>`;
+        if (currentUser.rol === 'DIRECCION') html += `<button id="btnShowFormNuevaClase" class="success" style="margin-bottom:15px;"><i class="fas fa-plus"></i> Añadir Nueva Clase</button>`;
             html += `<table class="tabla-datos"><thead><tr><th>Nombre Clase</th><th>Tutor Asignado</th><th>Email Tutor</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.clases && data.clases.length > 0) {
                 data.clases.forEach(clase => {
                     html += `<tr data-clase-id="${clase.id}"><td>${clase.nombre_clase}</td><td>${clase.nombre_tutor || '<em>No asignado</em>'}</td><td>${clase.email_tutor || '<em>N/A</em>'}</td><td class="actions-cell">
-                        <button class="view-alumnos-clase secondary" data-claseid="${clase.id}" data-nclase="${clase.nombre_clase}">Ver Alumnos</button>
-                        ${currentUser.rol === 'DIRECCION' ? `<button class="edit-clase warning" data-id="${clase.id}" data-nombre="${clase.nombre_clase}" data-tutorid="${clase.tutor_id || ''}">Editar</button> <button class="delete-clase danger" data-id="${clase.id}" data-nombre="${clase.nombre_clase}">Eliminar</button>` : ''}
+                    <button class="view-alumnos-clase secondary" data-claseid="${clase.id}" data-nclase="${clase.nombre_clase}"><i class="fas fa-users"></i> Ver Alumnos</button>
+                    ${currentUser.rol === 'DIRECCION' ? `<button class="edit-clase warning" data-id="${clase.id}" data-nombre="${clase.nombre_clase}" data-tutorid="${clase.tutor_id || ''}"><i class="fas fa-edit"></i> Editar</button> <button class="delete-clase danger" data-id="${clase.id}" data-nombre="${clase.nombre_clase}"><i class="fas fa-trash-alt"></i> Eliminar</button>` : ''}
                         </td></tr>`;});
             } else html += '<tr><td colspan="4" style="text-align:center;">No hay clases registradas.</td></tr>';
             html += '</tbody></table><div id="formClaseWrapper" class="form-wrapper" style="margin-top:20px;"></div>';
@@ -600,7 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div><label for="nombreAlumno">Nombre:</label><input type="text" id="nombreAlumno" value="${soloNombreExistente}" required></div>
                     <div><label for="apellidosAlumno">Apellidos:</label><input type="text" id="apellidosAlumno" value="${apellidosExistente}" required></div>
                     <div><label for="claseAlumno">Clase:</label><select id="claseAlumno" ${selectDisabled ? 'disabled' : ''} required>${opcionesClasesHtml}</select></div>
-                    <div class="form-buttons"><button type="submit" class="success" ${selectDisabled && !claseIdExistente ? 'disabled' : ''}>${idAlumno ? 'Guardar Cambios' : 'Crear Alumno'}</button><button type="button" id="btnCancelarFormAlumno" class="secondary">Cancelar</button></div>
+                    <div class="form-buttons"><button type="submit" class="success" ${selectDisabled && !claseIdExistente ? 'disabled' : ''}><i class="fas ${idAlumno ? 'fa-save' : 'fa-user-plus'}"></i> ${idAlumno ? 'Guardar Cambios' : 'Crear Alumno'}</button><button type="button" id="btnCancelarFormAlumno" class="secondary"><i class="fas fa-times"></i> Cancelar</button></div>
                     <p id="formAlumnoError" class="error-message"></p>
                 </form>
             </div>`;
@@ -739,7 +739,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadAlumnos(claseIdFiltroExterno = null, nombreClaseFiltroExterno = null) {
         if (!alumnosContentDiv || !currentToken) return;
         alumnosContentDiv.innerHTML = "<p>Cargando alumnos...</p>";
-        const importCsvHtml = `<div id="import-alumnos-csv-container" style="padding:15px;border:1px solid #eee;margin-bottom:20px;background-color:#f9f9f9;border-radius:5px;"><h4>Importar Alumnos CSV</h4><form id="formImportarAlumnosCSV"><div><label for="csvClaseDestino">Clase Destino:</label><select id="csvClaseDestino" required></select></div><div><label for="csvFileAlumnos">Archivo CSV ("Apellidos, Nombre", UTF-8):</label><input type="file" id="csvFileAlumnos" accept=".csv" required></div><div class="form-buttons" style="justify-content:flex-start;margin-top:10px;"><button type="submit" class="success">Importar</button></div></form><div id="importAlumnosStatus" style="margin-top:10px;"></div></div><hr style="margin:20px 0;">`;
+        const importCsvHtml = `<div id="import-alumnos-csv-container" style="padding:15px;border:1px solid #eee;margin-bottom:20px;background-color:#f9f9f9;border-radius:5px;"><h4>Importar Alumnos CSV</h4><form id="formImportarAlumnosCSV"><div><label for="csvClaseDestino">Clase Destino:</label><select id="csvClaseDestino" required></select></div><div><label for="csvFileAlumnos">Archivo CSV ("Apellidos, Nombre", UTF-8):</label><input type="file" id="csvFileAlumnos" accept=".csv" required></div><div class="form-buttons" style="justify-content:flex-start;margin-top:10px;"><button type="submit" class="success"><i class="fas fa-file-import"></i> Importar</button></div></form><div id="importAlumnosStatus" style="margin-top:10px;"></div></div><hr style="margin:20px 0;">`;
         const filtroClaseIdActual = claseIdFiltroExterno || sessionStorage.getItem('filtroAlumnosClaseId');
         const filtroNombreClaseActual = nombreClaseFiltroExterno || sessionStorage.getItem('filtroAlumnosNombreClase');
         let endpoint = '/alumnos';
@@ -783,17 +783,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 listaDeClasesGlobal.forEach(cl => htmlTablaAlumnos += `<option value="${cl.id}">${cl.nombre_clase}</option>`);
                 htmlTablaAlumnos += `</select></div>`;
             } else if (filtroClaseIdActual && currentUser.rol === 'DIRECCION') {
-                 htmlTablaAlumnos += `<button onclick="sessionStorage.removeItem('filtroAlumnosClaseId'); sessionStorage.removeItem('filtroAlumnosNombreClase'); loadAlumnos();" class="secondary" style="margin-bottom:15px;">Mostrar Todos</button>`;
+                 htmlTablaAlumnos += `<button onclick="sessionStorage.removeItem('filtroAlumnosClaseId'); sessionStorage.removeItem('filtroAlumnosNombreClase'); loadAlumnos();" class="secondary" style="margin-bottom:15px;"><i class="fas fa-list-ul"></i> Mostrar Todos</button>`;
             }
             if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && currentUser.claseId)) {
-                htmlTablaAlumnos += `<button id="btnShowFormNuevoAlumno" class="success" style="margin-bottom:15px;">+ Añadir Alumno</button>`;
+                htmlTablaAlumnos += `<button id="btnShowFormNuevoAlumno" class="success" style="margin-bottom:15px;"><i class="fas fa-user-plus"></i> Añadir Alumno</button>`;
             }
             htmlTablaAlumnos += `<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Clase</th><th>Acciones</th></tr></thead><tbody>`;
             if (dataAlumnos.alumnos && dataAlumnos.alumnos.length > 0) {
                 dataAlumnos.alumnos.forEach(a => { 
-                    htmlTablaAlumnos += `<tr data-alumno-id="${a.id}"><td>${a.nombre_completo}</td><td>${a.nombre_clase}</td><td>
-                        <button class="edit-alumno warning" data-id="${a.id}">Editar</button>
-                        <button class="delete-alumno danger" data-id="${a.id}" data-nombre="${a.nombre_completo}">Eliminar</button>
+                    htmlTablaAlumnos += `<tr data-alumno-id="${a.id}"><td>${a.nombre_completo}</td><td>${a.nombre_clase}</td><td class="actions-cell">
+                        <button class="edit-alumno warning" data-id="${a.id}"><i class="fas fa-user-edit"></i> Editar</button>
+                        <button class="delete-alumno danger" data-id="${a.id}" data-nombre="${a.nombre_completo}"><i class="fas fa-user-times"></i> Eliminar</button>
                         </td></tr>`; 
                 });
             } else { htmlTablaAlumnos += `<tr><td colspan="3" style="text-align:center;">No hay alumnos.</td></tr>`; }
@@ -919,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div><label>Justificación:</label><textarea id="justificacionExcursion" required>${excursionData.justificacion_texto || ''}</textarea></div>
                     <div><label>Notas:</label><textarea id="notasExcursion">${excursionData.notas_excursion || ''}</textarea></div>
                     ${paraClaseSelectHtml}
-                    <div class="form-buttons"><button type="submit" class="success">${idExcursion ? 'Guardar Cambios' : 'Crear Excursión'}</button><button type="button" id="btnCancelarFormExcursion" class="secondary">Cancelar</button></div>
+                    <div class="form-buttons"><button type="submit" class="success"><i class="fas ${idExcursion ? 'fa-save' : 'fa-plus'}"></i> ${idExcursion ? 'Guardar Cambios' : 'Crear Excursión'}</button><button type="button" id="btnCancelarFormExcursion" class="secondary"><i class="fas fa-times"></i> Cancelar</button></div>
                     <p id="formExcursionError" class="error-message"></p>
                 </form>
             </div>`;
@@ -1069,12 +1069,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
             const acceptButton = document.createElement('button');
             acceptButton.id = 'dupExcursionAccept';
-            acceptButton.textContent = 'Aceptar';
+            acceptButton.innerHTML = '<i class="fas fa-check"></i> Aceptar';
             acceptButton.className = 'success';
     
             const cancelButton = document.createElement('button');
             cancelButton.id = 'dupExcursionCancel';
-            cancelButton.textContent = 'Cancelar';
+            cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancelar';
             cancelButton.className = 'secondary';
     
             buttonsDiv.appendChild(acceptButton);
@@ -1206,13 +1206,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
         const acceptButton = document.createElement('button');
         acceptButton.id = 'shareExcursionAccept';
-        acceptButton.textContent = 'Aceptar';
+            acceptButton.innerHTML = '<i class="fas fa-check"></i> Aceptar';
         acceptButton.className = 'success';
         if (tutoresDisponibles.length === 0) acceptButton.disabled = true;
     
         const cancelButton = document.createElement('button');
         cancelButton.id = 'shareExcursionCancel';
-        cancelButton.textContent = 'Cancelar';
+            cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancelar';
         cancelButton.className = 'secondary';
     
         buttonsDiv.appendChild(acceptButton);
@@ -1264,19 +1264,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await apiFetch('/excursiones');
             let html = '<h3>Listado de Excursiones</h3>';
              if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && currentUser.claseId) ){
-                html += `<button id="btnShowFormNuevaExcursion" class="success" style="margin-bottom:15px;">+ Crear Excursión</button>`;
+                html += `<button id="btnShowFormNuevaExcursion" class="success" style="margin-bottom:15px;"><i class="fas fa-plus"></i> Crear Excursión</button>`;
             }
             html += `<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Clase Destino</th><th>Creador</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.excursiones && data.excursiones.length > 0) {
                 data.excursiones.forEach(ex => {
-                    let accionesHtml = `<button class="view-participaciones secondary" data-excursionid="${ex.id}" data-excursionnombre="${ex.nombre_excursion}">Participaciones</button>`;
+                    let accionesHtml = `<button class="view-participaciones secondary" data-excursionid="${ex.id}" data-excursionnombre="${ex.nombre_excursion}"><i class="fas fa-users"></i> Participaciones</button>`;
                     
                     if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && ex.creada_por_usuario_id === currentUser.id) || (currentUser.rol === 'TUTOR' && ex.para_clase_id === currentUser.claseId) ) {
-                        accionesHtml += ` <button class="edit-excursion warning" data-id="${ex.id}">Editar</button>`;
-                        accionesHtml += ` <button class="delete-excursion danger" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}">Eliminar</button>`;
+                        accionesHtml += ` <button class="edit-excursion warning" data-id="${ex.id}"><i class="fas fa-edit"></i> Editar</button>`;
+                        accionesHtml += ` <button class="delete-excursion danger" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}"><i class="fas fa-trash-alt"></i> Eliminar</button>`;
                     }
                      if (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR') { 
-                        accionesHtml += ` <button class="duplicate-excursion info" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}" data-original-clase-id="${ex.para_clase_id === null ? 'null' : ex.para_clase_id}">Duplicar</button>`;
+                        accionesHtml += ` <button class="duplicate-excursion info" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}" data-original-clase-id="${ex.para_clase_id === null ? 'null' : ex.para_clase_id}"><i class="fas fa-copy"></i> Duplicar</button>`;
                     }
                     let canShare = false;
                     if (currentUser.rol === 'DIRECCION') {
@@ -1287,7 +1287,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                     if (canShare) {
-                         accionesHtml += ` <button class="share-excursion primary" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}">Compartir</button>`;
+                         accionesHtml += ` <button class="share-excursion primary" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}"><i class="fas fa-share-alt"></i> Compartir</button>`;
                     }
             html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
 
