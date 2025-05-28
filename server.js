@@ -6,21 +6,33 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
-const fs = require('fs'); // Keep fs if it was there
-const PdfPrinter = require('pdfmake');
+const fs = require('fs'); // La mantengo porque estaba en tu archivo original
+const PdfPrinter = require('pdfmake'); // Esta es tu instancia principal de PdfPrinter
+const vfsFonts = require('pdfmake/build/vfs_fonts.js'); // Carga las fuentes virtuales
 
-// Import pdfMake and vfsFonts
-const pdfMake = require('pdfmake/build/pdfmake.js'); 
-const vfsFonts = require('pdfmake/build/vfs_fonts.js');
+// Elimina la línea const pdfMake = require('pdfmake/build/pdfmake.js'); si la tienes,
+// ya que es redundante con const PdfPrinter = require('pdfmake'); y puede causar confusión.
 
-// Set the vfs data to pdfMake
-if (pdfMake.vfs !== vfsFonts.pdfMake.vfs) {
-    pdfMake.vfs = vfsFonts.pdfMake.vfs;
+// Establece los datos de vfs en la instancia PdfPrinter principal
+// Comprueba si el objeto vfs existe en el módulo vfsFonts importado en la ubicación esperada
+if (vfsFonts && vfsFonts.pdfMake && typeof vfsFonts.pdfMake.vfs === 'object') {
+    // Asígnalo a la propiedad vfs de la clase PdfPrinter principal
+    PdfPrinter.vfs = vfsFonts.pdfMake.vfs;
+} else {
+    // Registra un error si no se encuentra la estructura esperada.
+    // Esto ayuda a diagnosticar si vfs_fonts.js no se carga o no tiene la estructura esperada.
+    console.error("Error: No se pudo encontrar vfsFonts.pdfMake.vfs. Es posible que pdfMake no funcione correctamente con fuentes personalizadas.");
+    // Opcionalmente, verifica si PdfPrinter.vfs ya está configurado (por ejemplo, por un efecto secundario de requerir vfsFonts)
+    if (!PdfPrinter.vfs) {
+        console.error("CRÍTICO: PdfPrinter.vfs no está configurado. Asegúrate de que 'pdfmake' y 'vfs_fonts.js' estén correctamente instalados y cargados.");
+    } else {
+        // console.log("Info: PdfPrinter.vfs parece estar ya configurado.");
+    }
 }
 
-// Define font descriptors using font names from vfs
+// Define los descriptores de fuentes usando los nombres de las fuentes de vfs (esta parte está bien)
 const fonts = {
-    Roboto: { 
+    Roboto: {
         normal: 'Roboto-Regular.ttf',
         bold: 'Roboto-Medium.ttf',
         italics: 'Roboto-Italic.ttf',
@@ -28,7 +40,7 @@ const fonts = {
     }
 };
 
-const printer = new PdfPrinter(fonts);
+const printer = new PdfPrinter(fonts); // Crea una instancia usando el PdfPrinter donde se estableció vfs.
 
 const app = express();
 const PORT = process.env.PORT || 3000;
