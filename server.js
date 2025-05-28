@@ -1105,7 +1105,11 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
         vestimenta: vestimenta_raw, 
         transporte: transporte_raw, 
         justificacion_texto: justificacion_texto_raw,
-        coste_excursion_alumno = 0 // Default si no se provee
+        coste_excursion_alumno = 0, // Default si no se provee
+        numero_autobuses,
+        coste_por_autobus,
+        coste_entradas_individual,
+        coste_actividad_global
     } = req.body;
     let { para_clase_id, notas_excursion: notas_excursion_raw } = req.body; 
 
@@ -1166,6 +1170,29 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: "coste_excursion_alumno debe ser un número no negativo." });
     }
 
+    // Validation for new numeric fields
+    const newNumericFields = {
+        numero_autobuses,
+        coste_por_autobus,
+        coste_entradas_individual,
+        coste_actividad_global
+    };
+
+    for (const [fieldName, fieldValue] of Object.entries(newNumericFields)) {
+        if (fieldValue !== undefined && fieldValue !== null) { // Allow null
+            if (typeof fieldValue !== 'number') {
+                return res.status(400).json({ error: `El campo '${fieldName}' debe ser un número.` });
+            }
+            if ( (fieldName === 'numero_autobuses' && fieldValue < 0) || 
+                 ( (fieldName === 'coste_por_autobus' || fieldName === 'coste_entradas_individual' || fieldName === 'coste_actividad_global') && fieldValue < 0) ) {
+                 return res.status(400).json({ error: `El campo '${fieldName}' no puede ser negativo.` });
+            }
+            if (fieldName === 'numero_autobuses' && !Number.isInteger(fieldValue)) {
+                return res.status(400).json({ error: `El campo '${fieldName}' debe ser un número entero.` });
+            }
+        }
+    }
+    
     let finalParaClaseId = null; // Por defecto para excursiones globales o de dirección
 
     if (req.user.rol === 'TUTOR') {
@@ -1236,15 +1263,20 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
         INSERT INTO excursiones (
             nombre_excursion, fecha_excursion, lugar, hora_salida, hora_llegada,
             coste_excursion_alumno, vestimenta, transporte, justificacion_texto,
-            actividad_descripcion, notas_excursion, creada_por_usuario_id, para_clase_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            actividad_descripcion, notas_excursion, creada_por_usuario_id, para_clase_id,
+            numero_autobuses, coste_por_autobus, coste_entradas_individual, coste_actividad_global
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const paramsInsert = [
         nombre_excursion, fecha_excursion, lugar, hora_salida, hora_llegada, // Ya trimeados
         coste_excursion_alumno, vestimenta, transporte, justificacion_texto, // Ya trimeados
         actividad_descripcion, notas_excursion ? notas_excursion : null, // Ya trimeados (notas_excursion puede ser null si era cadena vacía)
-        creada_por_usuario_id, finalParaClaseId
+        creada_por_usuario_id, finalParaClaseId,
+        newNumericFields.numero_autobuses !== undefined ? newNumericFields.numero_autobuses : null,
+        newNumericFields.coste_por_autobus !== undefined ? newNumericFields.coste_por_autobus : null,
+        newNumericFields.coste_entradas_individual !== undefined ? newNumericFields.coste_entradas_individual : null,
+        newNumericFields.coste_actividad_global !== undefined ? newNumericFields.coste_actividad_global : null
     ];
 
     try {
@@ -1423,16 +1455,34 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
     }
     console.log(`  Ruta: PUT /api/excursiones/${excursionId} para usuario ${req.user.email}, Body:`, req.body);
 
+    const financialFields = ['numero_autobuses', 'coste_por_autobus', 'coste_entradas_individual', 'coste_actividad_global'];
+    const camposActualizablesBase = [ // Base list of all fields that can be updated
+        'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 
+        'hora_llegada', 'coste_excursion_alumno', 'vestimenta', 'transporte',
+        'justificacion_texto', 'actividad_descripcion', 'notas_excursion', 'para_clase_id',
+        ...financialFields
+    ];
+
     try {
         const excursionActual = await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [excursionId]);
         if (!excursionActual) {
             return res.status(404).json({ error: "Excursión no encontrada para actualizar." });
         }
 
+        // Determine if this is a financial-only update
+        const receivedUpdatableFields = Object.keys(req.body).filter(key => camposActualizablesBase.includes(key));
+        let isFinancialOnlyUpdate = false;
+        if (receivedUpdatableFields.length > 0) { // Must be at least one field to update
+            isFinancialOnlyUpdate = receivedUpdatableFields.every(field => financialFields.includes(field));
+        }
+
         // RBAC para editar
         let puedeEditar = false;
-        if (req.user.rol === 'DIRECCION') {
+        if ((req.user.rol === 'DIRECCION' || req.user.rol === 'TESORERIA') && isFinancialOnlyUpdate) {
             puedeEditar = true;
+            console.log(`  RBAC: ${req.user.rol} permitido para actualizar SOLO campos financieros.`);
+        } else if (req.user.rol === 'DIRECCION') {
+            puedeEditar = true; // DIRECCION can edit anything if not financial-only
         } else if (req.user.rol === 'TUTOR') {
             if (!req.user.claseId && excursionActual.para_clase_id !== null && excursionActual.creada_por_usuario_id !== req.user.id) {
                 // Tutor sin clase no puede editar excursiones de clase que no creó él
@@ -1467,11 +1517,7 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
             }
         }
 
-        const camposActualizables = [
-            'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 
-            'hora_llegada', 'coste_excursion_alumno', 'vestimenta', 'transporte',
-            'justificacion_texto', 'actividad_descripcion', 'notas_excursion', 'para_clase_id'
-        ];
+        // camposActualizablesBase already defined above including financialFields
         let setClauses = [];
         let paramsForUpdate = []; 
 
@@ -1480,7 +1526,7 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
             'hora_salida', 'hora_llegada', 'vestimenta', 'transporte', 'justificacion_texto'
         ];
 
-        for (const campo of camposActualizables) {
+        for (const campo of camposActualizablesBase) { // Iterate using the full list
             if (processedBody[campo] !== undefined) {
                 let valueToUpdate = processedBody[campo];
 
@@ -1510,6 +1556,29 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
                 if (campo === 'coste_excursion_alumno' && (typeof valueToUpdate !== 'number' || valueToUpdate < 0)) {
                      return res.status(400).json({ error: "coste_excursion_alumno debe ser un número no negativo." });
                 }
+
+                // Validations for new numeric fields
+                const newNumericFieldsValidation = {
+                    numero_autobuses: { isInteger: true, allowNegative: false },
+                    coste_por_autobus: { isInteger: false, allowNegative: false },
+                    coste_entradas_individual: { isInteger: false, allowNegative: false },
+                    coste_actividad_global: { isInteger: false, allowNegative: false }
+                };
+
+                if (newNumericFieldsValidation.hasOwnProperty(campo)) {
+                    if (valueToUpdate !== null) { // Allow null to clear the field
+                        if (typeof valueToUpdate !== 'number') {
+                            return res.status(400).json({ error: `El campo '${campo}' debe ser un número o null.` });
+                        }
+                        if (!newNumericFieldsValidation[campo].allowNegative && valueToUpdate < 0) {
+                            return res.status(400).json({ error: `El campo '${campo}' no puede ser negativo.` });
+                        }
+                        if (newNumericFieldsValidation[campo].isInteger && !Number.isInteger(valueToUpdate)) {
+                            return res.status(400).json({ error: `El campo '${campo}' debe ser un número entero.` });
+                        }
+                    }
+                }
+                
                 if (campo === 'para_clase_id') {
                     if (valueToUpdate === '') { 
                        return res.status(400).json({ error: "para_clase_id no puede ser una cadena vacía; use null si no aplica o un ID de clase."});
@@ -2591,6 +2660,132 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
 // --- Rutas de Tesorería ---
 console.log("Definiendo rutas de Tesorería...");
 
+// GET /api/tesoreria/ingresos-por-clase
+app.get('/api/tesoreria/ingresos-por-clase', authenticateToken, async (req, res) => {
+    console.log("  Ruta: GET /api/tesoreria/ingresos-por-clase para:", req.user.email, "Rol:", req.user.rol);
+
+    if (req.user.rol !== 'TESORERIA' && req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol TESORERIA o DIRECCION.' });
+    }
+
+    try {
+        const clases = await dbAllAsync("SELECT id, nombre_clase FROM clases ORDER BY nombre_clase ASC");
+        const resultado = [];
+
+        for (const clase of clases) {
+            const sqlIngresos = `
+                SELECT SUM(p.cantidad_pagada) as total_ingresos
+                FROM participaciones_excursion p
+                JOIN alumnos a ON p.alumno_id = a.id
+                WHERE a.clase_id = ?
+            `;
+            const ingresosRow = await dbGetAsync(sqlIngresos, [clase.id]);
+            
+            resultado.push({
+                clase_id: clase.id,
+                nombre_clase: clase.nombre_clase,
+                total_ingresos_clase: ingresosRow && ingresosRow.total_ingresos !== null ? ingresosRow.total_ingresos : 0
+            });
+        }
+
+        res.json({ ingresos_por_clase: resultado });
+
+    } catch (error) {
+        console.error("  Error en GET /api/tesoreria/ingresos-por-clase:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al calcular ingresos por clase.", detalles: error.message });
+    }
+});
+console.log("Endpoint GET /api/tesoreria/ingresos-por-clase definido.");
+
+// GET /api/tesoreria/excursion-financial-details/:excursion_id
+app.get('/api/tesoreria/excursion-financial-details/:excursion_id', authenticateToken, async (req, res) => {
+    const excursionId = parseInt(req.params.excursion_id);
+    console.log(`  Ruta: GET /api/tesoreria/excursion-financial-details/${excursionId} para:`, req.user.email, "Rol:", req.user.rol);
+
+    if (req.user.rol !== 'TESORERIA' && req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol TESORERIA o DIRECCION.' });
+    }
+
+    if (isNaN(excursionId)) {
+        return res.status(400).json({ error: "ID de excursión inválido." });
+    }
+
+    try {
+        const excursion = await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [excursionId]);
+        if (!excursion) {
+            return res.status(404).json({ error: "Excursión no encontrada." });
+        }
+
+        // Calcular total_dinero_recaudado
+        const recaudadoRow = await dbGetAsync(
+            "SELECT SUM(cantidad_pagada) as total FROM participaciones_excursion WHERE excursion_id = ?",
+            [excursionId]
+        );
+        excursion.total_dinero_recaudado = recaudadoRow && recaudadoRow.total !== null ? recaudadoRow.total : 0;
+
+        // Calcular numero_alumnos_asistentes
+        const asistentesRow = await dbGetAsync(
+            "SELECT COUNT(DISTINCT alumno_id) as count FROM participaciones_excursion WHERE excursion_id = ? AND autorizacion_firmada = 'Sí'",
+            [excursionId]
+        );
+        excursion.numero_alumnos_asistentes = asistentesRow ? asistentesRow.count : 0;
+
+        // Calcular costes
+        excursion.coste_total_autobuses = (excursion.numero_autobuses || 0) * (excursion.coste_por_autobus || 0);
+        excursion.coste_total_participacion_entradas = (excursion.coste_entradas_individual || 0) * excursion.numero_alumnos_asistentes;
+        excursion.coste_total_actividad_global = excursion.coste_actividad_global || 0;
+        
+        // Calcular balance
+        const totalCostes = excursion.coste_total_autobuses + excursion.coste_total_participacion_entradas + excursion.coste_total_actividad_global;
+        excursion.balance_excursion = excursion.total_dinero_recaudado - totalCostes;
+
+        res.json(excursion);
+
+    } catch (error) {
+        console.error(`  Error en GET /api/tesoreria/excursion-financial-details/${excursionId}:`, error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al obtener detalles financieros de la excursión.", detalles: error.message });
+    }
+});
+console.log("Endpoint GET /api/tesoreria/excursion-financial-details/:excursion_id definido.");
+
+// Helper function to calculate financial details for an excursion
+async function getFinancialDetailsForExcursion(excursionId, existingExcursionData = null) {
+    const excursion = existingExcursionData || await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [excursionId]);
+    if (!excursion) {
+        // This case should ideally be handled by the caller if existingExcursionData is null
+        throw new Error(`Excursion with ID ${excursionId} not found for financial calculation.`);
+    }
+
+    const recaudadoRow = await dbGetAsync(
+        "SELECT SUM(cantidad_pagada) as total FROM participaciones_excursion WHERE excursion_id = ?",
+        [excursionId]
+    );
+    const total_dinero_recaudado = recaudadoRow && recaudadoRow.total !== null ? recaudadoRow.total : 0;
+
+    const asistentesRow = await dbGetAsync(
+        "SELECT COUNT(DISTINCT alumno_id) as count FROM participaciones_excursion WHERE excursion_id = ? AND autorizacion_firmada = 'Sí'",
+        [excursionId]
+    );
+    const numero_alumnos_asistentes = asistentesRow ? asistentesRow.count : 0;
+
+    const coste_total_autobuses = (excursion.numero_autobuses || 0) * (excursion.coste_por_autobus || 0);
+    const coste_total_participacion_entradas = (excursion.coste_entradas_individual || 0) * numero_alumnos_asistentes;
+    const coste_total_actividad_global = excursion.coste_actividad_global || 0;
+    
+    const totalCostes = coste_total_autobuses + coste_total_participacion_entradas + coste_total_actividad_global;
+    const balance_excursion = total_dinero_recaudado - totalCostes;
+
+    return {
+        total_dinero_recaudado,
+        numero_alumnos_asistentes,
+        coste_total_autobuses,
+        coste_total_participacion_entradas,
+        coste_total_actividad_global,
+        balance_excursion
+    };
+}
+
+
 // GET /api/tesoreria/excursiones-pendientes
 app.get('/api/tesoreria/excursiones-pendientes', authenticateToken, async (req, res) => {
     console.log("  Ruta: GET /api/tesoreria/excursiones-pendientes para:", req.user.email, "Rol:", req.user.rol);
@@ -2638,22 +2833,15 @@ app.get('/api/tesoreria/excursiones-pasadas', authenticateToken, async (req, res
 
         const augmentedExcursiones = [];
         for (const excursion of excursionesPasadas) {
-            const sqlTotalAlumnos = `
-                SELECT COUNT(DISTINCT alumno_id) as count 
-                FROM participaciones_excursion 
-                WHERE excursion_id = ? AND autorizacion_firmada = 'Sí'`;
-            const totalAlumnosRow = await dbGetAsync(sqlTotalAlumnos, [excursion.id]);
-            excursion.totalAlumnosParticipantes = totalAlumnosRow ? totalAlumnosRow.count : 0;
-
-            const sqlTotalPagado = `
-                SELECT SUM(cantidad_pagada) as total 
-                FROM participaciones_excursion 
-                WHERE excursion_id = ?`;
-            const totalPagadoRow = await dbGetAsync(sqlTotalPagado, [excursion.id]);
-            excursion.totalPagado = totalPagadoRow && totalPagadoRow.total !== null ? totalPagadoRow.total : 0;
-            
-            augmentedExcursiones.push(excursion);
+            // Reuse the helper function to get detailed financial calculations
+            const financialDetails = await getFinancialDetailsForExcursion(excursion.id, excursion);
+            augmentedExcursiones.push({
+                ...excursion, // original excursion data
+                ...financialDetails // add all calculated financial fields
+            });
         }
+        // Note: The fields totalAlumnosParticipantes and totalPagado previously added are now
+        // numero_alumnos_asistentes and total_dinero_recaudado respectively, coming from financialDetails.
 
         res.json({ excursiones_pasadas: augmentedExcursiones });
     } catch (error) {
