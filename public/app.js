@@ -50,6 +50,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalExcursionParticipants = document.getElementById('modal-excursion-participants'); // Added for new field
     const modalCloseButton = document.getElementById('modal-close-button');
 
+    // --- Tesoreria Financial Modal Elements ---
+    const tesoreriaFinancialModal = document.getElementById('tesoreria-excursion-financial-modal');
+    const financialModalTitle = document.getElementById('financial-modal-title');
+    const financialModalExcursionNombre = document.getElementById('financial-modal-excursion-nombre');
+    const financialModalExcursionFecha = document.getElementById('financial-modal-excursion-fecha');
+    const financialModalNumeroAutobuses = document.getElementById('financial-modal-numero-autobuses');
+    const financialModalCostePorAutobus = document.getElementById('financial-modal-coste-por-autobus');
+    const financialModalCosteEntradasIndividual = document.getElementById('financial-modal-coste-entradas-individual');
+    const financialModalCosteActividadGlobal = document.getElementById('financial-modal-coste-actividad-global');
+    const financialModalTotalRecaudado = document.getElementById('financial-modal-total-recaudado');
+    const financialModalAlumnosAsistentes = document.getElementById('financial-modal-alumnos-asistentes');
+    const financialModalCosteTotalAutobuses = document.getElementById('financial-modal-coste-total-autobuses');
+    const financialModalCosteTotalEntradas = document.getElementById('financial-modal-coste-total-entradas');
+    const financialModalCosteNinoActGlobal = document.getElementById('financial-modal-coste-nino-act-global');
+    const financialModalBalance = document.getElementById('financial-modal-balance');
+    const financialModalStatus = document.getElementById('financial-modal-status');
+    const financialModalSaveButton = document.getElementById('financial-modal-save-button');
+    const financialModalCloseButton = document.getElementById('financial-modal-close-button');
+    let currentExcursionIdForFinancialModal = null;
+
+
     console.log("app.js cargado y DOMContentLoaded disparado. API_BASE_URL:", API_BASE_URL);
     if (!loginForm) console.error("Elemento loginForm NO encontrado.");
     if (!excursionDetailModal) console.error("Elemento excursionDetailModal NO encontrado.");
@@ -1895,17 +1916,53 @@ document.addEventListener('DOMContentLoaded', () => {
             if(contentDiv) contentDiv.innerHTML = '<p class="error-message">Error de acceso o carga.</p>';
             return;
         }
-        contentDiv.innerHTML = "<p>Cargando datos de tesorería...</p>";
+        // Clear previous content and show loading message
+        contentDiv.innerHTML = "<p>Cargando datos de tesorería...</p>"; 
+        
+        const ingresosClaseDiv = document.getElementById('tesoreria-ingresos-clase'); // This div is already in index.html
+        if (!ingresosClaseDiv) {
+            console.error("Elemento tesoreria-ingresos-clase no encontrado en index.html");
+            // We will build the rest of the content in contentDiv
+        } else {
+            ingresosClaseDiv.innerHTML = '<p>Cargando ingresos por clase...</p>'; // Clear specific div
+        }
+
+        let html = ''; // Main content for tesoreria-content, will be built piece by piece
     
         try {
+            // 1. Fetch and render Ingresos por Clase
+            if (ingresosClaseDiv) { // Only attempt if the div exists
+                try {
+                    const ingresosData = await apiFetch('/tesoreria/ingresos-por-clase');
+                    let ingresosHtml = '<h4>Ingresos Totales por Clase</h4>'; // Re-add title as div content is cleared
+                    if (ingresosData && ingresosData.ingresos_por_clase && ingresosData.ingresos_por_clase.length > 0) {
+                        ingresosHtml += '<table class="tabla-datos tabla-tesoreria-ingresos"><thead><tr><th>Clase</th><th>Total Recaudado (€)</th></tr></thead><tbody>';
+                        ingresosData.ingresos_por_clase.forEach(item => {
+                            ingresosHtml += `<tr>
+                                <td>${item.nombre_clase}</td>
+                                <td>${formatCurrency(item.total_ingresos_clase)}</td>
+                            </tr>`;
+                        });
+                        ingresosHtml += '</tbody></table>';
+                    } else {
+                        ingresosHtml += '<p>No hay datos de ingresos por clase disponibles.</p>';
+                    }
+                    ingresosClaseDiv.innerHTML = ingresosHtml;
+                } catch (error) {
+                    console.error("Error cargando ingresos por clase:", error);
+                    ingresosClaseDiv.innerHTML = `<p class="error-message">Error al cargar ingresos por clase: ${error.message}</p>`;
+                }
+            }
+
+            // 2. Fetch and render Excursiones Pendientes y Pasadas
             const [pendientesData, pasadasData] = await Promise.all([
                 apiFetch('/tesoreria/excursiones-pendientes'),
                 apiFetch('/tesoreria/excursiones-pasadas')
             ]);
     
-            let html = '<h3>Excursiones Pendientes</h3>';
+            html += '<hr class="subsection-divider" style="margin-top: 20px; margin-bottom:20px;"><h3>Excursiones Pendientes</h3>';
             if (pendientesData && pendientesData.excursiones_pendientes && pendientesData.excursiones_pendientes.length > 0) {
-                html += '<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Coste Alumno (€)</th><th>Clase Destino</th><th>Creador</th></tr></thead><tbody>';
+                html += '<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Coste Alumno (€)</th><th>Clase Destino</th><th>Creador</th><th>Acciones</th></tr></thead><tbody>';
                 pendientesData.excursiones_pendientes.forEach(ex => {
                     html += `<tr>
                         <td>${ex.nombre_excursion || 'N/D'}</td>
@@ -1914,6 +1971,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${ex.coste_excursion_alumno !== null ? ex.coste_excursion_alumno.toFixed(2) : '0.00'}</td>
                         <td>${ex.nombre_clase_destino || 'Global'}</td>
                         <td>${ex.nombre_creador || 'N/D'}</td>
+                        <td><button class="edit-financials-button primary" data-excursion-id="${ex.id}">Ver/Editar Finanzas</button></td>
                     </tr>`;
                 });
                 html += '</tbody></table>';
@@ -1921,34 +1979,243 @@ document.addEventListener('DOMContentLoaded', () => {
                 html += '<p>No hay excursiones pendientes.</p>';
             }
     
-            html += '<h3 style="margin-top: 20px;">Excursiones Pasadas</h3>';
+            html += '<hr class="subsection-divider" style="margin-top: 20px; margin-bottom:20px;"><h3>Excursiones Pasadas</h3>';
             if (pasadasData && pasadasData.excursiones_pasadas && pasadasData.excursiones_pasadas.length > 0) {
-                html += '<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Participantes</th><th>Total Pagado (€)</th><th>Coste Alumno (€)</th><th>Clase Destino</th><th>Creador</th></tr></thead><tbody>';
+                html += `<table class="tabla-datos tabla-tesoreria-pasadas">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Fecha</th>
+                                    <th>Participantes (Autorizados)</th>
+                                    <th>Total Recaudado (€)</th>
+                                    <th>Balance (€)</th>
+                                    <th>Coste Total Autobuses (€)</th>
+                                    <th>Coste Total Entradas (€)</th>
+                                    <th>Coste Actividad Global (€)</th>
+                                    <th>Lugar</th>
+                                    <th>Clase Destino</th>
+                                    <th>Creador</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
                 pasadasData.excursiones_pasadas.forEach(ex => {
                     html += `<tr>
-                        <td>${ex.nombre_excursion || 'N/D'}</td>
+                        <td><a href="#" class="excursion-detail-link-tesoreria" data-excursion-id="${ex.id}">${ex.nombre_excursion || 'N/D'}</a></td>
                         <td>${ex.fecha_excursion ? new Date(ex.fecha_excursion).toLocaleDateString() : 'N/D'}</td>
+                        <td>${ex.numero_alumnos_asistentes !== null ? ex.numero_alumnos_asistentes : 'N/D'}</td>
+                        <td>${formatCurrency(ex.total_dinero_recaudado)}</td>
+                        <td style="font-weight: bold; color: ${ex.balance_excursion < 0 ? 'red' : 'green'};">${formatCurrency(ex.balance_excursion)}</td>
+                        <td>${formatCurrency(ex.coste_total_autobuses)}</td>
+                        <td>${formatCurrency(ex.coste_total_participacion_entradas)}</td>
+                        <td>${formatCurrency(ex.coste_total_actividad_global)}</td>
                         <td>${ex.lugar || 'N/D'}</td>
-                        <td>${ex.totalAlumnosParticipantes !== null ? ex.totalAlumnosParticipantes : 'N/D'}</td>
-                        <td>${ex.totalPagado !== null ? ex.totalPagado.toFixed(2) : '0.00'}</td>
-                        <td>${ex.coste_excursion_alumno !== null ? ex.coste_excursion_alumno.toFixed(2) : '0.00'}</td>
                         <td>${ex.nombre_clase_destino || 'Global'}</td>
                         <td>${ex.nombre_creador || 'N/D'}</td>
+                        <td><button class="edit-financials-button primary" data-excursion-id="${ex.id}">Ver/Editar Finanzas</button></td>
                     </tr>`;
                 });
                 html += '</tbody></table>';
             } else {
                 html += '<p>No hay excursiones pasadas.</p>';
             }
-            contentDiv.innerHTML = html;
+            // Ensure the main contentDiv is updated with the built HTML for pending/past excursions
+            // The ingresosClaseDiv was handled separately if it exists.
+            // If ingresosClaseDiv is part of contentDiv, then contentDiv.innerHTML = ingresosClaseDiv.innerHTML + html;
+            // Based on index.html, ingresosClaseDiv is *inside* tesoreria-content, so we must be careful.
+            // The initial contentDiv.innerHTML = "<p>Cargando...</p>" clears everything.
+            // The ingresosClaseDiv.innerHTML updates its specific part.
+            // Now, the rest of contentDiv (after ingresosClaseDiv and its hr) needs this 'html'.
+
+            // Find the hr element that was added after tesoreria-ingresos-clase
+            const hrDivider = contentDiv.querySelector('hr.subsection-divider');
+            if (hrDivider) {
+                // If the HR exists (meaning ingresosClaseDiv was processed), append after it
+                let tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html; // pending and past excursions html
+                // Append all children of tempDiv after the hrDivider
+                while (tempDiv.firstChild) {
+                    contentDiv.appendChild(tempDiv.firstChild);
+                }
+            } else {
+                // If ingresosClaseDiv was not found/processed, just set the html
+                contentDiv.innerHTML = html;
+            }
+             // Add event listeners for new detail links
+            contentDiv.querySelectorAll('.excursion-detail-link-tesoreria').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const excursionId = e.target.dataset.excursionId;
+                    // Using the global handleExcursionDayClick which now also fetches financial details
+                    // if we decide to make the modal more detailed. For now, it shows basic details.
+                    // To show financial details, we'd need a specific modal or to enhance the existing one.
+                    // Let's assume for now it just calls the existing global modal handler.
+                    // We might need a new function handleFinancialExcursionDetailClick if more detail is needed.
+                    handleExcursionDayClick(excursionId); 
+                });
+            });
+            
+            // Add event listeners for "Ver/Editar Finanzas" buttons
+            contentDiv.querySelectorAll('.edit-financials-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const excursionId = e.target.dataset.excursionId;
+                    openTesoreriaFinancialModal(excursionId);
+                });
+            });
+
         } catch (error) {
-            console.error("Error en loadTesoreriaData:", error);
+            console.error("Error en loadTesoreriaData (Promise.all):", error);
             contentDiv.innerHTML = `<p class="error-message">Error al cargar datos de tesorería: ${error.message}</p>`;
         }
     }
 
+    function formatCurrency(amount) {
+        if (typeof amount !== 'number') {
+            amount = parseFloat(amount) || 0;
+        }
+        return amount.toFixed(2).replace('.', ',') + ' €';
+    }
+
     // --- INICIALIZACIÓN DE LA APP ---
     checkInitialLoginState();
+
+    // --- Tesoreria Financial Modal Logic ---
+    function closeTesoreriaFinancialModal() {
+        if (tesoreriaFinancialModal) tesoreriaFinancialModal.style.display = 'none';
+        if (financialModalStatus) financialModalStatus.textContent = '';
+        currentExcursionIdForFinancialModal = null;
+    }
+
+    if (financialModalCloseButton) financialModalCloseButton.onclick = closeTesoreriaFinancialModal;
+    if (financialModalSaveButton) financialModalSaveButton.onclick = saveTesoreriaFinancialDetails;
+    
+    // Add event listeners to input fields for dynamic recalculation
+    [financialModalNumeroAutobuses, financialModalCostePorAutobus, financialModalCosteEntradasIndividual, financialModalCosteActividadGlobal].forEach(input => {
+        if (input) input.addEventListener('input', recalculateFinancialsInModal);
+    });
+
+
+    async function openTesoreriaFinancialModal(excursionId) {
+        if (!tesoreriaFinancialModal || !currentUser || (currentUser.rol !== 'TESORERIA' && currentUser.rol !== 'DIRECCION')) {
+            alert("Acceso denegado o modal no encontrado.");
+            return;
+        }
+        currentExcursionIdForFinancialModal = excursionId;
+        if (financialModalStatus) financialModalStatus.textContent = 'Cargando...';
+        tesoreriaFinancialModal.style.display = 'flex';
+
+        try {
+            const excursion = await apiFetch(`/tesoreria/excursion-financial-details/${excursionId}`);
+            if(financialModalTitle) financialModalTitle.textContent = `Detalles Financieros: ${excursion.nombre_excursion}`;
+            if(financialModalExcursionNombre) financialModalExcursionNombre.textContent = excursion.nombre_excursion;
+            if(financialModalExcursionFecha) financialModalExcursionFecha.textContent = excursion.fecha_excursion ? new Date(excursion.fecha_excursion).toLocaleDateString() : 'N/D';
+
+            if(financialModalNumeroAutobuses) financialModalNumeroAutobuses.value = excursion.numero_autobuses || 0;
+            if(financialModalCostePorAutobus) financialModalCostePorAutobus.value = excursion.coste_por_autobus || 0;
+            if(financialModalCosteEntradasIndividual) financialModalCosteEntradasIndividual.value = excursion.coste_entradas_individual || 0;
+            if(financialModalCosteActividadGlobal) financialModalCosteActividadGlobal.value = excursion.coste_actividad_global || 0;
+            
+            // Store these fetched values in data attributes for recalculateFinancialsInModal to use
+            if(financialModalAlumnosAsistentes) financialModalAlumnosAsistentes.dataset.value = excursion.numero_alumnos_asistentes || 0;
+            if(financialModalTotalRecaudado) financialModalTotalRecaudado.dataset.value = excursion.total_dinero_recaudado || 0;
+
+            recalculateFinancialsInModal(); // Initial calculation and display
+            if (financialModalStatus) financialModalStatus.textContent = '';
+        } catch (error) {
+            if (financialModalStatus) financialModalStatus.textContent = `Error: ${error.message}`;
+            console.error("Error opening financial modal:", error);
+        }
+    }
+
+    function recalculateFinancialsInModal() {
+        const numAutobuses = parseFloat(financialModalNumeroAutobuses.value) || 0;
+        const costePorAutobus = parseFloat(financialModalCostePorAutobus.value) || 0;
+        const costeEntradaIndividual = parseFloat(financialModalCosteEntradasIndividual.value) || 0;
+        const costeActividadGlobal = parseFloat(financialModalCosteActividadGlobal.value) || 0;
+
+        const totalRecaudado = parseFloat(financialModalTotalRecaudado.dataset.value) || 0;
+        const numAsistentes = parseInt(financialModalAlumnosAsistentes.dataset.value) || 0;
+
+        if(financialModalTotalRecaudado) financialModalTotalRecaudado.textContent = formatCurrency(totalRecaudado);
+        if(financialModalAlumnosAsistentes) financialModalAlumnosAsistentes.textContent = numAsistentes;
+
+        const costeTotalAutobusesCalc = numAutobuses * costePorAutobus;
+        if(financialModalCosteTotalAutobuses) financialModalCosteTotalAutobuses.textContent = formatCurrency(costeTotalAutobusesCalc);
+
+        const costeTotalEntradasCalc = numAsistentes * costeEntradaIndividual;
+        if(financialModalCosteTotalEntradas) financialModalCosteTotalEntradas.textContent = formatCurrency(costeTotalEntradasCalc);
+        
+        const costePorNinoActGlobalCalc = numAsistentes > 0 ? costeActividadGlobal / numAsistentes : 0;
+        if(financialModalCosteNinoActGlobal) financialModalCosteNinoActGlobal.textContent = formatCurrency(costePorNinoActGlobalCalc);
+
+        const balanceCalc = totalRecaudado - (costeTotalAutobusesCalc + costeTotalEntradasCalc + costeActividadGlobal);
+        if(financialModalBalance) {
+            financialModalBalance.textContent = formatCurrency(balanceCalc);
+            financialModalBalance.style.color = balanceCalc < 0 ? 'red' : 'green';
+        }
+    }
+
+    async function saveTesoreriaFinancialDetails() {
+        if (!currentExcursionIdForFinancialModal) return;
+        if(financialModalStatus) financialModalStatus.textContent = 'Guardando...';
+
+        const dataToSave = {
+            numero_autobuses: parseInt(financialModalNumeroAutobuses.value) || null, // Send null if 0 or NaN
+            coste_por_autobus: parseFloat(financialModalCostePorAutobus.value) || null,
+            coste_entradas_individual: parseFloat(financialModalCosteEntradasIndividual.value) || null,
+            coste_actividad_global: parseFloat(financialModalCosteActividadGlobal.value) || null
+        };
+        // Ensure null for zero values if that's preferred by backend, or ensure 0. For now, allow 0.
+        // Backend handles 0 correctly. Null is better if the value is truly "not set".
+        // For simplicity, we'll send the number or null if parsing fails to 0.
+        // Let's adjust to send null if the input was empty or zero, if that's more semantically correct.
+        // For now, || 0 means 0 will be sent. If you clear an input, it becomes 0.
+        // The database schema allows NULL for these, so sending null is possible.
+        // Let's refine: if input is empty, send null. If it's '0', send 0.
+        dataToSave.numero_autobuses = financialModalNumeroAutobuses.value ? parseInt(financialModalNumeroAutobuses.value) : null;
+        dataToSave.coste_por_autobus = financialModalCostePorAutobus.value ? parseFloat(financialModalCostePorAutobus.value) : null;
+        dataToSave.coste_entradas_individual = financialModalCosteEntradasIndividual.value ? parseFloat(financialModalCosteEntradasIndividual.value) : null;
+        dataToSave.coste_actividad_global = financialModalCosteActividadGlobal.value ? parseFloat(financialModalCosteActividadGlobal.value) : null;
+
+
+        // Basic frontend validation (more robust validation should exist)
+        if ( (dataToSave.numero_autobuses !== null && dataToSave.numero_autobuses < 0) ||
+             (dataToSave.coste_por_autobus !== null && dataToSave.coste_por_autobus < 0) ||
+             (dataToSave.coste_entradas_individual !== null && dataToSave.coste_entradas_individual < 0) ||
+             (dataToSave.coste_actividad_global !== null && dataToSave.coste_actividad_global < 0) ) {
+            if(financialModalStatus) financialModalStatus.textContent = 'Error: Los costes y número de autobuses no pueden ser negativos.';
+            return;
+        }
+
+
+        try {
+            // The PUT request to /api/excursiones/:id updates these specific fields.
+            // The response from this PUT is the full updated excursion object.
+            const updatedExcursion = await apiFetch(`/excursiones/${currentExcursionIdForFinancialModal}`, 'PUT', dataToSave);
+            
+            if(financialModalStatus) showTemporaryStatusInElement(financialModalStatus, "Guardado con éxito!", false, 3000);
+
+            // Update modal with potentially re-calculated values from server (though PUT /excursiones might not return all financial details)
+            // It's better to re-fetch from the dedicated financial details endpoint to ensure consistency.
+            const freshFinancialDetails = await apiFetch(`/tesoreria/excursion-financial-details/${currentExcursionIdForFinancialModal}`);
+            
+            if(financialModalNumeroAutobuses) financialModalNumeroAutobuses.value = freshFinancialDetails.numero_autobuses || 0;
+            if(financialModalCostePorAutobus) financialModalCostePorAutobus.value = freshFinancialDetails.coste_por_autobus || 0;
+            if(financialModalCosteEntradasIndividual) financialModalCosteEntradasIndividual.value = freshFinancialDetails.coste_entradas_individual || 0;
+            if(financialModalCosteActividadGlobal) financialModalCosteActividadGlobal.value = freshFinancialDetails.coste_actividad_global || 0;
+            
+            if(financialModalAlumnosAsistentes) financialModalAlumnosAsistentes.dataset.value = freshFinancialDetails.numero_alumnos_asistentes || 0;
+            if(financialModalTotalRecaudado) financialModalTotalRecaudado.dataset.value = freshFinancialDetails.total_dinero_recaudado || 0;
+            
+            recalculateFinancialsInModal(); // Re-calculate and display with fresh data.
+
+            loadTesoreriaData(); // Refresh the main Tesoreria view
+        } catch (error) {
+            if(financialModalStatus) financialModalStatus.textContent = `Error: ${error.message}`;
+            console.error("Error saving financial details:", error);
+        }
+    }
+
 
     // --- Sidebar Toggle Functionality ---
     const sidebarToggle = document.getElementById('sidebarToggle');
