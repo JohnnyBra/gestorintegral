@@ -1455,16 +1455,34 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
     }
     console.log(`  Ruta: PUT /api/excursiones/${excursionId} para usuario ${req.user.email}, Body:`, req.body);
 
+    const financialFields = ['numero_autobuses', 'coste_por_autobus', 'coste_entradas_individual', 'coste_actividad_global'];
+    const camposActualizablesBase = [ // Base list of all fields that can be updated
+        'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 
+        'hora_llegada', 'coste_excursion_alumno', 'vestimenta', 'transporte',
+        'justificacion_texto', 'actividad_descripcion', 'notas_excursion', 'para_clase_id',
+        ...financialFields
+    ];
+
     try {
         const excursionActual = await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [excursionId]);
         if (!excursionActual) {
             return res.status(404).json({ error: "Excursión no encontrada para actualizar." });
         }
 
+        // Determine if this is a financial-only update
+        const receivedUpdatableFields = Object.keys(req.body).filter(key => camposActualizablesBase.includes(key));
+        let isFinancialOnlyUpdate = false;
+        if (receivedUpdatableFields.length > 0) { // Must be at least one field to update
+            isFinancialOnlyUpdate = receivedUpdatableFields.every(field => financialFields.includes(field));
+        }
+
         // RBAC para editar
         let puedeEditar = false;
-        if (req.user.rol === 'DIRECCION') {
+        if ((req.user.rol === 'DIRECCION' || req.user.rol === 'TESORERIA') && isFinancialOnlyUpdate) {
             puedeEditar = true;
+            console.log(`  RBAC: ${req.user.rol} permitido para actualizar SOLO campos financieros.`);
+        } else if (req.user.rol === 'DIRECCION') {
+            puedeEditar = true; // DIRECCION can edit anything if not financial-only
         } else if (req.user.rol === 'TUTOR') {
             if (!req.user.claseId && excursionActual.para_clase_id !== null && excursionActual.creada_por_usuario_id !== req.user.id) {
                 // Tutor sin clase no puede editar excursiones de clase que no creó él
@@ -1499,12 +1517,7 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
             }
         }
 
-        const camposActualizables = [
-            'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 
-            'hora_llegada', 'coste_excursion_alumno', 'vestimenta', 'transporte',
-            'justificacion_texto', 'actividad_descripcion', 'notas_excursion', 'para_clase_id',
-            'numero_autobuses', 'coste_por_autobus', 'coste_entradas_individual', 'coste_actividad_global'
-        ];
+        // camposActualizablesBase already defined above including financialFields
         let setClauses = [];
         let paramsForUpdate = []; 
 
@@ -1513,7 +1526,7 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
             'hora_salida', 'hora_llegada', 'vestimenta', 'transporte', 'justificacion_texto'
         ];
 
-        for (const campo of camposActualizables) {
+        for (const campo of camposActualizablesBase) { // Iterate using the full list
             if (processedBody[campo] !== undefined) {
                 let valueToUpdate = processedBody[campo];
 
