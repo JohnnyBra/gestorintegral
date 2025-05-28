@@ -8,51 +8,38 @@ require('dotenv').config();
 
 const fs = require('fs'); 
 const PdfPrinter = require('pdfmake');
-const vfsFontsModule = require('pdfmake/build/vfs_fonts.js'); // Renombrado para claridad
+const vfsFontsModule = require('pdfmake/build/vfs_fonts.js');
 
 console.log("Intentando configurar PdfPrinter.vfs...");
 
-// Intenta asignar VFS
-if (vfsFontsModule && vfsFontsModule.pdfMake && typeof vfsFontsModule.pdfMake.vfs === 'object') {
-    PdfPrinter.vfs = vfsFontsModule.pdfMake.vfs;
-    console.log("VFS asignado correctamente desde vfsFontsModule.pdfMake.vfs.");
-    
+// Comprueba si vfsFontsModule es un objeto y parece contener datos de fuentes directamente
+if (vfsFontsModule && typeof vfsFontsModule === 'object' && Object.keys(vfsFontsModule).length > 0) {
+    // Asigna vfsFontsModule directamente a PdfPrinter.vfs
+    PdfPrinter.vfs = vfsFontsModule;
+    console.log("VFS asignado directamente desde vfsFontsModule.");
+
     // Verifica si las fuentes específicas están en el VFS
     if (PdfPrinter.vfs) {
         console.log("Claves en PdfPrinter.vfs (primeras 5):", Object.keys(PdfPrinter.vfs).slice(0, 5));
         console.log("¿Está 'Roboto-Regular.ttf' en VFS?", PdfPrinter.vfs['Roboto-Regular.ttf'] ? 'Sí' : 'NO, FALTA!');
         console.log("¿Está 'Roboto-Medium.ttf' en VFS (para negrita)?", PdfPrinter.vfs['Roboto-Medium.ttf'] ? 'Sí' : 'NO, FALTA!');
-        console.log("¿Está 'Roboto-Italic.ttf' en VFS (para cursiva)?", PdfPrinter.vfs['Roboto-Italic.ttf'] ? 'Sí' : 'NO, FALTA!');
-        console.log("¿Está 'Roboto-MediumItalic.ttf' en VFS (para negrita-cursiva)?", PdfPrinter.vfs['Roboto-MediumItalic.ttf'] ? 'Sí' : 'NO, FALTA!');
     } else {
-        console.error("ERROR: PdfPrinter.vfs es null o undefined DESPUÉS de la asignación.");
+        console.error("ERROR: PdfPrinter.vfs es null o undefined DESPUÉS de la asignación directa.");
     }
 
 } else {
-    console.error("ERROR: La estructura de vfsFontsModule.pdfMake.vfs no es la esperada o falta.");
-    console.log("Tipo de vfsFontsModule:", typeof vfsFontsModule);
-    if (vfsFontsModule) {
-        console.log("Claves de vfsFontsModule:", Object.keys(vfsFontsModule));
-        if (vfsFontsModule.pdfMake) {
-            console.log("Claves de vfsFontsModule.pdfMake:", Object.keys(vfsFontsModule.pdfMake));
-        } else {
-            console.log("vfsFontsModule.pdfMake NO está definido.");
-        }
-    }
-    
+    console.error("ERROR: vfsFontsModule no es un objeto válido o está vacío. No se puede configurar VFS.");
     // Comprueba si PdfPrinter.vfs ya estaba configurado de alguna manera
     if (!PdfPrinter.vfs) {
         console.error("FALLO CRÍTICO: PdfPrinter.vfs no se pudo configurar. La generación de PDF probablemente fallará para fuentes personalizadas.");
-    } else {
-        console.log("INFO: PdfPrinter.vfs ya estaba configurado. Esto es inusual si el bloque 'if' anterior falló.");
     }
 }
 
-// Define los descriptores de fuentes (esta parte está bien)
+// Define los descriptores de fuentes
 const fonts = {
     Roboto: {
         normal: 'Roboto-Regular.ttf',
-        bold: 'Roboto-Medium.ttf',      // Esta es la fuente que da el error ENOENT
+        bold: 'Roboto-Medium.ttf',
         italics: 'Roboto-Italic.ttf',
         bolditalics: 'Roboto-MediumItalic.ttf'
     }
