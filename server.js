@@ -10,38 +10,53 @@ const fs = require('fs'); // La mantengo porque estaba en tu archivo original
 const PdfPrinter = require('pdfmake'); // Esta es tu instancia principal de PdfPrinter
 const vfsFonts = require('pdfmake/build/vfs_fonts.js'); // Carga las fuentes virtuales
 
-// Elimina la línea const pdfMake = require('pdfmake/build/pdfmake.js'); si la tienes,
-// ya que es redundante con const PdfPrinter = require('pdfmake'); y puede causar confusión.
-
-// Establece los datos de vfs en la instancia PdfPrinter principal
-// Comprueba si el objeto vfs existe en el módulo vfsFonts importado en la ubicación esperada
-if (vfsFonts && vfsFonts.pdfMake && typeof vfsFonts.pdfMake.vfs === 'object') {
-    // Asígnalo a la propiedad vfs de la clase PdfPrinter principal
-    PdfPrinter.vfs = vfsFonts.pdfMake.vfs;
-} else {
-    // Registra un error si no se encuentra la estructura esperada.
-    // Esto ayuda a diagnosticar si vfs_fonts.js no se carga o no tiene la estructura esperada.
-    console.error("Error: No se pudo encontrar vfsFonts.pdfMake.vfs. Es posible que pdfMake no funcione correctamente con fuentes personalizadas.");
-    // Opcionalmente, verifica si PdfPrinter.vfs ya está configurado (por ejemplo, por un efecto secundario de requerir vfsFonts)
-    if (!PdfPrinter.vfs) {
-        console.error("CRÍTICO: PdfPrinter.vfs no está configurado. Asegúrate de que 'pdfmake' y 'vfs_fonts.js' estén correctamente instalados y cargados.");
+// Intenta asignar VFS
+if (vfsFontsModule && vfsFontsModule.pdfMake && typeof vfsFontsModule.pdfMake.vfs === 'object') {
+    PdfPrinter.vfs = vfsFontsModule.pdfMake.vfs;
+    console.log("VFS asignado correctamente desde vfsFontsModule.pdfMake.vfs.");
+    
+    // Verifica si las fuentes específicas están en el VFS
+    if (PdfPrinter.vfs) {
+        console.log("Claves en PdfPrinter.vfs (primeras 5):", Object.keys(PdfPrinter.vfs).slice(0, 5));
+        console.log("¿Está 'Roboto-Regular.ttf' en VFS?", PdfPrinter.vfs['Roboto-Regular.ttf'] ? 'Sí' : 'NO, FALTA!');
+        console.log("¿Está 'Roboto-Medium.ttf' en VFS (para negrita)?", PdfPrinter.vfs['Roboto-Medium.ttf'] ? 'Sí' : 'NO, FALTA!');
+        console.log("¿Está 'Roboto-Italic.ttf' en VFS (para cursiva)?", PdfPrinter.vfs['Roboto-Italic.ttf'] ? 'Sí' : 'NO, FALTA!');
+        console.log("¿Está 'Roboto-MediumItalic.ttf' en VFS (para negrita-cursiva)?", PdfPrinter.vfs['Roboto-MediumItalic.ttf'] ? 'Sí' : 'NO, FALTA!');
     } else {
-        // console.log("Info: PdfPrinter.vfs parece estar ya configurado.");
+        console.error("ERROR: PdfPrinter.vfs es null o undefined DESPUÉS de la asignación.");
+    }
+
+} else {
+    console.error("ERROR: La estructura de vfsFontsModule.pdfMake.vfs no es la esperada o falta.");
+    console.log("Tipo de vfsFontsModule:", typeof vfsFontsModule);
+    if (vfsFontsModule) {
+        console.log("Claves de vfsFontsModule:", Object.keys(vfsFontsModule));
+        if (vfsFontsModule.pdfMake) {
+            console.log("Claves de vfsFontsModule.pdfMake:", Object.keys(vfsFontsModule.pdfMake));
+        } else {
+            console.log("vfsFontsModule.pdfMake NO está definido.");
+        }
+    }
+    
+    // Comprueba si PdfPrinter.vfs ya estaba configurado de alguna manera
+    if (!PdfPrinter.vfs) {
+        console.error("FALLO CRÍTICO: PdfPrinter.vfs no se pudo configurar. La generación de PDF probablemente fallará para fuentes personalizadas.");
+    } else {
+        console.log("INFO: PdfPrinter.vfs ya estaba configurado. Esto es inusual si el bloque 'if' anterior falló.");
     }
 }
 
-// Define los descriptores de fuentes usando los nombres de las fuentes de vfs (esta parte está bien)
+// Define los descriptores de fuentes (esta parte está bien)
 const fonts = {
     Roboto: {
         normal: 'Roboto-Regular.ttf',
-        bold: 'Roboto-Medium.ttf',
+        bold: 'Roboto-Medium.ttf',      // Esta es la fuente que da el error ENOENT
         italics: 'Roboto-Italic.ttf',
         bolditalics: 'Roboto-MediumItalic.ttf'
     }
 };
 
-const printer = new PdfPrinter(fonts); // Crea una instancia usando el PdfPrinter donde se estableció vfs.
-
+const printer = new PdfPrinter(fonts);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV";
