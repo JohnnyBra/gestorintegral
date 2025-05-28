@@ -1474,7 +1474,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function renderTablaParticipaciones(excursionId, excursionNombre) {
         const container = document.getElementById('tablaParticipacionesContainer');
-        const container = document.getElementById('tablaParticipacionesContainer');
         const resumenContainer = document.getElementById('resumenParticipacionesContainer');
         if (!container || !resumenContainer) return;
 
