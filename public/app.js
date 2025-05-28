@@ -1919,42 +1919,39 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clear previous content and show loading message
         contentDiv.innerHTML = "<p>Cargando datos de tesorería...</p>"; 
         
-        const ingresosClaseDiv = document.getElementById('tesoreria-ingresos-clase'); // This div is already in index.html
-        if (!ingresosClaseDiv) {
-            console.error("Elemento tesoreria-ingresos-clase no encontrado en index.html");
-            // We will build the rest of the content in contentDiv
-        } else {
-            ingresosClaseDiv.innerHTML = '<p>Cargando ingresos por clase...</p>'; // Clear specific div
-        }
-
+        const ingresosClaseDiv = document.getElementById('tesoreria-ingresos-clase'); 
         let html = ''; // Main content for tesoreria-content, will be built piece by piece
+
+        if (ingresosClaseDiv) {
+            ingresosClaseDiv.innerHTML = '<p>Cargando ingresos por clase...</p>'; 
+            try {
+                // 1. Fetch and render Ingresos por Clase (moved inside the if block)
+                const ingresosData = await apiFetch('/tesoreria/ingresos-por-clase');
+                let ingresosHtml = '<h4>Ingresos Totales por Clase</h4>';
+                if (ingresosData && ingresosData.ingresos_por_clase && ingresosData.ingresos_por_clase.length > 0) {
+                    ingresosHtml += '<table class="tabla-datos tabla-tesoreria-ingresos"><thead><tr><th>Clase</th><th>Total Recaudado (€)</th></tr></thead><tbody>';
+                    ingresosData.ingresos_por_clase.forEach(item => {
+                        ingresosHtml += `<tr>
+                            <td>${item.nombre_clase}</td>
+                            <td>${formatCurrency(item.total_ingresos_clase)}</td>
+                        </tr>`;
+                    });
+                    ingresosHtml += '</tbody></table>';
+                } else {
+                    ingresosHtml += '<p>No hay datos de ingresos por clase disponibles.</p>';
+                }
+                ingresosClaseDiv.innerHTML = ingresosHtml;
+            } catch (error) {
+                console.error("Error cargando ingresos por clase:", error);
+                ingresosClaseDiv.innerHTML = `<p class="error-message">Error al cargar ingresos por clase: ${error.message}</p>`;
+            }
+        } else {
+            console.warn("Elemento tesoreria-ingresos-clase no encontrado en index.html. Omitiendo carga de ingresos por clase.");
+            // Intentionally not setting contentDiv.innerHTML here, as it would wipe out the loading message for the main tables
+        }
     
         try {
-            // 1. Fetch and render Ingresos por Clase
-            if (ingresosClaseDiv) { // Only attempt if the div exists
-                try {
-                    const ingresosData = await apiFetch('/tesoreria/ingresos-por-clase');
-                    let ingresosHtml = '<h4>Ingresos Totales por Clase</h4>'; // Re-add title as div content is cleared
-                    if (ingresosData && ingresosData.ingresos_por_clase && ingresosData.ingresos_por_clase.length > 0) {
-                        ingresosHtml += '<table class="tabla-datos tabla-tesoreria-ingresos"><thead><tr><th>Clase</th><th>Total Recaudado (€)</th></tr></thead><tbody>';
-                        ingresosData.ingresos_por_clase.forEach(item => {
-                            ingresosHtml += `<tr>
-                                <td>${item.nombre_clase}</td>
-                                <td>${formatCurrency(item.total_ingresos_clase)}</td>
-                            </tr>`;
-                        });
-                        ingresosHtml += '</tbody></table>';
-                    } else {
-                        ingresosHtml += '<p>No hay datos de ingresos por clase disponibles.</p>';
-                    }
-                    ingresosClaseDiv.innerHTML = ingresosHtml;
-                } catch (error) {
-                    console.error("Error cargando ingresos por clase:", error);
-                    ingresosClaseDiv.innerHTML = `<p class="error-message">Error al cargar ingresos por clase: ${error.message}</p>`;
-                }
-            }
-
-            // 2. Fetch and render Excursiones Pendientes y Pasadas
+            // 2. Fetch and render Excursiones Pendientes y Pasadas - This part remains largely the same
             const [pendientesData, pasadasData] = await Promise.all([
                 apiFetch('/tesoreria/excursiones-pendientes'),
                 apiFetch('/tesoreria/excursiones-pasadas')
@@ -1969,7 +1966,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${ex.fecha_excursion ? new Date(ex.fecha_excursion).toLocaleDateString() : 'N/D'}</td>
                         <td>${ex.lugar || 'N/D'}</td>
                         <td>${ex.coste_excursion_alumno !== null ? ex.coste_excursion_alumno.toFixed(2) : '0.00'}</td>
-                        <td>${ex.nombre_clase_destino || 'Global'}</td>
+                        <td>${ex.participating_scope_name || 'Global'}</td>
                         <td>${ex.nombre_creador || 'N/D'}</td>
                         <td><button class="edit-financials-button primary" data-excursion-id="${ex.id}">Ver/Editar Finanzas</button></td>
                     </tr>`;
@@ -2010,7 +2007,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${formatCurrency(ex.coste_total_participacion_entradas)}</td>
                         <td>${formatCurrency(ex.coste_total_actividad_global)}</td>
                         <td>${ex.lugar || 'N/D'}</td>
-                        <td>${ex.nombre_clase_destino || 'Global'}</td>
+                        <td>${ex.participating_scope_name || 'Global'}</td>
                         <td>${ex.nombre_creador || 'N/D'}</td>
                         <td><button class="edit-financials-button primary" data-excursion-id="${ex.id}">Ver/Editar Finanzas</button></td>
                     </tr>`;

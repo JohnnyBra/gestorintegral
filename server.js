@@ -2538,11 +2538,20 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
             dashboardData.totalExcursiones = totalExcursionesRow ? totalExcursionesRow.count : 0;
 
             const sqlProximasExcursionesDireccion = `
-                SELECT id, nombre_excursion, fecha_excursion 
+                SELECT id, nombre_excursion, fecha_excursion, para_clase_id, creada_por_usuario_id
                 FROM excursiones 
                 WHERE para_clase_id IS NULL AND fecha_excursion >= date('now') 
                 ORDER BY fecha_excursion ASC`;
-            dashboardData.proximasExcursiones = await dbAllAsync(sqlProximasExcursionesDireccion);
+            let proximasExcursionesDireccion = await dbAllAsync(sqlProximasExcursionesDireccion);
+
+            if (proximasExcursionesDireccion && proximasExcursionesDireccion.length > 0) {
+                proximasExcursionesDireccion = await Promise.all(proximasExcursionesDireccion.map(async (excursion) => {
+                    const scopeDetails = await getExcursionScopeDetails(excursion, dbGetAsync);
+                    return { ...excursion, ...scopeDetails };
+                }));
+            }
+            dashboardData.proximasExcursiones = proximasExcursionesDireccion;
+
         } else if (req.user.rol === 'COORDINACION') {
             dashboardData.mensaje = "Resumen del dashboard para Coordinador";
             const assignedClaseIds = await getCoordinadorClases(req.user.id);
@@ -2803,7 +2812,15 @@ app.get('/api/tesoreria/excursiones-pendientes', authenticateToken, async (req, 
             WHERE e.fecha_excursion >= date('now')
             ORDER BY e.fecha_excursion ASC;
         `;
-        const excursionesPendientes = await dbAllAsync(sql);
+        let excursionesPendientes = await dbAllAsync(sql);
+
+        if (excursionesPendientes && excursionesPendientes.length > 0) {
+            excursionesPendientes = await Promise.all(excursionesPendientes.map(async (excursion) => {
+                const scopeDetails = await getExcursionScopeDetails(excursion, dbGetAsync);
+                return { ...excursion, ...scopeDetails };
+            }));
+        }
+
         res.json({ excursiones_pendientes: excursionesPendientes });
     } catch (error) {
         console.error("  Error en GET /api/tesoreria/excursiones-pendientes:", error.message, error.stack);
@@ -2832,11 +2849,13 @@ app.get('/api/tesoreria/excursiones-pasadas', authenticateToken, async (req, res
         const excursionesPasadas = await dbAllAsync(sqlExcursionesPasadas);
 
         const augmentedExcursiones = [];
-        for (const excursion of excursionesPasadas) {
+        for (let excursion of excursionesPasadas) { // Changed to let
             // Reuse the helper function to get detailed financial calculations
             const financialDetails = await getFinancialDetailsForExcursion(excursion.id, excursion);
+            const scopeDetails = await getExcursionScopeDetails(excursion, dbGetAsync); // Add this line
             augmentedExcursiones.push({
                 ...excursion, // original excursion data
+                ...scopeDetails, // add scope details
                 ...financialDetails // add all calculated financial fields
             });
         }
