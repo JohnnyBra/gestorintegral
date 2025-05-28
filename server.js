@@ -6,7 +6,19 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
+const PdfPrinter = require('pdfmake');
+const fs = require('fs'); // Required for vfs_fonts
+
 const app = express();
+
+const printer = new PdfPrinter({
+    Roboto: {
+        normal: Buffer.from(require('pdfmake/build/vfs_fonts.js').pdfMake.vfs['Roboto-Regular.ttf'], 'base64'),
+        bold: Buffer.from(require('pdfmake/build/vfs_fonts.js').pdfMake.vfs['Roboto-Medium.ttf'], 'base64'),
+        italics: Buffer.from(require('pdfmake/build/vfs_fonts.js').pdfMake.vfs['Roboto-Italic.ttf'], 'base64'),
+        bolditalics: Buffer.from(require('pdfmake/build/vfs_fonts.js').pdfMake.vfs['Roboto-MediumItalic.ttf'], 'base64')
+    }
+});
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV";
 
@@ -193,6 +205,237 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (error) {
         console.error("Error en /api/auth/login:", error.message);
         res.status(500).json({ error: "Error interno del servidor." });
+    }
+});
+
+// Nuevo endpoint para generar PDF de reporte de pagos
+app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenticateToken, async (req, res) => {
+    const excursionId = parseInt(req.params.excursion_id);
+    const viewClaseId = req.query.view_clase_id ? parseInt(req.query.view_clase_id) : null;
+    const userRol = req.user.rol;
+    const userId = req.user.id;
+    const userClaseId = req.user.claseId;
+
+    if (isNaN(excursionId)) {
+        return res.status(400).json({ error: "ID de excursión inválido." });
+    }
+    if (viewClaseId && isNaN(viewClaseId)) {
+        return res.status(400).json({ error: "view_clase_id inválido." });
+    }
+
+    try {
+        const excursion = await dbGetAsync("SELECT id, nombre_excursion, fecha_excursion, para_clase_id FROM excursiones WHERE id = ?", [excursionId]);
+        if (!excursion) {
+            return res.status(404).json({ error: "Excursión no encontrada." });
+        }
+
+        let alumnosParticipaciones = [];
+        let sqlAlumnos;
+        const paramsAlumnos = [];
+
+        // Authorization and Data Fetching Logic
+        if (userRol === 'TUTOR') {
+            if (!userClaseId) {
+                return res.status(403).json({ error: "Tutor no asignado a una clase. No puede generar este reporte." });
+            }
+            if (excursion.para_clase_id !== null) { // Excursion for a specific class or cycle
+                const cicloClaseIds = await getTutorCicloClaseIds(userClaseId);
+                if (excursion.para_clase_id !== userClaseId && !cicloClaseIds.includes(excursion.para_clase_id)) {
+                    return res.status(403).json({ error: "Tutores solo pueden generar reportes para excursiones de su clase o su ciclo." });
+                }
+                // If specific class or cycle, report shows only students from that specific target class of the excursion
+                sqlAlumnos = `
+                    SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
+                    FROM alumnos a
+                    JOIN clases c ON a.clase_id = c.id
+                    LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
+                    WHERE a.clase_id = ?
+                    ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
+                paramsAlumnos.push(excursionId, excursion.para_clase_id);
+            } else { // Global excursion
+                 if (viewClaseId && viewClaseId !== userClaseId) {
+                    return res.status(403).json({ error: "Tutores solo pueden ver el reporte para su propia clase en excursiones globales." });
+                }
+                sqlAlumnos = `
+                    SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
+                    FROM alumnos a
+                    JOIN clases c ON a.clase_id = c.id
+                    LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
+                    WHERE a.clase_id = ?
+                    ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
+                paramsAlumnos.push(excursionId, userClaseId);
+            }
+        } else if (userRol === 'DIRECCION' || userRol === 'TESORERIA') {
+            if (excursion.para_clase_id !== null) { // Excursion for a specific class
+                sqlAlumnos = `
+                    SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
+                    FROM alumnos a
+                    JOIN clases c ON a.clase_id = c.id
+                    LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
+                    WHERE a.clase_id = ?
+                    ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
+                paramsAlumnos.push(excursionId, excursion.para_clase_id);
+            } else { // Global excursion
+                if (viewClaseId) { // If a specific class is requested for the view
+                    sqlAlumnos = `
+                        SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
+                        FROM alumnos a
+                        JOIN clases c ON a.clase_id = c.id
+                        LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
+                        WHERE a.clase_id = ?
+                        ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
+                    paramsAlumnos.push(excursionId, viewClaseId);
+                } else { // All students from all classes with participation
+                    sqlAlumnos = `
+                        SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
+                        FROM alumnos a
+                        JOIN clases c ON a.clase_id = c.id
+                        JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
+                        ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
+                    paramsAlumnos.push(excursionId);
+                }
+            }
+        } else {
+            return res.status(403).json({ error: "Rol no autorizado para generar este reporte." });
+        }
+
+        alumnosParticipaciones = await dbAllAsync(sqlAlumnos, paramsAlumnos);
+
+        // Prepare data for PDF
+        const alumnosPagados = [];
+        const alumnosPendientesOParciales = [];
+
+        alumnosParticipaciones.forEach(ap => {
+            const alumnoData = {
+                nombre_completo: ap.nombre_completo,
+                nombre_clase: ap.nombre_clase,
+                pago_realizado: ap.pago_realizado || 'No', // Default to 'No' if null
+                cantidad_pagada: ap.cantidad_pagada !== null && ap.cantidad_pagada !== undefined ? ap.cantidad_pagada : 0 // Default to 0 if null/undefined
+            };
+            if (alumnoData.pago_realizado === 'Sí') {
+                alumnosPagados.push(alumnoData);
+            } else {
+                alumnosPendientesOParciales.push(alumnoData);
+            }
+        });
+
+        // PDF Definition
+        const docDefinition = {
+            content: [
+                { text: 'Reporte de Pagos de Excursión', style: 'header' },
+                { text: `Excursión: ${excursion.nombre_excursion}`, style: 'subheader' },
+                { text: `Fecha: ${new Date(excursion.fecha_excursion).toLocaleDateString('es-ES')}`, style: 'subheader', margin: [0, 0, 0, 20] },
+            ],
+            styles: {
+                header: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] },
+                subheader: { fontSize: 14, bold: true, margin: [0, 0, 0, 5] },
+                tableHeader: { bold: true, fontSize: 10, color: 'black' },
+                tableCell: { fontSize: 9 },
+                classHeader: { fontSize: 12, bold: true, margin: [0, 10, 0, 5], color: 'blue' }
+            },
+            defaultStyle: { font: 'Roboto' }
+        };
+
+        const buildTable = (alumnos, tituloSeccion) => {
+            const body = [[
+                { text: 'Nombre Alumno', style: 'tableHeader' },
+                { text: 'Clase', style: 'tableHeader' },
+                { text: 'Estado Pago', style: 'tableHeader' },
+                { text: 'Cantidad Pagada (€)', style: 'tableHeader' }
+            ]];
+            alumnos.forEach(a => {
+                body.push([
+                    { text: a.nombre_completo, style: 'tableCell' },
+                    { text: a.nombre_clase, style: 'tableCell' },
+                    { text: a.pago_realizado, style: 'tableCell' },
+                    { text: a.cantidad_pagada.toFixed(2), style: 'tableCell', alignment: 'right' }
+                ]);
+            });
+            return [
+                { text: tituloSeccion, style: 'subheader', margin: [0, 15, 0, 5] },
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: ['*', 'auto', 'auto', 'auto'],
+                        body: body
+                    },
+                    layout: 'lightHorizontalLines'
+                }
+            ];
+        };
+        
+        const buildTableGroupedByClass = (alumnos, tituloSeccion) => {
+            const content = [{ text: tituloSeccion, style: 'subheader', margin: [0, 15, 0, 5] }];
+            const alumnosPorClase = alumnos.reduce((acc, alumno) => {
+                (acc[alumno.nombre_clase] = acc[alumno.nombre_clase] || []).push(alumno);
+                return acc;
+            }, {});
+
+            Object.keys(alumnosPorClase).sort().forEach(nombreClase => {
+                content.push({ text: `Clase: ${nombreClase}`, style: 'classHeader' });
+                const body = [[
+                    { text: 'Nombre Alumno', style: 'tableHeader' },
+                    { text: 'Estado Pago', style: 'tableHeader' },
+                    { text: 'Cantidad Pagada (€)', style: 'tableHeader' }
+                ]];
+                alumnosPorClase[nombreClase].forEach(a => {
+                    body.push([
+                        { text: a.nombre_completo, style: 'tableCell' },
+                        { text: a.pago_realizado, style: 'tableCell' },
+                        { text: a.cantidad_pagada.toFixed(2), style: 'tableCell', alignment: 'right' }
+                    ]);
+                });
+                content.push({
+                    table: {
+                        headerRows: 1,
+                        widths: ['*', 'auto', 'auto'],
+                        body: body
+                    },
+                    layout: 'lightHorizontalLines'
+                });
+            });
+            return content;
+        };
+
+
+        const isGlobalExcursionViewAll = (userRol === 'DIRECCION' || userRol === 'TESORERIA') && excursion.para_clase_id === null && !viewClaseId;
+
+        if (alumnosPagados.length > 0) {
+            if (isGlobalExcursionViewAll) {
+                docDefinition.content.push(...buildTableGroupedByClass(alumnosPagados, 'Alumnos Pagados'));
+            } else {
+                docDefinition.content.push(...buildTable(alumnosPagados, 'Alumnos Pagados'));
+            }
+        } else {
+            docDefinition.content.push({ text: 'Alumnos Pagados', style: 'subheader', margin: [0, 15, 0, 5] });
+            docDefinition.content.push({ text: 'No hay alumnos con pago completo.', margin: [0, 0, 0, 10] });
+        }
+
+        if (alumnosPendientesOParciales.length > 0) {
+             if (isGlobalExcursionViewAll) {
+                docDefinition.content.push(...buildTableGroupedByClass(alumnosPendientesOParciales, 'Alumnos con Pago Pendiente o Parcial'));
+            } else {
+                docDefinition.content.push(...buildTable(alumnosPendientesOParciales, 'Alumnos con Pago Pendiente o Parcial'));
+            }
+        } else {
+            docDefinition.content.push({ text: 'Alumnos con Pago Pendiente o Parcial', style: 'subheader', margin: [0, 15, 0, 5] });
+            docDefinition.content.push({ text: 'No hay alumnos con pago pendiente o parcial.', margin: [0, 0, 0, 10] });
+        }
+        
+        // PDF Generation
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+        const chunks = [];
+        pdfDoc.on('data', chunk => chunks.push(chunk));
+        pdfDoc.on('end', () => {
+            const resultBuffer = Buffer.concat(chunks);
+            res.contentType('application/pdf');
+            res.send(resultBuffer);
+        });
+        pdfDoc.end();
+
+    } catch (error) {
+        console.error(`Error en GET /api/excursiones/${excursionId}/participaciones/reporte_pagos:`, error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al generar el reporte PDF." });
     }
 });
 
@@ -1470,6 +1713,137 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// Nuevo endpoint para generar PDF de información general de la excursión
+app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req, res) => {
+    const excursionId = parseInt(req.params.excursion_id);
+    const { id: userId, rol: userRol, claseId: userClaseId } = req.user;
+
+    if (isNaN(excursionId)) {
+        return res.status(400).json({ error: "ID de excursión inválido." });
+    }
+
+    try {
+        const excursion = await dbGetAsync(
+            `SELECT nombre_excursion, actividad_descripcion, lugar, fecha_excursion, 
+                    hora_salida, hora_llegada, vestimenta, transporte, 
+                    justificacion_texto, coste_excursion_alumno, notas_excursion,
+                    para_clase_id, creada_por_usuario_id 
+             FROM excursiones 
+             WHERE id = ?`,
+            [excursionId]
+        );
+
+        if (!excursion) {
+            return res.status(404).json({ error: "Excursión no encontrada." });
+        }
+
+        // Authorization Logic (similar to GET /api/excursiones/:id)
+        let canAccess = false;
+        if (userRol === 'DIRECCION' || userRol === 'TESORERIA') {
+            canAccess = true;
+        } else if (userRol === 'TUTOR') {
+            if (!userClaseId && excursion.para_clase_id !== null) {
+                // Tutor sin clase no puede ver excursiones específicas de clase (a menos que sea global)
+            } else if (excursion.para_clase_id === null || excursion.para_clase_id === userClaseId) {
+                canAccess = true;
+            } else {
+                const cicloClaseIds = userClaseId ? await getTutorCicloClaseIds(userClaseId) : [];
+                if (cicloClaseIds && cicloClaseIds.includes(excursion.para_clase_id)) {
+                    canAccess = true;
+                }
+            }
+        } else if (userRol === 'COORDINACION') {
+            const assignedClaseIds = await getCoordinadorClases(userId); // Assuming getCoordinadorClases is available
+            if (excursion.para_clase_id === null || (excursion.para_clase_id && assignedClaseIds.includes(excursion.para_clase_id))) {
+                canAccess = true;
+            }
+        }
+
+        if (!canAccess) {
+            return res.status(403).json({ error: "No tiene permisos para ver la información de esta excursión." });
+        }
+
+        // PDF Definition
+        const docDefinition = {
+            content: [
+                { text: excursion.nombre_excursion, style: 'mainTitle', alignment: 'center', margin: [0, 0, 0, 20] },
+
+                { text: 'Descripción de la Actividad:', style: 'fieldLabel' },
+                { text: excursion.actividad_descripcion || 'No especificada', style: 'fieldValue', margin: [0, 0, 0, 10] },
+
+                { text: 'Lugar:', style: 'fieldLabel' },
+                { text: excursion.lugar || 'No especificado', style: 'fieldValue', margin: [0, 0, 0, 10] },
+
+                { text: 'Fecha:', style: 'fieldLabel' },
+                { text: excursion.fecha_excursion ? new Date(excursion.fecha_excursion).toLocaleDateString('es-ES') : 'No especificada', style: 'fieldValue', margin: [0, 0, 0, 10] },
+
+                {
+                    columns: [
+                        {
+                            width: 'auto',
+                            text: [
+                                { text: 'Hora de Salida: ', style: 'fieldLabel' },
+                                { text: excursion.hora_salida || 'No especificada', style: 'fieldValue' }
+                            ]
+                        },
+                        {
+                            width: '*',
+                            text: [
+                                { text: 'Hora de Llegada: ', style: 'fieldLabel' },
+                                { text: excursion.hora_llegada || 'No especificada', style: 'fieldValue' }
+                            ],
+                            margin: [20, 0, 0, 0] // Add some space between columns
+                        }
+                    ],
+                    columnGap: 10,
+                    margin: [0, 0, 0, 10]
+                },
+
+
+                { text: 'Coste por Alumno:', style: 'fieldLabel' },
+                { text: `${(excursion.coste_excursion_alumno || 0).toFixed(2).replace('.', ',')} €`, style: 'fieldValue', margin: [0, 0, 0, 10] },
+
+                { text: 'Vestimenta Requerida:', style: 'fieldLabel' },
+                { text: excursion.vestimenta || 'No especificada', style: 'fieldValue', margin: [0, 0, 0, 10] },
+
+                { text: 'Medio de Transporte:', style: 'fieldLabel' },
+                { text: excursion.transporte || 'No especificado', style: 'fieldValue', margin: [0, 0, 0, 10] },
+
+                { text: 'Justificación Pedagógica:', style: 'fieldLabel' },
+                { text: excursion.justificacion_texto || 'No especificada', style: 'fieldValue', margin: [0, 0, 0, 10] },
+            ],
+            styles: {
+                mainTitle: { fontSize: 22, bold: true, font: 'Roboto' },
+                fieldLabel: { fontSize: 12, bold: true, color: '#333333', font: 'Roboto' },
+                fieldValue: { fontSize: 12, color: '#555555', font: 'Roboto', margin: [0, 2, 0, 0] } // small top margin for value
+            },
+            defaultStyle: {
+                font: 'Roboto'
+            }
+        };
+
+        if (excursion.notas_excursion && excursion.notas_excursion.trim() !== '') {
+            docDefinition.content.push({ text: 'Notas Adicionales:', style: 'fieldLabel', margin: [0, 10, 0, 0] });
+            docDefinition.content.push({ text: excursion.notas_excursion, style: 'fieldValue', margin: [0, 0, 0, 10] });
+        }
+        
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+        const chunks = [];
+        pdfDoc.on('data', chunk => chunks.push(chunk));
+        pdfDoc.on('end', () => {
+            const resultBuffer = Buffer.concat(chunks);
+            res.contentType('application/pdf');
+            res.send(resultBuffer);
+        });
+        pdfDoc.end();
+
+    } catch (error) {
+        console.error(`Error en GET /api/excursiones/${excursionId}/info_pdf:`, error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al generar el PDF de información." });
+    }
+});
+
+
 app.delete('/api/excursiones/:id', authenticateToken, async (req, res) => {
     const excursionId = parseInt(req.params.id);
     if (isNaN(excursionId)) {
@@ -2168,6 +2542,70 @@ app.post('/api/participaciones', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: "Error de clave foránea: el alumno o la excursión no existen." });
         }
         res.status(500).json({ error: "Error interno del servidor al guardar la participación." });
+    }
+});
+
+// Eliminar Participación
+app.delete('/api/participaciones/:participacion_id', authenticateToken, async (req, res) => {
+    const participacionId = parseInt(req.params.participacion_id);
+    const { id: userId, rol: userRol, claseId: userClaseId } = req.user;
+
+    if (isNaN(participacionId)) {
+        return res.status(400).json({ error: "ID de participación inválido." });
+    }
+
+    try {
+        const participacion = await dbGetAsync(
+            `SELECT p.*, a.clase_id as alumno_clase_id, e.para_clase_id as excursion_para_clase_id, e.creada_por_usuario_id as excursion_creada_por_id
+             FROM participaciones_excursion p
+             JOIN alumnos a ON p.alumno_id = a.id
+             JOIN excursiones e ON p.excursion_id = e.id
+             WHERE p.id = ?`,
+            [participacionId]
+        );
+
+        if (!participacion) {
+            return res.status(404).json({ error: "Participación no encontrada." });
+        }
+
+        let puedeEliminar = false;
+
+        if (userRol === 'DIRECCION') {
+            puedeEliminar = true;
+        } else if (userRol === 'TUTOR') {
+            if (!userClaseId) {
+                return res.status(403).json({ error: "Tutor no asignado a una clase. No puede eliminar participaciones." });
+            }
+            if (participacion.alumno_clase_id === userClaseId) {
+                if (participacion.excursion_para_clase_id === null || participacion.excursion_para_clase_id === userClaseId) {
+                    puedeEliminar = true;
+                } else {
+                    const cicloClasesDelTutor = await getTutorCicloClaseIds(userClaseId);
+                    if (cicloClasesDelTutor.includes(participacion.excursion_para_clase_id)) {
+                        puedeEliminar = true;
+                    }
+                }
+            }
+        }
+        // Tesorería no tiene permisos para eliminar según los requisitos.
+
+        if (!puedeEliminar) {
+            return res.status(403).json({ error: "No tiene permisos para eliminar esta participación." });
+        }
+
+        const result = await dbRunAsync("DELETE FROM participaciones_excursion WHERE id = ?", [participacionId]);
+
+        if (result.changes === 0) {
+            // Esto podría ocurrir si se eliminó justo después de la verificación de existencia.
+            // Considerarlo un éxito o un 404 es una opción. Para simplicidad, se considera éxito.
+            return res.status(200).json({ message: "Participación no encontrada o ya eliminada, ninguna acción realizada." });
+        }
+
+        res.status(200).json({ message: "Participación eliminada exitosamente." });
+
+    } catch (error) {
+        console.error(`Error en DELETE /api/participaciones/${participacionId}:`, error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al eliminar la participación." });
     }
 });
 

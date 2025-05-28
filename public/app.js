@@ -1474,44 +1474,115 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function renderTablaParticipaciones(excursionId, excursionNombre) {
         const container = document.getElementById('tablaParticipacionesContainer');
+        const container = document.getElementById('tablaParticipacionesContainer');
         const resumenContainer = document.getElementById('resumenParticipacionesContainer');
         if (!container || !resumenContainer) return;
+
         container.innerHTML = `<p>Cargando para "${excursionNombre}"...</p>`;
-        resumenContainer.innerHTML = ''; 
-        let endpoint = `/excursiones/${excursionId}/participaciones`;
-        
-        const filtroClaseSelectElement = document.getElementById('selectFiltroClaseParticipaciones');
-        let viewClaseId = null;
-
-        if (currentUser.rol === 'DIRECCION' && filtroClaseSelectElement && filtroClaseSelectElement.value) {
-            viewClaseId = filtroClaseSelectElement.value;
-        }
-
-        if (viewClaseId) {
-            endpoint += `?view_clase_id=${viewClaseId}`;
-        }
+        resumenContainer.innerHTML = '';
 
         try {
-            const data = await apiFetch(endpoint);
-            if (!data || !data.alumnosParticipaciones) {
-                container.innerHTML = `<p class="error-message">No se pudieron cargar datos.</p>`;
+            // Fetch excursion details first to know its scope (para_clase_id)
+            const excursionDetails = await apiFetch(`/excursiones/${excursionId}`);
+            if (!excursionDetails) {
+                container.innerHTML = `<p class="error-message">No se pudieron cargar los detalles de la excursión.</p>`;
                 return;
             }
+
+            let endpoint = `/excursiones/${excursionId}/participaciones`;
+            const filtroClaseSelectElement = document.getElementById('selectFiltroClaseParticipaciones');
+            let viewClaseId = null;
+
+            if ((currentUser.rol === 'DIRECCION' || currentUser.rol === 'TESORERIA') && filtroClaseSelectElement && filtroClaseSelectElement.value) {
+                viewClaseId = filtroClaseSelectElement.value;
+            }
+
+            if (viewClaseId) {
+                endpoint += `?view_clase_id=${viewClaseId}`;
+            }
+
+            const data = await apiFetch(endpoint);
+            if (!data || !data.alumnosParticipaciones) {
+                container.innerHTML = `<p class="error-message">No se pudieron cargar datos de participación.</p>`;
+                return;
+            }
+
             const r = data.resumen;
             let resumenHtml = `<h4>Resumen: "${excursionNombre}"</h4><div class="resumen-grid">
                 <div>Total: ${r.totalAlumnos}</div><div>Autorización: Sí ${r.totalConAutorizacionFirmadaSi} | No ${r.totalConAutorizacionFirmadaNo}</div>
                 <div>Pago: Pagado ${r.totalAlumnosPagadoGlobal} | Parcial ${r.totalConPagoRealizadoParcial} | No ${r.totalConPagoRealizadoNo}</div>
                 <div>Recaudado: ${r.sumaTotalCantidadPagadaGlobal.toFixed(2)} €</div></div>`;
+            
+            if (currentUser.rol === 'TUTOR' || currentUser.rol === 'DIRECCION' || currentUser.rol === 'TESORERIA') {
+                resumenHtml += `<button id="btnGenerarReportePagos" data-excursion-id="${excursionId}" data-excursion-nombre="${excursionNombre}" class="info" style="margin-top: 10px; margin-bottom: 10px;"><i class="fas fa-file-pdf"></i> Descargar Reporte Pagos (PDF)</button>`;
+            }
+
             if (r.resumenPorClase && r.resumenPorClase.length > 0) {
                 resumenHtml += `<h5>Detalle Clase:</h5><table class="tabla-datos tabla-resumen-clase"><thead><tr><th>Clase</th><th>Alumnos</th><th>Pagado</th><th>Recaudado (€)</th></tr></thead><tbody>`;
                 r.resumenPorClase.forEach(rc => resumenHtml += `<tr><td>${rc.nombre_clase}</td><td>${rc.alumnosEnClase}</td><td>${rc.totalAlumnosPagadoEnClase}</td><td>${rc.sumaTotalCantidadPagadaEnClase.toFixed(2)}</td></tr>`);
                 resumenHtml += `</tbody></table>`;
             }
             resumenContainer.innerHTML = resumenHtml;
-            let html = `<h4>Participantes: ${excursionNombre}</h4><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th></tr></thead><tbody>`;
+
+            if (document.getElementById('btnGenerarReportePagos')) {
+                document.getElementById('btnGenerarReportePagos').addEventListener('click', async function() {
+                    const exId = this.dataset.excursionId;
+                    const exNombre = this.dataset.excursionNombre;
+                    let urlApiReporte = `${API_BASE_URL}/excursiones/${exId}/participaciones/reporte_pagos`;
+                    let params = new URLSearchParams();
+
+                    // Fetch fresh excursion details to check para_clase_id for report generation logic
+                    const currentExcursionDetailsForReport = await apiFetch(`/excursiones/${exId}`);
+
+                    if ((currentUser.rol === 'DIRECCION' || currentUser.rol === 'TESORERIA') && currentExcursionDetailsForReport.para_clase_id === null) {
+                        const filtroClaseSelect = document.getElementById('selectFiltroClaseParticipaciones');
+                        if (filtroClaseSelect && filtroClaseSelect.value) {
+                            params.append('view_clase_id', filtroClaseSelect.value);
+                        }
+                    }
+                    // For Tutors on global excursions, backend handles their class scope.
+                    // For specific class excursions, backend handles the scope.
+
+                    if (params.toString()) {
+                        urlApiReporte += `?${params.toString()}`;
+                    }
+
+                    try {
+                        const response = await fetch(urlApiReporte, {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${currentToken}` }
+                        });
+
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const downloadUrl = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.style.display = 'none';
+                            a.href = downloadUrl;
+                            a.download = `Reporte_Pagos_${exNombre.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(downloadUrl);
+                            a.remove();
+                        } else {
+                            const errorData = await response.json();
+                            showGlobalError(errorData.error || `Error ${response.status} al generar el PDF.`);
+                        }
+                    } catch (err) {
+                        showGlobalError(`Error de red o conexión al generar PDF: ${err.message}`);
+                    }
+                });
+            }
+
+            let html = `<h4>Participantes: ${excursionNombre}</h4><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.alumnosParticipaciones.length > 0) {
                 data.alumnosParticipaciones.forEach(ap => {
                     const esCampoDeshabilitado = ap.autorizacion_firmada === 'Sí' && ap.fecha_autorizacion;
+                    let accionesParticipacionHtml = '';
+                    if (ap.participacion_id && (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR')) {
+                        accionesParticipacionHtml = `<button class="btn-eliminar-participacion danger" data-participacion-id="${ap.participacion_id}" data-alumno-nombre="${ap.nombre_completo}"><i class="fas fa-trash-alt"></i> Eliminar</button>`;
+                    }
+
                     html += `<tr data-participacion-id="${ap.participacion_id || ''}" data-alumno-id="${ap.alumno_id}">
                         <td>${ap.nombre_completo}</td><td>${ap.nombre_clase}</td>
                         <td><select class="participacion-field-edit" data-field="autorizacion_firmada" ${esCampoDeshabilitado?'disabled':''}><option value="No" ${ap.autorizacion_firmada==='No'?'selected':''}>No</option><option value="Sí" ${ap.autorizacion_firmada==='Sí'?'selected':''}>Sí</option></select></td>
@@ -1520,16 +1591,43 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td><input type="number" step="0.01" class="participacion-field-edit" data-field="cantidad_pagada" value="${ap.cantidad_pagada||0}" min="0" style="width:70px;"></td>
                         <td><input type="date" class="participacion-field-edit" data-field="fecha_pago" value="${ap.fecha_pago||''}"></td>
                         <td><textarea class="participacion-field-edit" data-field="notas_participacion" rows="1">${ap.notas_participacion||''}</textarea></td>
-                        <td class="status-message-cell"></td></tr>`;});
-            } else { html += `<tr><td colspan="9" style="text-align:center;">No hay alumnos.</td></tr>`; }
+                        <td class="status-message-cell"></td>
+                        <td class="actions-cell">${accionesParticipacionHtml}</td></tr>`;
+                });
+            } else { html += `<tr><td colspan="10" style="text-align:center;">No hay alumnos con participación registrada o la clase seleccionada no tiene alumnos.</td></tr>`; }
             html += `</tbody></table>`;
             container.innerHTML = html;
+
+            // Event listener for editing fields
             container.querySelectorAll('.participacion-field-edit').forEach(input => {
                 const eventType = (input.tagName === 'SELECT' || input.type === 'date') ? 'change' : 'blur';
                 input.addEventListener(eventType, (e) => saveParticipacionOnFieldChange(e.target, excursionId));
             });
+
+            // Event delegation for delete buttons
+            container.addEventListener('click', async function(event) {
+                if (event.target.classList.contains('btn-eliminar-participacion') || event.target.closest('.btn-eliminar-participacion')) {
+                    const button = event.target.closest('.btn-eliminar-participacion');
+                    const participacionId = button.dataset.participacionId;
+                    const alumnoNombre = button.dataset.alumnoNombre;
+                    const statusCell = button.closest('tr').querySelector('.status-message-cell');
+
+                    if (confirm(`¿Está seguro de que desea eliminar la participación de ${alumnoNombre}? Esta acción no se puede deshacer.`)) {
+                        if(statusCell) showTemporaryStatusInCell(statusCell, "Eliminando...", false);
+                        try {
+                            await apiFetch(`/participaciones/${participacionId}`, 'DELETE');
+                            showGlobalError(`Participación de ${alumnoNombre} eliminada exitosamente.`, document.getElementById('resumenParticipacionesContainer')); // Show global for better visibility
+                            renderTablaParticipaciones(excursionId, excursionNombre); // Refresh the table
+                        } catch (error) {
+                            if(statusCell) showTemporaryStatusInCell(statusCell, `Error: ${error.message}`, true, 5000);
+                            else showGlobalError(`Error al eliminar participación: ${error.message}`, document.getElementById('resumenParticipacionesContainer'));
+                        }
+                    }
+                }
+            });
+
         } catch (error) {
-            container.innerHTML = `<p class="error-message">Error cargando: ${error.message}</p>`;
+            container.innerHTML = `<p class="error-message">Error cargando participaciones: ${error.message}</p>`;
             resumenContainer.innerHTML = '';
         }
     }
@@ -1805,6 +1903,77 @@ document.addEventListener('DOMContentLoaded', () => {
         if(modalExcursionJustificacion) modalExcursionJustificacion.textContent = excursionData.justificacion_texto || 'N/A';
         if(modalExcursionNotas) modalExcursionNotas.textContent = excursionData.notas_excursion || 'N/A';
         if(modalExcursionParticipants) modalExcursionParticipants.textContent = excursionData.participating_scope_name || 'N/A';
+
+        // Add the "Download Info for Families" button
+        const actionsContainer = excursionDetailModal.querySelector('.modal-actions-container') || excursionDetailModal.querySelector('.modal-content'); // Prefer a specific actions container
+        if (actionsContainer) {
+            const existingButton = actionsContainer.querySelector('#btnGenerarInfoFamiliasPdf');
+            if (existingButton) existingButton.remove(); // Remove if already exists to prevent duplicates
+
+            const downloadInfoButton = document.createElement('button');
+            downloadInfoButton.id = 'btnGenerarInfoFamiliasPdf';
+            downloadInfoButton.className = 'info'; // Use a suitable class, 'info' or 'secondary'
+            downloadInfoButton.innerHTML = '<i class="fas fa-file-pdf"></i> Descargar Info Familias (PDF)';
+            downloadInfoButton.setAttribute('data-excursion-id', excursionData.id);
+            downloadInfoButton.setAttribute('data-excursion-nombre', excursionData.nombre_excursion);
+            
+            // Add some margin to the button
+            downloadInfoButton.style.marginTop = '15px';
+            downloadInfoButton.style.marginRight = '10px';
+
+
+            // Append to a new line or a specific div if available for better layout
+            const buttonWrapper = document.createElement('div');
+            buttonWrapper.style.textAlign = 'right'; // Align button to the right
+            buttonWrapper.style.marginTop = '10px';
+            buttonWrapper.appendChild(downloadInfoButton);
+            
+            // Try to append after existing content in the modal body or before the close button
+            const modalBody = excursionDetailModal.querySelector('.modal-body-content'); // Assuming a class for the main content area
+            if (modalBody) {
+                 modalBody.appendChild(buttonWrapper);
+            } else {
+                // Fallback: append before the close button if no specific body/actions container
+                const modalFooter = excursionDetailModal.querySelector('.modal-footer'); // Or any other logical place
+                if (modalFooter) {
+                    modalFooter.insertBefore(buttonWrapper, modalFooter.firstChild);
+                } else {
+                     actionsContainer.appendChild(buttonWrapper); // General fallback
+                }
+            }
+
+
+            downloadInfoButton.addEventListener('click', async function() {
+                const excursionId = this.dataset.excursionId;
+                const excursionNombre = this.dataset.excursionNombre;
+                const apiUrl = `${API_BASE_URL}/excursiones/${excursionId}/info_pdf`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${currentToken}` }
+                    });
+
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const downloadUrl = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = downloadUrl;
+                        a.download = `Info_Excursion_${excursionNombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(downloadUrl);
+                        a.remove();
+                    } else {
+                        const errorData = await response.json();
+                        showGlobalError(errorData.error || `Error ${response.status} al generar el PDF de información.`);
+                    }
+                } catch (err) {
+                    showGlobalError(`Error de red o conexión al generar PDF de información: ${err.message}`);
+                }
+            });
+        }
         
         excursionDetailModal.style.display = 'block'; 
     }
