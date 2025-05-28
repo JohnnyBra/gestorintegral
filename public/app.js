@@ -1,15 +1,9 @@
-// --- public/app.js (Revisado y Mejorado a partir de tu versión) ---
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Estado Global del Frontend ---
     let currentCalendarYear = new Date().getFullYear();
-    let currentCalendarMonth = new Date().getMonth(); // 0-indexed (0 for January, 11 for December)
+    let currentCalendarMonth = new Date().getMonth(); 
     let currentUser = null;
     let currentToken = null;
-    // let selectedCoordClaseId = null;  // Eliminado
-    // let selectedCoordClaseNombre = null; // Eliminado
 
-
-    // --- URLs y Selectores del DOM ---
     const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:3000/api`;
 
     const loginSection = document.getElementById('login-section');
@@ -33,8 +27,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const formAdminUsuarioWrapper = document.getElementById('formAdminUsuarioWrapper');
     const sharedExcursionsContentDiv = document.getElementById('shared-excursions-content');
 
-
-    // --- Modal Element Variables ---
     const excursionDetailModal = document.getElementById('excursion-detail-modal');
     const modalExcursionTitle = document.getElementById('modal-excursion-title');
     const modalExcursionDate = document.getElementById('modal-excursion-date');
@@ -47,10 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalExcursionTransporte = document.getElementById('modal-excursion-transporte');
     const modalExcursionJustificacion = document.getElementById('modal-excursion-justificacion');
     const modalExcursionNotas = document.getElementById('modal-excursion-notas');
-    const modalExcursionParticipants = document.getElementById('modal-excursion-participants'); // Added for new field
+    const modalExcursionParticipants = document.getElementById('modal-excursion-participants');
     const modalCloseButton = document.getElementById('modal-close-button');
 
-    // --- Tesoreria Financial Modal Elements ---
     const tesoreriaFinancialModal = document.getElementById('tesoreria-excursion-financial-modal');
     const financialModalTitle = document.getElementById('financial-modal-title');
     const financialModalExcursionNombre = document.getElementById('financial-modal-excursion-nombre');
@@ -70,17 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const financialModalCloseButton = document.getElementById('financial-modal-close-button');
     let currentExcursionIdForFinancialModal = null;
 
-
-    console.log("app.js cargado y DOMContentLoaded disparado. API_BASE_URL:", API_BASE_URL);
-    if (!loginForm) console.error("Elemento loginForm NO encontrado.");
-    if (!excursionDetailModal) console.error("Elemento excursionDetailModal NO encontrado.");
-
-
-    // --- Funciones Auxiliares ---
     async function apiFetch(endpoint, method = 'GET', body = null, token = currentToken) {
         const url = `${API_BASE_URL}${endpoint}`;
-        console.log(`[apiFetch] INICIO: ${method} ${url}`);
-
         const headers = { 'Content-Type': 'application/json' };
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
@@ -100,7 +82,6 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 responseData = responseText ? JSON.parse(responseText) : {};
             } catch (e) {
-                console.error(`[apiFetch] Error parseando respuesta JSON de ${url}. Status: ${response.status}. Error: ${e.message}. ResponseText: ${responseText.substring(0,200)}`);
                 throw new Error(`Error HTTP ${response.status} (${response.statusText}). Respuesta no JSON.`);
             }
             
@@ -113,7 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return responseData;
         } catch (error) {
-            console.error(`[apiFetch] CATCH GENERAL (${method} ${url}):`, error.message);
             if (error.message.toLowerCase().includes("failed to fetch")) {
                 showGlobalError("No se pudo conectar con el servidor. Verifica tu conexión y que el servidor esté corriendo.");
             } else if (!error.message.toLowerCase().includes("sesión inválida")) {
@@ -124,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showGlobalError(message, targetDiv = null) {
-        console.error("ERROR APP:", message);
+        console.error("ERROR APP:", message); // This console.error is acceptable for a global error handler
         if (targetDiv) {
             targetDiv.innerHTML = `<p class="error-message">${message}</p>`;
         } else if (loginErrorP && loginSection && loginSection.style.display === 'block') {
@@ -134,14 +114,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Autenticación ---
     function handleAuthClick() { navigateTo('login'); }
     if (authButton) authButton.onclick = handleAuthClick;
 
     function handleLogout() {
         currentUser = null; currentToken = null;
         localStorage.removeItem('authToken'); localStorage.removeItem('userInfo');
-        window.dashboardExcursions = []; // Clear excursions on logout
+        window.dashboardExcursions = []; 
         updateUIAfterLogout();
         navigateTo('login');
     }
@@ -200,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (signoutButton) signoutButton.style.display = 'none';
         if (mainNavSidebar) mainNavSidebar.style.display = 'none';
         mainSections.forEach(s => { if (s) s.style.display = 'none'; });
-        if(document.getElementById('excursion-calendar-container')) document.getElementById('excursion-calendar-container').innerHTML = ''; // Clear calendar
+        if(document.getElementById('excursion-calendar-container')) document.getElementById('excursion-calendar-container').innerHTML = ''; 
     }
 
     function adaptarMenuSegunRol() {
@@ -242,7 +221,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Navegación ---
     function navigateTo(sectionName) {
         mainSections.forEach(s => { if(s) s.style.display = 'none';});
         navLinks.forEach(l => { if(l) l.classList.remove('active');});
@@ -259,7 +237,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadContentForSection(sectionName);
         } else {
             if (sectionName !== 'coordinacion') {
-                console.warn(`Div de sección '${sectionName}-section' no encontrado.`);
+                // Element for section not found, this could be an issue if the section is expected.
             }
         }
     }
@@ -273,8 +251,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 navigateTo('login');
             }
 
-            // --- Auto-collapse sidebar on mobile when a nav link is clicked ---
-            // Ensure sidebarToggle and sidebar are defined (they are at the top of DOMContentLoaded)
             if (sidebarToggle && sidebar) {
                 const isMobileView = getComputedStyle(sidebarToggle).display !== 'none';
                 if (isMobileView && sidebar.classList.contains('open')) {
@@ -282,14 +258,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.body.classList.remove('body-sidebar-open');
                 }
             }
-            // --- End auto-collapse logic ---
         });
     });
 
-    // --- Carga de Contenido para Secciones ---
     function loadContentForSection(sectionName) {
         if (sectionName === 'login' || !currentToken) return;
-        console.log("Cargando contenido para:", sectionName);
         switch (sectionName) {
             case 'dashboard': loadDashboardData(); break;
             case 'clases': loadClases(); break;
@@ -306,101 +279,87 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Dashboard ---
     async function loadDashboardData() {
-        if (!dashboardSummaryContentDiv) {
-             console.error("Elemento dashboardSummaryContentDiv no encontrado.");
-        }
+        if (!dashboardSummaryContentDiv) return;
         if (!currentToken) {
-            if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = '<p class="error-message">Error de sesión.</p>';
+            dashboardSummaryContentDiv.innerHTML = '<p class="error-message">Error de sesión.</p>';
             return;
         }
 
-        if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = "<p>Cargando resumen...</p>";
+        dashboardSummaryContentDiv.innerHTML = "<p>Cargando resumen...</p>";
         
         try {
             const excursionsData = await apiFetch('/excursiones');
             window.dashboardExcursions = excursionsData && excursionsData.excursiones ? excursionsData.excursiones : [];
         } catch (error) {
-            console.error("Error fetching excursions for dashboard:", error);
             window.dashboardExcursions = [];
-            if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML += '<p class="error-message">No se pudieron cargar las excursiones para el calendario.</p>';
+            dashboardSummaryContentDiv.innerHTML += '<p class="error-message">No se pudieron cargar las excursiones para el calendario.</p>';
         }
 
         if (typeof renderExcursionCalendar === 'function' && document.getElementById('excursion-calendar-container')) {
             renderExcursionCalendar(currentCalendarYear, currentCalendarMonth, window.dashboardExcursions || []);
-        } else {
-            console.warn("renderExcursionCalendar function not found or calendar container missing.");
         }
 
         try {
             const data = await apiFetch('/dashboard/summary');
-            if (dashboardSummaryContentDiv) { 
-                if (!data) {
-                    dashboardSummaryContentDiv.innerHTML = `<p class="error-message">No se pudo obtener el resumen.</p>`;
-                    return;
-                }
-                let html = '<h4>Resumen General</h4>';
-                if (currentUser && currentUser.rol === 'DIRECCION') {
-                    html += `<ul>
-                        <li>Total Clases: ${data.totalClases ?? 'N/D'}</li>
-                        <li>Total Alumnos Global: ${data.totalAlumnos ?? 'N/D'}</li>
-                        <li>Total Excursiones: ${data.totalExcursiones ?? 'N/D'}</li>
-                    </ul>`;
-                    if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
-                        html += '<h5>Próximas Excursiones (Global):</h5><ul>';
-                        data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
-                        html += '</ul>';
-                    } else { html += '<p>No hay próximas excursiones generales.</p>';}
-                }
-                if (currentUser && currentUser.rol === 'TUTOR') {
-                     html += `<ul>
-                        <li>Tu Clase: ${currentUser.claseNombre || 'No asignada'}</li>
-                        <li>Nº Alumnos en tu Clase: ${data.infoSuClase ? data.infoSuClase.numAlumnos : 'N/D'}</li>
-                    </ul>`;
-                    if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
-                        html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
-                        data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
-                        html += '</ul>';
-                    } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
-        
-                    if (data.resumenProximaExcursionSuClase) {
-                        const r = data.resumenProximaExcursionSuClase;
-                        html += `<h5>Resumen Próxima Excursión (${r.nombreExcursion||'N/A'} - ${r.fecha||'N/A'}):</h5>
-                                 <ul>
-                                    <li>Inscritos: ${r.totalInscritos ?? 0}</li>
-                                    <li>Autoriz. Sí: ${r.autorizadosSi ?? 0} | No: ${r.autorizadosNo ?? 0}</li>
-                                    <li>Pagos Sí: ${r.pagadoSi ?? 0} | Parcial: ${r.pagadoParcial ?? 0} | No: ${r.pagadoNo ?? 0}</li>
-                                 </ul>`;
-                    } else if (data.proximasExcursiones && data.proximasExcursiones.length > 0) { 
-                         html += `<p>Aún no hay datos de participación para la excursión más próxima de tu clase.</p>`;
-                    }
-                }
-                if (currentUser && currentUser.rol === 'TESORERIA') {
-                    html += '<h4>Resumen de Tesorería</h4>';
-                    html += '<ul>';
-                    html += `<li>Total Excursiones Registradas: ${data.totalExcursiones ?? 'N/D'}</li>`;
-                    html += `<li>Total Alumnos con Algún Pago Registrado: ${data.totalAlumnosConPago ?? 'N/D'}</li>`;
-                    html += `<li>Suma Total Recaudada (Global): ${data.sumaTotalPagado !== undefined ? data.sumaTotalPagado.toFixed(2) : '0.00'} €</li>`;
-                    html += '</ul>';
-                }
-                dashboardSummaryContentDiv.innerHTML = html;
+            if (!data) {
+                dashboardSummaryContentDiv.innerHTML = `<p class="error-message">No se pudo obtener el resumen.</p>`;
+                return;
             }
+            let html = '<h4>Resumen General</h4>';
+            if (currentUser && currentUser.rol === 'DIRECCION') {
+                html += `<ul>
+                    <li>Total Clases: ${data.totalClases ?? 'N/D'}</li>
+                    <li>Total Alumnos Global: ${data.totalAlumnos ?? 'N/D'}</li>
+                    <li>Total Excursiones: ${data.totalExcursiones ?? 'N/D'}</li>
+                </ul>`;
+                if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
+                    html += '<h5>Próximas Excursiones (Global):</h5><ul>';
+                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
+                    html += '</ul>';
+                } else { html += '<p>No hay próximas excursiones generales.</p>';}
+            }
+            if (currentUser && currentUser.rol === 'TUTOR') {
+                    html += `<ul>
+                    <li>Tu Clase: ${currentUser.claseNombre || 'No asignada'}</li>
+                    <li>Nº Alumnos en tu Clase: ${data.infoSuClase ? data.infoSuClase.numAlumnos : 'N/D'}</li>
+                </ul>`;
+                if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
+                    html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
+                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
+                    html += '</ul>';
+                } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
+    
+                if (data.resumenProximaExcursionSuClase) {
+                    const r = data.resumenProximaExcursionSuClase;
+                    html += `<h5>Resumen Próxima Excursión (${r.nombreExcursion||'N/A'} - ${r.fecha||'N/A'}):</h5>
+                                <ul>
+                                <li>Inscritos: ${r.totalInscritos ?? 0}</li>
+                                <li>Autoriz. Sí: ${r.autorizadosSi ?? 0} | No: ${r.autorizadosNo ?? 0}</li>
+                                <li>Pagos Sí: ${r.pagadoSi ?? 0} | Parcial: ${r.pagadoParcial ?? 0} | No: ${r.pagadoNo ?? 0}</li>
+                                </ul>`;
+                } else if (data.proximasExcursiones && data.proximasExcursiones.length > 0) { 
+                        html += `<p>Aún no hay datos de participación para la excursión más próxima de tu clase.</p>`;
+                }
+            }
+            if (currentUser && currentUser.rol === 'TESORERIA') {
+                html += '<h4>Resumen de Tesorería</h4>';
+                html += '<ul>';
+                html += `<li>Total Excursiones Registradas: ${data.totalExcursiones ?? 'N/D'}</li>`;
+                html += `<li>Total Alumnos con Algún Pago Registrado: ${data.totalAlumnosConPago ?? 'N/D'}</li>`;
+                html += `<li>Suma Total Recaudada (Global): ${data.sumaTotalPagado !== undefined ? data.sumaTotalPagado.toFixed(2) : '0.00'} €</li>`;
+                html += '</ul>';
+            }
+            dashboardSummaryContentDiv.innerHTML = html;
         } catch (error) {
-            console.error("[loadDashboardData] Error capturado al cargar datos del dashboard summary:", error.message);
             if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar el resumen: ${error.message}</p>`;
         }
     }
 
     let listaDeClasesGlobal = []; 
-    // --- Gestión de Clases (Código existente) ---
     async function showFormClase(idClase = null, nombreExistente = '', tutorIdExistente = '') {
-        console.log("Función showFormClase llamada con:", {idClase, nombreExistente, tutorIdExistente}); 
         const formClaseWrapper = document.getElementById('formClaseWrapper');
-        if (!formClaseWrapper) {
-            console.error("Elemento formClaseWrapper no encontrado.");
-            return;
-        }
+        if (!formClaseWrapper) return;
     
         let tutoresDisponibles = [];
         try {
@@ -409,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tutoresDisponibles = dataUsuarios.usuarios.filter(u => u.rol === 'TUTOR');
             }
         } catch (error) {
-            console.error("Error obteniendo lista de tutores:", error);
+             // Error will be shown by showGlobalError if not caught by apiFetch's specific handling
         }
     
         let optionsTutoresHtml = '<option value="">-- Sin asignar --</option>';
@@ -516,7 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clasesContentDiv.innerHTML = '<p>Cargando clases...</p>';
         try {
             const data = await apiFetch('/clases');
-            listaDeClasesGlobal = data.clases || []; // Populate global list
+            listaDeClasesGlobal = data.clases || []; 
             let html = '<h3>Listado de Clases</h3>';
         if (currentUser.rol === 'DIRECCION') html += `<button id="btnShowFormNuevaClase" class="success" style="margin-bottom:15px;"><i class="fas fa-plus"></i> Añadir Nueva Clase</button>`;
             html += `<table class="tabla-datos"><thead><tr><th>Nombre Clase</th><th>Tutor Asignado</th><th>Email Tutor</th><th>Acciones</th></tr></thead><tbody>`;
@@ -533,7 +492,9 @@ document.addEventListener('DOMContentLoaded', () => {
             clasesContentDiv.querySelectorAll('.edit-clase').forEach(b => b.onclick=(e)=>showFormClase(e.target.dataset.id, e.target.dataset.nombre, e.target.dataset.tutorid));
             clasesContentDiv.querySelectorAll('.delete-clase').forEach(b => b.onclick=(e)=>deleteClase(e.target.dataset.id, e.target.dataset.nombre));
             clasesContentDiv.querySelectorAll('.view-alumnos-clase').forEach(b => b.onclick=(e)=>{ sessionStorage.setItem('filtroAlumnosClaseId',e.target.dataset.claseid); sessionStorage.setItem('filtroAlumnosNombreClase',e.target.dataset.nclase); navigateTo('alumnos'); });
-        } catch (error) { clasesContentDiv.innerHTML = `<p class="error-message">Error al cargar clases: ${error.message}</p>`; }
+        } catch (error) { 
+            if (clasesContentDiv) clasesContentDiv.innerHTML = `<p class="error-message">Error al cargar clases: ${error.message}</p>`; 
+        }
     }
     
     async function deleteClase(idClase, nombreClase) {
@@ -551,13 +512,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Alumnos (Código existente) ---
     async function showFormAlumno(idAlumno = null, alumnoData = null, defaultClaseId = null) {
         let currentFormWrapper = document.getElementById('formAlumnoWrapper'); 
-        if (!currentFormWrapper) {
-            console.error("Form wrapper for alumnos not found.");
-            return;
-        }
+        if (!currentFormWrapper) return;
 
         const nombreExistente = alumnoData ? alumnoData.nombre_completo : '';
         let claseIdExistente = alumnoData ? alumnoData.clase_id : defaultClaseId;
@@ -831,20 +788,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Excursiones ---
     async function showFormExcursion(idExcursion = null, excursionData = {}, defaultParaClaseId = null) {
         let currentFormWrapper = document.getElementById('formExcursionWrapper'); 
-         if (!currentFormWrapper) { 
-             console.error("Form wrapper for excursions not found."); return; 
-        }
+         if (!currentFormWrapper) return; 
 
         let paraClaseIdActual = excursionData.para_clase_id !== undefined ? excursionData.para_clase_id : defaultParaClaseId;
-        // If editing an existing "Global" excursion, paraClaseIdActual will be null.
-        // For tutors, this should map to "Mi Ciclo" (value "ciclo") by default if creating new.
         if (!idExcursion && currentUser.rol === 'TUTOR' && paraClaseIdActual === null) {
             paraClaseIdActual = "ciclo"; 
         } else if (idExcursion && excursionData.para_clase_id === null && currentUser.rol === 'TUTOR') {
-            paraClaseIdActual = "ciclo"; // Map existing global to "Mi Ciclo" for tutors
+            paraClaseIdActual = "ciclo"; 
         }
 
 
@@ -856,31 +808,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const dataClases = await apiFetch('/clases');
                     listaDeClasesGlobal = dataClases.clases || [];
-                } catch (error) { console.error("Error cargando clases para formExcursion:", error); }
+                } catch (error) { /* Error handled by showGlobalError */ }
             }
             opcionesClasesHtml = `<option value="" ${paraClaseIdActual === null || paraClaseIdActual === "" ? 'selected' : ''}>-- Global (para todas las clases) --</option>`;
             listaDeClasesGlobal.forEach(clase => {
                 opcionesClasesHtml += `<option value="${clase.id}" ${paraClaseIdActual == clase.id ? 'selected' : ''}>${clase.nombre_clase}</option>`;
             });
         } else if (currentUser.rol === 'TUTOR') {
-            opcionesClasesHtml = ''; // Reset for tutor
-             // "Mi Ciclo" option is default for new or if editing a global/cycle-wide excursion
+            opcionesClasesHtml = ''; 
             opcionesClasesHtml += `<option value="ciclo" ${paraClaseIdActual === "ciclo" ? 'selected' : ''}>Mi Ciclo (Todas las clases de mi ciclo)</option>`;
 
             if (!currentUser.claseId) {
-                console.warn("Tutor sin clase asignada intentando crear/editar excursión.");
-                // selectDisabled = true; // Tutor sin clase solo puede seleccionar "Mi Ciclo" (que será global)
+                 // Tutor sin clase solo puede seleccionar "Mi Ciclo" (que será global)
             } else {
                  if (listaDeClasesGlobal.length === 0) {
                     try {
                         const dataTodasClases = await apiFetch('/clases');
                         listaDeClasesGlobal = dataTodasClases.clases || [];
-                    } catch (error) {
-                        console.error("Error cargando todas las clases para el tutor:", error);
-                    }
+                    } catch (error) { /* Error handled by showGlobalError */ }
                 }
                 
-                // Añadir la clase propia del tutor
                 opcionesClasesHtml += `<option value="${currentUser.claseId}" ${paraClaseIdActual == currentUser.claseId ? 'selected' : ''}>${currentUser.claseNombre} (Mi Clase)</option>`;
 
                 const tutorClaseActual = listaDeClasesGlobal.find(clase => clase.id === currentUser.claseId);
@@ -945,16 +892,16 @@ document.addEventListener('DOMContentLoaded', () => {
         let para_clase_id_valor;
         if (paraClaseIdSelect) {
             const selectedValue = paraClaseIdSelect.value;
-            if (selectedValue === "ciclo" || selectedValue === "") { // "ciclo" es el nuevo valor para ciclo/global por tutor, "" es el viejo global
+            if (selectedValue === "ciclo" || selectedValue === "") { 
                 para_clase_id_valor = null;
             } else {
                 para_clase_id_valor = parseInt(selectedValue);
             }
-        } else { // Fallback, aunque el select debería estar siempre para roles permitidos
+        } else { 
              const originalExcursionData = excursionId ? JSON.parse(sessionStorage.getItem(`editExcursionData_${excursionId}`) || '{}') : {};
              para_clase_id_valor = originalExcursionData.para_clase_id !== undefined ? originalExcursionData.para_clase_id : null;
-             if (currentUser.rol === 'TUTOR' && !excursionId && currentUser.claseId) { // Creando y es tutor con clase, sin select? (raro)
-                para_clase_id_valor = null; // Default a ciclo/global si no hay select.
+             if (currentUser.rol === 'TUTOR' && !excursionId && currentUser.claseId) { 
+                para_clase_id_valor = null; 
              }
         }
 
@@ -1344,13 +1291,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(error){ showGlobalError(error.message, document.getElementById('formExcursionWrapper')); }
     }
     
-    // --- Shared Excursions ---
     async function loadPendingShares() {
         const contentDiv = document.getElementById('shared-excursions-content');
-        if (!contentDiv) { 
-            console.error("Elemento shared-excursions-content no encontrado.");
-            return;
-        }
+        if (!contentDiv) return;
+
         if (!currentUser || currentUser.rol !== 'TUTOR') {
             contentDiv.innerHTML = "<p>Acceso denegado o sección no disponible.</p>";
             return;
@@ -1432,7 +1376,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Participaciones (Código existente) ---
     async function loadParticipaciones() { 
         if (!participacionesContentDiv) return;
         participacionesContentDiv.innerHTML = "<p>Cargando participaciones...</p>";
@@ -1440,13 +1383,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let selectExcursionesHtml = '<option value="">-- Selecciona excursión --</option>';
         let dataExcursiones;
         try {
-            dataExcursiones = await apiFetch('/excursiones');
+            const dataExcursiones = await apiFetch('/excursiones');
             (dataExcursiones.excursiones || []).forEach(ex => {
                 selectExcursionesHtml += `<option value="${ex.id}">${ex.nombre_excursion} (${new Date(ex.fecha_excursion).toLocaleDateString()})</option>`;
             });
         } catch (error) { 
             selectExcursionesHtml = '<option value="">Error cargando excursiones</option>'; 
-            console.error("Error fetching excursions for participation filter:", error);
         }
 
         let filtroClaseHtml = '';
@@ -1456,7 +1398,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  try {
                     const dataClases = await apiFetch('/clases');
                     listaDeClasesGlobal = dataClases.clases || [];
-                } catch (error) { console.error("Error cargando clases para filtro de participaciones:", error); }
+                } catch (error) { /* Error handled by showGlobalError */ }
             }
             listaDeClasesGlobal.forEach(clase => filtroClaseHtml += `<option value="${clase.id}">${clase.nombre_clase}</option>`);
             filtroClaseHtml += `</select>`;
@@ -1676,7 +1618,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => { cellElement.textContent = ''; }, duration);
     }
     
-    // --- Admin Usuarios (Código existente) ---
     async function loadAdminUsuarios() {
         if (!adminUsuariosContentDiv || !currentUser || currentUser.rol !== 'DIRECCION') {
             if (adminUsuariosContentDiv) adminUsuariosContentDiv.innerHTML = "<p class='error-message'>Acceso denegado.</p>";
@@ -1761,7 +1702,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         }
     }
-
 
     function showTemporaryStatusInElement(element, message, isError, duration = 3000) {
         if (!element) return;
@@ -1850,12 +1790,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Modal Functions ---
     function openExcursionModal(excursionData) {
-        if (!excursionDetailModal) {
-            console.error("Excursion detail modal element not found.");
-            return;
-        }
+        if (!excursionDetailModal) return;
+
         if(modalExcursionTitle) modalExcursionTitle.textContent = excursionData.nombre_excursion || 'Detalles de la Excursión';
         if(modalExcursionDate) modalExcursionDate.textContent = excursionData.fecha_excursion ? excursionData.fecha_excursion.split('T')[0] : 'N/A';
         if(modalExcursionPlace) modalExcursionPlace.textContent = excursionData.lugar || 'N/A';
@@ -1867,7 +1804,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(modalExcursionTransporte) modalExcursionTransporte.textContent = excursionData.transporte || 'N/A';
         if(modalExcursionJustificacion) modalExcursionJustificacion.textContent = excursionData.justificacion_texto || 'N/A';
         if(modalExcursionNotas) modalExcursionNotas.textContent = excursionData.notas_excursion || 'N/A';
-        if(modalExcursionParticipants) modalExcursionParticipants.textContent = excursionData.participating_scope_name || 'N/A'; // Added
+        if(modalExcursionParticipants) modalExcursionParticipants.textContent = excursionData.participating_scope_name || 'N/A';
         
         excursionDetailModal.style.display = 'block'; 
     }
@@ -1889,43 +1826,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function handleExcursionDayClick(excursionId) {
-        console.log("handleExcursionDayClick called with ID:", excursionId);
-        if (!excursionId) {
-            console.warn("No excursionId provided to handleExcursionDayClick.");
-            return;
-        }
+        if (!excursionId) return;
         try {
             const excursionDetails = await apiFetch(`/excursiones/${excursionId}`); 
             if (excursionDetails) { 
                 openExcursionModal(excursionDetails);
             } else {
-                console.warn(`No details found for excursion ID: ${excursionId}.`);
                 alert("No se pudieron encontrar los detalles de la excursión. Puede que no exista.");
             }
         } catch (error) {
-            console.error(`Error fetching details for excursion ID ${excursionId}:`, error);
             alert(`Error al cargar detalles de la excursión: ${error.message}`);
         }
     }
     window.handleExcursionDayClick = handleExcursionDayClick; 
 
-    // --- Tesorería ---
     async function loadTesoreriaData() {
         const contentDiv = document.getElementById('tesoreria-content');
         if (!contentDiv || !currentToken) {
             if(contentDiv) contentDiv.innerHTML = '<p class="error-message">Error de acceso o carga.</p>';
             return;
         }
-        // Clear previous content and show loading message
         contentDiv.innerHTML = "<p>Cargando datos de tesorería...</p>"; 
         
         const ingresosClaseDiv = document.getElementById('tesoreria-ingresos-clase'); 
-        let html = ''; // Main content for tesoreria-content, will be built piece by piece
+        let html = ''; 
 
         if (ingresosClaseDiv) {
             ingresosClaseDiv.innerHTML = '<p>Cargando ingresos por clase...</p>'; 
             try {
-                // 1. Fetch and render Ingresos por Clase (moved inside the if block)
                 const ingresosData = await apiFetch('/tesoreria/ingresos-por-clase');
                 let ingresosHtml = '<h4>Ingresos Totales por Clase</h4>';
                 if (ingresosData && ingresosData.ingresos_por_clase && ingresosData.ingresos_por_clase.length > 0) {
@@ -1942,16 +1870,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 ingresosClaseDiv.innerHTML = ingresosHtml;
             } catch (error) {
-                console.error("Error cargando ingresos por clase:", error);
-                ingresosClaseDiv.innerHTML = `<p class="error-message">Error al cargar ingresos por clase: ${error.message}</p>`;
+                if(ingresosClaseDiv) ingresosClaseDiv.innerHTML = `<p class="error-message">Error al cargar ingresos por clase: ${error.message}</p>`;
             }
-        } else {
-            console.warn("Elemento tesoreria-ingresos-clase no encontrado en index.html. Omitiendo carga de ingresos por clase.");
-            // Intentionally not setting contentDiv.innerHTML here, as it would wipe out the loading message for the main tables
         }
     
         try {
-            // 2. Fetch and render Excursiones Pendientes y Pasadas - This part remains largely the same
             const [pendientesData, pasadasData] = await Promise.all([
                 apiFetch('/tesoreria/excursiones-pendientes'),
                 apiFetch('/tesoreria/excursiones-pasadas')
@@ -2016,43 +1939,25 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 html += '<p>No hay excursiones pasadas.</p>';
             }
-            // Ensure the main contentDiv is updated with the built HTML for pending/past excursions
-            // The ingresosClaseDiv was handled separately if it exists.
-            // If ingresosClaseDiv is part of contentDiv, then contentDiv.innerHTML = ingresosClaseDiv.innerHTML + html;
-            // Based on index.html, ingresosClaseDiv is *inside* tesoreria-content, so we must be careful.
-            // The initial contentDiv.innerHTML = "<p>Cargando...</p>" clears everything.
-            // The ingresosClaseDiv.innerHTML updates its specific part.
-            // Now, the rest of contentDiv (after ingresosClaseDiv and its hr) needs this 'html'.
 
-            // Find the hr element that was added after tesoreria-ingresos-clase
             const hrDivider = contentDiv.querySelector('hr.subsection-divider');
             if (hrDivider) {
-                // If the HR exists (meaning ingresosClaseDiv was processed), append after it
                 let tempDiv = document.createElement('div');
-                tempDiv.innerHTML = html; // pending and past excursions html
-                // Append all children of tempDiv after the hrDivider
+                tempDiv.innerHTML = html; 
                 while (tempDiv.firstChild) {
                     contentDiv.appendChild(tempDiv.firstChild);
                 }
             } else {
-                // If ingresosClaseDiv was not found/processed, just set the html
                 contentDiv.innerHTML = html;
             }
-             // Add event listeners for new detail links
             contentDiv.querySelectorAll('.excursion-detail-link-tesoreria').forEach(link => {
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
                     const excursionId = e.target.dataset.excursionId;
-                    // Using the global handleExcursionDayClick which now also fetches financial details
-                    // if we decide to make the modal more detailed. For now, it shows basic details.
-                    // To show financial details, we'd need a specific modal or to enhance the existing one.
-                    // Let's assume for now it just calls the existing global modal handler.
-                    // We might need a new function handleFinancialExcursionDetailClick if more detail is needed.
                     handleExcursionDayClick(excursionId); 
                 });
             });
             
-            // Add event listeners for "Ver/Editar Finanzas" buttons
             contentDiv.querySelectorAll('.edit-financials-button').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const excursionId = e.target.dataset.excursionId;
@@ -2061,7 +1966,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
         } catch (error) {
-            console.error("Error en loadTesoreriaData (Promise.all):", error);
             contentDiv.innerHTML = `<p class="error-message">Error al cargar datos de tesorería: ${error.message}</p>`;
         }
     }
@@ -2073,10 +1977,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return amount.toFixed(2).replace('.', ',') + ' €';
     }
 
-    // --- INICIALIZACIÓN DE LA APP ---
     checkInitialLoginState();
 
-    // --- Tesoreria Financial Modal Logic ---
     function closeTesoreriaFinancialModal() {
         if (tesoreriaFinancialModal) tesoreriaFinancialModal.style.display = 'none';
         if (financialModalStatus) financialModalStatus.textContent = '';
@@ -2086,7 +1988,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (financialModalCloseButton) financialModalCloseButton.onclick = closeTesoreriaFinancialModal;
     if (financialModalSaveButton) financialModalSaveButton.onclick = saveTesoreriaFinancialDetails;
     
-    // Add event listeners to input fields for dynamic recalculation
     [financialModalNumeroAutobuses, financialModalCostePorAutobus, financialModalCosteEntradasIndividual, financialModalCosteActividadGlobal].forEach(input => {
         if (input) input.addEventListener('input', recalculateFinancialsInModal);
     });
@@ -2112,15 +2013,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if(financialModalCosteEntradasIndividual) financialModalCosteEntradasIndividual.value = excursion.coste_entradas_individual || 0;
             if(financialModalCosteActividadGlobal) financialModalCosteActividadGlobal.value = excursion.coste_actividad_global || 0;
             
-            // Store these fetched values in data attributes for recalculateFinancialsInModal to use
             if(financialModalAlumnosAsistentes) financialModalAlumnosAsistentes.dataset.value = excursion.numero_alumnos_asistentes || 0;
             if(financialModalTotalRecaudado) financialModalTotalRecaudado.dataset.value = excursion.total_dinero_recaudado || 0;
 
-            recalculateFinancialsInModal(); // Initial calculation and display
+            recalculateFinancialsInModal(); 
             if (financialModalStatus) financialModalStatus.textContent = '';
         } catch (error) {
             if (financialModalStatus) financialModalStatus.textContent = `Error: ${error.message}`;
-            console.error("Error opening financial modal:", error);
         }
     }
 
@@ -2157,25 +2056,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if(financialModalStatus) financialModalStatus.textContent = 'Guardando...';
 
         const dataToSave = {
-            numero_autobuses: parseInt(financialModalNumeroAutobuses.value) || null, // Send null if 0 or NaN
-            coste_por_autobus: parseFloat(financialModalCostePorAutobus.value) || null,
-            coste_entradas_individual: parseFloat(financialModalCosteEntradasIndividual.value) || null,
-            coste_actividad_global: parseFloat(financialModalCosteActividadGlobal.value) || null
+            numero_autobuses: financialModalNumeroAutobuses.value ? parseInt(financialModalNumeroAutobuses.value) : null,
+            coste_por_autobus: financialModalCostePorAutobus.value ? parseFloat(financialModalCostePorAutobus.value) : null,
+            coste_entradas_individual: financialModalCosteEntradasIndividual.value ? parseFloat(financialModalCosteEntradasIndividual.value) : null,
+            coste_actividad_global: financialModalCosteActividadGlobal.value ? parseFloat(financialModalCosteActividadGlobal.value) : null
         };
-        // Ensure null for zero values if that's preferred by backend, or ensure 0. For now, allow 0.
-        // Backend handles 0 correctly. Null is better if the value is truly "not set".
-        // For simplicity, we'll send the number or null if parsing fails to 0.
-        // Let's adjust to send null if the input was empty or zero, if that's more semantically correct.
-        // For now, || 0 means 0 will be sent. If you clear an input, it becomes 0.
-        // The database schema allows NULL for these, so sending null is possible.
-        // Let's refine: if input is empty, send null. If it's '0', send 0.
-        dataToSave.numero_autobuses = financialModalNumeroAutobuses.value ? parseInt(financialModalNumeroAutobuses.value) : null;
-        dataToSave.coste_por_autobus = financialModalCostePorAutobus.value ? parseFloat(financialModalCostePorAutobus.value) : null;
-        dataToSave.coste_entradas_individual = financialModalCosteEntradasIndividual.value ? parseFloat(financialModalCosteEntradasIndividual.value) : null;
-        dataToSave.coste_actividad_global = financialModalCosteActividadGlobal.value ? parseFloat(financialModalCosteActividadGlobal.value) : null;
 
-
-        // Basic frontend validation (more robust validation should exist)
         if ( (dataToSave.numero_autobuses !== null && dataToSave.numero_autobuses < 0) ||
              (dataToSave.coste_por_autobus !== null && dataToSave.coste_por_autobus < 0) ||
              (dataToSave.coste_entradas_individual !== null && dataToSave.coste_entradas_individual < 0) ||
@@ -2186,14 +2072,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
         try {
-            // The PUT request to /api/excursiones/:id updates these specific fields.
-            // The response from this PUT is the full updated excursion object.
-            const updatedExcursion = await apiFetch(`/excursiones/${currentExcursionIdForFinancialModal}`, 'PUT', dataToSave);
+            await apiFetch(`/excursiones/${currentExcursionIdForFinancialModal}`, 'PUT', dataToSave);
             
             if(financialModalStatus) showTemporaryStatusInElement(financialModalStatus, "Guardado con éxito!", false, 3000);
 
-            // Update modal with potentially re-calculated values from server (though PUT /excursiones might not return all financial details)
-            // It's better to re-fetch from the dedicated financial details endpoint to ensure consistency.
             const freshFinancialDetails = await apiFetch(`/tesoreria/excursion-financial-details/${currentExcursionIdForFinancialModal}`);
             
             if(financialModalNumeroAutobuses) financialModalNumeroAutobuses.value = freshFinancialDetails.numero_autobuses || 0;
@@ -2204,17 +2086,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if(financialModalAlumnosAsistentes) financialModalAlumnosAsistentes.dataset.value = freshFinancialDetails.numero_alumnos_asistentes || 0;
             if(financialModalTotalRecaudado) financialModalTotalRecaudado.dataset.value = freshFinancialDetails.total_dinero_recaudado || 0;
             
-            recalculateFinancialsInModal(); // Re-calculate and display with fresh data.
+            recalculateFinancialsInModal(); 
 
-            loadTesoreriaData(); // Refresh the main Tesoreria view
+            loadTesoreriaData(); 
         } catch (error) {
             if(financialModalStatus) financialModalStatus.textContent = `Error: ${error.message}`;
-            console.error("Error saving financial details:", error);
         }
     }
 
-
-    // --- Sidebar Toggle Functionality ---
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebar = document.querySelector('.sidebar');
 
@@ -2223,12 +2102,6 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebar.classList.toggle('open');
             document.body.classList.toggle('body-sidebar-open');
         });
-
-        // The logic for closing sidebar on navLink click has been moved into the main
-        // navLinks.forEach event listener earlier in the script (around line 260-270).
-        // This keeps all navLink click logic consolidated.
-    } else {
-        console.warn("Sidebar toggle button or sidebar element not found."); // navLinks check removed as it's not relevant here anymore
     }
 
-}); // Fin de DOMContentLoaded
+});
