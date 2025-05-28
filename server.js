@@ -10,26 +10,41 @@ const fs = require('fs');
 const PdfPrinter = require('pdfmake');
 const vfsFontsModule = require('pdfmake/build/vfs_fonts.js');
 
-console.log("Intentando configurar PdfPrinter.vfs...");
+console.log("Intentando configurar PdfPrinter.vfs (versión 3 de depuración)...");
 
-// Comprueba si vfsFontsModule es un objeto y parece contener datos de fuentes directamente
 if (vfsFontsModule && typeof vfsFontsModule === 'object' && Object.keys(vfsFontsModule).length > 0) {
-    // Asigna vfsFontsModule directamente a PdfPrinter.vfs
     PdfPrinter.vfs = vfsFontsModule;
     console.log("VFS asignado directamente desde vfsFontsModule.");
 
-    // Verifica si las fuentes específicas están en el VFS
     if (PdfPrinter.vfs) {
         console.log("Claves en PdfPrinter.vfs (primeras 5):", Object.keys(PdfPrinter.vfs).slice(0, 5));
-        console.log("¿Está 'Roboto-Regular.ttf' en VFS?", PdfPrinter.vfs['Roboto-Regular.ttf'] ? 'Sí' : 'NO, FALTA!');
-        console.log("¿Está 'Roboto-Medium.ttf' en VFS (para negrita)?", PdfPrinter.vfs['Roboto-Medium.ttf'] ? 'Sí' : 'NO, FALTA!');
+        
+        const robotoRegularData = PdfPrinter.vfs['Roboto-Regular.ttf'];
+        if (robotoRegularData) {
+            console.log("¿Está 'Roboto-Regular.ttf' en VFS? Sí");
+            // console.log("   (Inicio de datos para Roboto-Regular.ttf):", typeof robotoRegularData === 'string' ? robotoRegularData.substring(0, 70) + "..." : "No es un string");
+        } else {
+            console.log("¿Está 'Roboto-Regular.ttf' en VFS? NO, FALTA!");
+        }
+
+        const robotoMediumData = PdfPrinter.vfs['Roboto-Medium.ttf'];
+        if (robotoMediumData) {
+            console.log("¿Está 'Roboto-Medium.ttf' en VFS (para negrita)? Sí");
+            console.log("   (Inicio de datos para Roboto-Medium.ttf):", typeof robotoMediumData === 'string' ? robotoMediumData.substring(0, 70) + "..." : "No es un string");
+        } else {
+            console.log("¿Está 'Roboto-Medium.ttf' en VFS (para negrita)? NO, FALTA!");
+        }
+
     } else {
         console.error("ERROR: PdfPrinter.vfs es null o undefined DESPUÉS de la asignación directa.");
     }
 
 } else {
     console.error("ERROR: vfsFontsModule no es un objeto válido o está vacío. No se puede configurar VFS.");
-    // Comprueba si PdfPrinter.vfs ya estaba configurado de alguna manera
+    if (vfsFontsModule) {
+        console.log("Tipo de vfsFontsModule:", typeof vfsFontsModule);
+        console.log("Claves de vfsFontsModule:", Object.keys(vfsFontsModule));
+    }
     if (!PdfPrinter.vfs) {
         console.error("FALLO CRÍTICO: PdfPrinter.vfs no se pudo configurar. La generación de PDF probablemente fallará para fuentes personalizadas.");
     }
@@ -46,6 +61,7 @@ const fonts = {
 };
 
 const printer = new PdfPrinter(fonts);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV";
