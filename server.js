@@ -1935,8 +1935,10 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
     }
 
     try {
-        const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
-        const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
+        // Estas rutas ya son relativas a la raíz del proyecto donde se ejecuta server.js
+        // No necesitan __dirname si las fuentes están en public/assets/fonts relativo a la raíz
+        const robotoRegularBuffer = fs.readFileSync('./public/assets/fonts/Roboto-Regular.ttf');
+        const robotoBoldBuffer = fs.readFileSync('./public/assets/fonts/Roboto-Bold.ttf');
         
         const excursion = await dbGetAsync(
             `SELECT nombre_excursion, actividad_descripcion, lugar, fecha_excursion, 
@@ -1980,34 +1982,36 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
 
         // PDF Generation with pdf-lib
         const pdfDocLib = await PDFDocument.create();
-        pdfDocLib.registerFontkit(fontkit); // Register fontkit
+        pdfDocLib.registerFontkit(fontkit); 
         
         const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
         const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
-        // console.log("DEBUG info_pdf: Embedded robotoFont (from TTF):", typeof robotoFont, Object.keys(robotoFont || {})); // Keep if needed
-        // console.log("DEBUG info_pdf: Embedded robotoBoldFont (from TTF):", typeof robotoBoldFont, Object.keys(robotoBoldFont || {})); // Keep if needed
 
-        // Load logo
-        const logoPath = path.join(__dirname, 'public', 'folder', 'logo.jpg');
-        let logoImage, logoDims;
+        // Load logo - la ruta ya es relativa al proyecto
+        const logoPath = './public/folder/logo.jpg';
+        let logoImage, logoDims, logoHeightOnPage = 0;
         try {
             const logoBuffer = fs.readFileSync(logoPath);
             logoImage = await pdfDocLib.embedJpg(logoBuffer);
-            const logoScale = 50 / logoImage.width; // Aim for 50 points width
-            logoDims = { width: logoImage.width * logoScale, height: logoImage.height * logoScale };
+            // Escalar el logo para que tenga una altura de, por ejemplo, 50 puntos.
+            // O un ancho, según preferencia. Aquí usamos ancho 60 para consistencia con otros PDFs.
+            const scaleFactor = 60 / logoImage.width; 
+            logoDims = { width: logoImage.width * scaleFactor, height: logoImage.height * scaleFactor };
+            logoHeightOnPage = logoDims.height;
         } catch (logoError) {
             console.error("Error cargando logo para Info PDF:", logoError.message);
-            logoImage = null;
+            logoImage = null; // Continuar sin logo si falla
             logoDims = { width: 0, height: 0 };
         }
         
-        const page = pdfDocLib.addPage(PageSizes.A4);
+        let page = pdfDocLib.addPage(PageSizes.A4); // Declarar con let para reasignación
         const { width, height } = page.getSize();
-        const xMargin = 50; // Existing left/right margin
-        const yPageMargin = 50; // Define top margin, similar to xMargin for consistency
-        const paddingBelowLogo = 20;
+        const xMargin = 50; 
+        const yPageMargin = 50; 
+        const paddingBelowLogo = 15; // Espacio entre el logo y el contenido
+        const pageBottomMargin = 50; // Margen inferior de la página
 
-        // Draw logo on the page
+        // Dibujar logo en la primera página (y en nuevas páginas si es necesario)
         if (logoImage) {
             page.drawImage(logoImage, {
                 x: xMargin,
@@ -2016,6 +2020,9 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
                 height: logoDims.height,
             });
         }
+        // Ajustar currentY inicial para estar debajo del logo
+        let currentY = height - yPageMargin - logoHeightOnPage - (logoImage ? paddingBelowLogo : 0);
+
 
         const styles = {
             mainTitle: { font: robotoBoldFont, size: 22, color: rgb(0,0,0) },
@@ -2024,47 +2031,107 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
         };
         
         const fieldMaxWidth = width - (2 * xMargin);
-        const lineHeight = 15;
-        // Adjust initial currentY to be below the logo (or where logo would be if it failed to load)
-        let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? paddingBelowLogo : 0);
+        const baseLineHeight = 15; // Línea base para texto normal, etiquetas pueden ser más.
 
-
+        // Helper para gestionar saltos de página y redibujar logo
+        const ensurePageSpaceAndDrawLogoIfNeeded = (neededHeight) => {
+            if (currentY - neededHeight < pageBottomMargin) {
+                page = pdfDocLib.addPage(PageSizes.A4);
+                currentY = height - yPageMargin; // Reiniciar Y para la nueva página
+                if (logoImage) {
+                    page.drawImage(logoImage, {
+                        x: xMargin,
+                        y: height - yPageMargin - logoDims.height,
+                        width: logoDims.width,
+                        height: logoDims.height,
+                    });
+                    currentY -= (logoDims.height + paddingBelowLogo);
+                }
+            }
+        };
+        
+        // Dibujar Título
+        ensurePageSpaceAndDrawLogoIfNeeded(styles.mainTitle.size + 20);
         const titleText = excursion.nombre_excursion;
         const titleWidth = styles.mainTitle.font.widthOfTextAtSize(titleText, styles.mainTitle.size);
-        // Center title if space allows, otherwise, draw at xMargin
         const titleX = titleWidth > fieldMaxWidth ? xMargin : (width - titleWidth) / 2;
+        page.drawText(titleText, { x: titleX, y: currentY, ...styles.mainTitle });
+        currentY -= (styles.mainTitle.size + 20);
 
-        page.drawText(titleText, {
-            x: titleX,
-            y: currentY,
-            ...styles.mainTitle
-        });
-        currentY -= styles.mainTitle.size + 20;
 
-        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Descripción de la Actividad:', excursion.actividad_descripcion || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
-        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Lugar:', excursion.lugar || 'No especificado', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
-        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Fecha:', excursion.fecha_excursion ? new Date(excursion.fecha_excursion).toLocaleDateString('es-ES') : 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+        // Helper modificado para drawFieldWithWrapping que maneje saltos de página y logo
+        async function drawFieldWithWrappingInternal(label, value, fonts, fieldStyles, yPos, maxWidth, lineHeight) {
+            let localY = yPos;
+            const labelText = label;
+            const valueText = String(value !== null && value !== undefined ? value : 'No especificado');
+            const labelHeight = fieldStyles.label.size + 4; // Etiqueta + pequeño margen inferior
 
+            ensurePageSpaceAndDrawLogoIfNeeded(labelHeight); // Espacio para la etiqueta
+            page.drawText(labelText, { 
+                x: xMargin, 
+                y: localY, 
+                font: fieldStyles.label.font, 
+                size: fieldStyles.label.size, 
+                color: fieldStyles.label.color 
+            });
+            localY -= labelHeight;
+
+            const valueFont = fieldStyles.value.font;
+            const valueSize = fieldStyles.value.size;
+            const valueColor = fieldStyles.value.color;
+            let words = valueText.split(' ');
+            let currentLine = '';
+            
+            for (let word of words) {
+                let testLine = currentLine + (currentLine ? ' ' : '') + word;
+                let testWidth = valueFont.widthOfTextAtSize(testLine, valueSize);
+
+                if (testWidth > maxWidth && currentLine) { // La línea actual más la palabra excede el ancho
+                    ensurePageSpaceAndDrawLogoIfNeeded(lineHeight);
+                    page.drawText(currentLine, { x: xMargin, y: localY, font: valueFont, size: valueSize, color: valueColor });
+                    localY -= lineHeight;
+                    currentLine = word; // La palabra actual inicia la nueva línea
+                } else {
+                    currentLine = testLine;
+                }
+            }
+            // Dibujar la última línea o la única línea
+            if (currentLine) {
+                ensurePageSpaceAndDrawLogoIfNeeded(lineHeight);
+                page.drawText(currentLine, { x: xMargin, y: localY, font: valueFont, size: valueSize, color: valueColor });
+                localY -= lineHeight;
+            }
+            return localY - 10; // Espacio adicional después del campo completo
+        }
+
+        // Usar el helper interno
+        currentY = await drawFieldWithWrappingInternal('Descripción de la Actividad:', excursion.actividad_descripcion, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
+        currentY = await drawFieldWithWrappingInternal('Lugar:', excursion.lugar, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
+        currentY = await drawFieldWithWrappingInternal('Fecha:', excursion.fecha_excursion ? new Date(excursion.fecha_excursion).toLocaleDateString('es-ES') : 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
+
+        // Campos en dos columnas (Hora Salida y Llegada)
+        ensurePageSpaceAndDrawLogoIfNeeded(styles.fieldLabel.size + styles.fieldValue.size + 10);
         page.drawText('Hora de Salida:', { x: xMargin, y: currentY, ...styles.fieldLabel });
         page.drawText(excursion.hora_salida || 'No especificada', { x: xMargin, y: currentY - (styles.fieldLabel.size + 2), ...styles.fieldValue });
         
-        const secondColumnX = xMargin + (fieldMaxWidth / 2) + 20;
+        const secondColumnX = xMargin + (fieldMaxWidth / 2) + 10; // Ajustar X para segunda columna
         page.drawText('Hora de Llegada:', { x: secondColumnX, y: currentY, ...styles.fieldLabel });
         page.drawText(excursion.hora_llegada || 'No especificada', { x: secondColumnX, y: currentY - (styles.fieldLabel.size + 2), ...styles.fieldValue });
-        currentY -= styles.fieldLabel.size + 2 + styles.fieldValue.size + 10;
+        currentY -= (styles.fieldLabel.size + 2 + styles.fieldValue.size + 10); // Mayor espacio después de línea de dos columnas
 
-        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Coste por Alumno:', `${(excursion.coste_excursion_alumno || 0).toFixed(2).replace('.', ',')} €`, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
-        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Vestimenta Requerida:', excursion.vestimenta || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
-        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Medio de Transporte:', excursion.transporte || 'No especificado', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
-        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Justificación Pedagógica:', excursion.justificacion_texto || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+        currentY = await drawFieldWithWrappingInternal('Coste por Alumno:', `${(excursion.coste_excursion_alumno || 0).toFixed(2).replace('.', ',')} €`, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
+        currentY = await drawFieldWithWrappingInternal('Vestimenta Requerida:', excursion.vestimenta, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
+        currentY = await drawFieldWithWrappingInternal('Medio de Transporte:', excursion.transporte, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
+        currentY = await drawFieldWithWrappingInternal('Justificación Pedagógica:', excursion.justificacion_texto, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
 
         if (excursion.notas_excursion && excursion.notas_excursion.trim() !== '') {
-            currentY -= 10; 
-            currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Notas Adicionales:', excursion.notas_excursion, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+            currentY -= 5; // Reducir un poco el espacio antes de notas si hay
+            currentY = await drawFieldWithWrappingInternal('Notas Adicionales:', excursion.notas_excursion, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
         }
         
         const pdfBytes = await pdfDocLib.save();
-        res.contentType('application/pdf');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=Info_Excursion_${excursion.nombre_excursion.replace(/\s+/g, '_')}.pdf`);
         res.send(Buffer.from(pdfBytes));
 
     } catch (error) {
