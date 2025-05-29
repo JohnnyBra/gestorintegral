@@ -325,13 +325,13 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// Nuevo endpoint para generar PDF de reporte de pagos
+// Nuevo endpoint para generar PDF de Listado de Asistencia y Justificantes
 app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenticateToken, async (req, res) => {
     const excursionId = parseInt(req.params.excursion_id);
     const viewClaseId = req.query.view_clase_id ? parseInt(req.query.view_clase_id) : null;
     const userRol = req.user.rol;
-    const userId = req.user.id;
-    const userClaseId = req.user.claseId;
+    const userId = req.user.id; // userId no se usa directamente para la lógica principal aquí, pero es bueno tenerlo
+    const userClaseId = req.user.claseId; // ID de la clase del tutor
 
     if (isNaN(excursionId)) {
         return res.status(400).json({ error: "ID de excursión inválido." });
@@ -341,230 +341,207 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
     }
 
     try {
-        const excursion = await dbGetAsync("SELECT id, nombre_excursion, fecha_excursion, para_clase_id FROM excursiones WHERE id = ?", [excursionId]);
+        const excursion = await dbGetAsync("SELECT id, nombre_excursion, fecha_excursion, para_clase_id, creada_por_usuario_id FROM excursiones WHERE id = ?", [excursionId]);
         if (!excursion) {
             return res.status(404).json({ error: "Excursión no encontrada." });
         }
 
-        let alumnosParticipaciones = [];
-        let sqlAlumnos;
-        const paramsAlumnos = [];
+        let alumnosData = [];
+        let sqlAlumnosQuery;
+        const paramsAlumnosQuery = [];
 
-        // Authorization and Data Fetching Logic
-        if (userRol === 'TUTOR') {
-            if (!userClaseId) {
-                return res.status(403).json({ error: "Tutor no asignado a una clase. No puede generar este reporte." });
-            }
-            if (excursion.para_clase_id !== null) { // Excursion for a specific class or cycle
+        // 1. Data Fetching and Processing: Determine Student Scope
+        if (excursion.para_clase_id !== null) { // Excursion for a specific class or cycle
+            // Fetch all students belonging to excursion.para_clase_id
+            sqlAlumnosQuery = `
+                SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada
+                FROM alumnos a
+                JOIN clases c ON a.clase_id = c.id
+                LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
+                WHERE a.clase_id = ?
+                ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
+            paramsAlumnosQuery.push(excursionId, excursion.para_clase_id);
+
+            // Authorization for specific class/cycle excursions
+            if (userRol === 'TUTOR') {
+                if (!userClaseId) return res.status(403).json({ error: "Tutor no asignado a una clase." });
                 const cicloClaseIds = await getTutorCicloClaseIds(userClaseId);
                 if (excursion.para_clase_id !== userClaseId && !cicloClaseIds.includes(excursion.para_clase_id)) {
                     return res.status(403).json({ error: "Tutores solo pueden generar reportes para excursiones de su clase o su ciclo." });
                 }
-                // If specific class or cycle, report shows only students from that specific target class of the excursion
-                sqlAlumnos = `
-                    SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
-                    FROM alumnos a
-                    JOIN clases c ON a.clase_id = c.id
-                    LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
-                    WHERE a.clase_id = ?
-                    ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
-                paramsAlumnos.push(excursionId, excursion.para_clase_id);
-            } else { // Global excursion
-                 if (viewClaseId && viewClaseId !== userClaseId) {
-                    return res.status(403).json({ error: "Tutores solo pueden ver el reporte para su propia clase en excursiones globales." });
-                }
-                sqlAlumnos = `
-                    SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
-                    FROM alumnos a
-                    JOIN clases c ON a.clase_id = c.id
-                    LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
-                    WHERE a.clase_id = ?
-                    ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
-                paramsAlumnos.push(excursionId, userClaseId);
             }
-        } else if (userRol === 'DIRECCION' || userRol === 'TESORERIA') {
-            if (excursion.para_clase_id !== null) { // Excursion for a specific class
-                sqlAlumnos = `
-                    SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
+            // DIRECCION and TESORERIA can always access specific class/cycle excursions
+        } else { // Global excursion (excursion.para_clase_id is null)
+            if (userRol === 'TUTOR') {
+                if (!userClaseId) return res.status(403).json({ error: "Tutor no asignado a una clase." });
+                // Fetch students only from userClaseId
+                sqlAlumnosQuery = `
+                    SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada
                     FROM alumnos a
                     JOIN clases c ON a.clase_id = c.id
                     LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
                     WHERE a.clase_id = ?
                     ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
-                paramsAlumnos.push(excursionId, excursion.para_clase_id);
-            } else { // Global excursion
-                if (viewClaseId) { // If a specific class is requested for the view
-                    sqlAlumnos = `
-                        SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
+                paramsAlumnosQuery.push(excursionId, userClaseId);
+            } else if (userRol === 'DIRECCION' || userRol === 'TESORERIA') {
+                if (viewClaseId) {
+                    // Fetch students from that viewClaseId
+                    sqlAlumnosQuery = `
+                        SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada
                         FROM alumnos a
                         JOIN clases c ON a.clase_id = c.id
                         LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
                         WHERE a.clase_id = ?
                         ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
-                    paramsAlumnos.push(excursionId, viewClaseId);
-                } else { // All students from all classes with participation
-                    sqlAlumnos = `
-                        SELECT a.nombre_completo, c.nombre_clase, p.pago_realizado, p.cantidad_pagada
+                    paramsAlumnosQuery.push(excursionId, viewClaseId);
+                } else {
+                    // Fetch students from ALL classes
+                    sqlAlumnosQuery = `
+                        SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada
                         FROM alumnos a
                         JOIN clases c ON a.clase_id = c.id
-                        JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
+                        LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
                         ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo`;
-                    paramsAlumnos.push(excursionId);
+                    paramsAlumnosQuery.push(excursionId);
                 }
-            }
-        } else {
-            return res.status(403).json({ error: "Rol no autorizado para generar este reporte." });
-        }
-
-        alumnosParticipaciones = await dbAllAsync(sqlAlumnos, paramsAlumnos);
-
-        // Prepare data for PDF (logic remains the same)
-        const alumnosPagados = [];
-        const alumnosPendientesOParciales = [];
-
-        alumnosParticipaciones.forEach(ap => {
-            const alumnoData = {
-                nombre_completo: ap.nombre_completo,
-                nombre_clase: ap.nombre_clase,
-                pago_realizado: ap.pago_realizado || 'No', 
-                cantidad_pagada: ap.cantidad_pagada !== null && ap.cantidad_pagada !== undefined ? ap.cantidad_pagada : 0
-            };
-            if (alumnoData.pago_realizado === 'Sí') {
-                alumnosPagados.push(alumnoData);
             } else {
-                alumnosPendientesOParciales.push(alumnoData);
+                return res.status(403).json({ error: "Rol no autorizado para generar este reporte." });
+            }
+        }
+        
+        alumnosData = await dbAllAsync(sqlAlumnosQuery, paramsAlumnosQuery);
+
+        // Combine and Process Data
+        const alumnosPorClase = {};
+        let totalGeneralAlumnos = 0;
+        let totalGeneralAsistentes = 0;
+
+        alumnosData.forEach(ad => {
+            if (!alumnosPorClase[ad.nombre_clase]) {
+                alumnosPorClase[ad.nombre_clase] = {
+                    nombre_clase: ad.nombre_clase,
+                    alumnos: [],
+                    totalEnClase: 0,
+                    asistentesEnClase: 0
+                };
+            }
+            const alumnoConEstado = {
+                nombre_completo: ad.nombre_completo,
+                autorizacion_firmada: ad.autorizacion_firmada || 'No' // Default to 'No' if no participation record
+            };
+            alumnosPorClase[ad.nombre_clase].alumnos.push(alumnoConEstado);
+            alumnosPorClase[ad.nombre_clase].totalEnClase++;
+            totalGeneralAlumnos++;
+            if (alumnoConEstado.autorizacion_firmada === 'Sí') {
+                alumnosPorClase[ad.nombre_clase].asistentesEnClase++;
+                totalGeneralAsistentes++;
             }
         });
-        
-        // PDF Generation with pdf-lib
+
+        const totalGeneralNoAsistentes = totalGeneralAlumnos - totalGeneralAsistentes;
+
+        // 2. PDF Generation (pdf-lib)
         const pdfDocLib = await PDFDocument.create();
-        pdfDocLib.registerFontkit(fontkit); // Register fontkit
+        pdfDocLib.registerFontkit(fontkit);
 
         const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
         const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
-        console.log("DEBUG: robotoRegularBuffer type:", typeof robotoRegularBuffer, "length:", robotoRegularBuffer ? robotoRegularBuffer.length : 'N/A');
-        console.log("DEBUG: robotoBoldBuffer type:", typeof robotoBoldBuffer, "length:", robotoBoldBuffer ? robotoBoldBuffer.length : 'N/A');
         
         const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
         const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
-        console.log("DEBUG: Embedded robotoFont (from TTF):", typeof robotoFont, Object.keys(robotoFont || {}));
-        console.log("DEBUG: Embedded robotoBoldFont (from TTF):", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
 
         let page = pdfDocLib.addPage(PageSizes.A4);
         const { width, height } = page.getSize();
 
         const pdfStyles = {
-            header: { font: robotoBoldFont, size: 18, color: rgb(0,0,0) },
-            subheader: { font: robotoBoldFont, size: 14, color: rgb(0,0,0) },
+            mainTitle: { font: robotoBoldFont, size: 16, color: rgb(0,0,0) },
+            header: { font: robotoBoldFont, size: 14, color: rgb(0,0,0) },
+            subheader: { font: robotoBoldFont, size: 12, color: rgb(0.1, 0.1, 0.1) },
+            classHeader: { font: robotoBoldFont, size: 12, color: rgb(0.0, 0.0, 0.6) }, // Azul para nombres de clase
             tableHeader: { font: robotoBoldFont, size: 10, color: rgb(0,0,0) },
             tableCell: { font: robotoFont, size: 9, color: rgb(0.1, 0.1, 0.1) },
-            classHeader: { font: robotoBoldFont, size: 12, color: rgb(0.1, 0.1, 0.6) }
+            summaryText: { font: robotoFont, size: 10, color: rgb(0,0,0) },
+            boldSummaryText: { font: robotoBoldFont, size: 10, color: rgb(0,0,0) }
         };
 
-        let currentY = height - 50;
-        const xMargin = 50;
+        let currentY = height - 40;
+        const xMargin = 40;
+        const contentWidth = width - (2 * xMargin);
+        const rowHeight = 18;
 
-        page.drawText('Reporte de Pagos de Excursión', { x: xMargin, y: currentY, ...pdfStyles.header });
-        currentY -= 25;
-        page.drawText(`Excursión: ${excursion.nombre_excursion}`, { x: xMargin, y: currentY, ...pdfStyles.subheader });
-        currentY -= 20;
-        page.drawText(`Fecha: ${new Date(excursion.fecha_excursion).toLocaleDateString('es-ES')}`, { x: xMargin, y: currentY, ...pdfStyles.subheader });
-        currentY -= 30;
-
-        const isGlobalExcursionViewAll = (userRol === 'DIRECCION' || userRol === 'TESORERIA') && excursion.para_clase_id === null && !viewClaseId;
-        
-        const columnsFull = [
-            { header: 'Nombre Alumno', key: 'nombre_completo', alignment: 'left'},
-            { header: 'Clase', key: 'nombre_clase', alignment: 'left'},
-            { header: 'Estado Pago', key: 'pago_realizado', alignment: 'left'},
-            { header: 'Pagado (€)', key: 'cantidad_pagada', alignment: 'right'}
-        ];
-        const columnWidthsFull = [240, 100, 80, 80];
-
-        const columnsGrouped = [
-            { header: 'Nombre Alumno', key: 'nombre_completo', alignment: 'left'},
-            { header: 'Estado Pago', key: 'pago_realizado', alignment: 'left'},
-            { header: 'Pagado (€)', key: 'cantidad_pagada', alignment: 'right'}
-        ];
-        const columnWidthsGrouped = [280, 100, 100];
-        const rowHeight = 20;
-
-        const ensurePageSpace = (neededSpace) => {
-            if (currentY - neededSpace < 40) {
+        const ensurePageSpace = (neededSpace, isNewSection = false) => {
+            if (currentY - neededSpace < 40 || (isNewSection && currentY - neededSpace < 80)) { // More space for new section headers
                 page = pdfDocLib.addPage(PageSizes.A4);
-                currentY = height - 50;
-                return true;
+                currentY = height - 40;
+                return true; // New page added
             }
-            return false;
+            return false; // No new page
         };
+        
+        // Overall Title
+        page.drawText('Listado de Asistencia y Justificantes', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
+        currentY -= 20;
+        page.drawText(`Excursión: ${excursion.nombre_excursion}`, { x: xMargin, y: currentY, ...pdfStyles.header });
+        currentY -= 18;
+        page.drawText(`Fecha: ${new Date(excursion.fecha_excursion).toLocaleDateString('es-ES')}`, { x: xMargin, y: currentY, ...pdfStyles.header });
+        currentY -= 25;
 
-        if (alumnosPagados.length > 0) {
-            ensurePageSpace(rowHeight * 2);
-            page.drawText('Alumnos Pagados', { x: xMargin, y: currentY, ...pdfStyles.subheader });
+        // Columns for the table of attending students
+        const columnsAsistentes = [
+            { header: 'Nombre Alumno Asistente', key: 'nombre_completo', alignment: 'left'}
+        ];
+        const columnWidthsAsistentes = [contentWidth]; // Single column takes full width
+
+        // Loop by Class
+        for (const nombreClase of Object.keys(alumnosPorClase).sort()) {
+            const claseData = alumnosPorClase[nombreClase];
+            const alumnosAsistentesEnClase = claseData.alumnos.filter(a => a.autorizacion_firmada === 'Sí');
+            const noAsistentesEnClase = claseData.totalEnClase - claseData.asistentesEnClase;
+
+            ensurePageSpace(rowHeight * 3, true); // Space for class header and summary
+            
+            // Class Header
+            page.drawText(`Clase: ${claseData.nombre_clase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
             currentY -= 20;
-            const fontsForTable = { normal: robotoFont, bold: robotoBoldFont };
-             console.log("DEBUG: fontsForTable passed to drawTable (Alumnos Pagados):", "normal type:", typeof fontsForTable.normal, "bold type:", typeof fontsForTable.bold);
-            if (isGlobalExcursionViewAll) {
-                const pagadosPorClase = alumnosPagados.reduce((acc, alumno) => {
-                    (acc[alumno.nombre_clase] = acc[alumno.nombre_clase] || []).push(alumno);
-                    return acc;
-                }, {});
-                for (const nombreClase of Object.keys(pagadosPorClase).sort()) {
-                    ensurePageSpace(rowHeight * 2);
-                    page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
-                    currentY -= 20;
-                    currentY = await drawTable(pdfDocLib, page, currentY, pagadosPorClase[nombreClase], columnsGrouped, fontsForTable, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
-                    currentY -= 10;
-                }
+
+            // Table of Attending Students
+            if (alumnosAsistentesEnClase.length > 0) {
+                ensurePageSpace(rowHeight * (alumnosAsistentesEnClase.length + 1));
+                 currentY = await drawTable(pdfDocLib, page, currentY, alumnosAsistentesEnClase, columnsAsistentes, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsAsistentes, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
             } else {
-                ensurePageSpace(rowHeight * (alumnosPagados.length + 1));
-                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPagados, columnsFull, fontsForTable, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                ensurePageSpace(rowHeight);
+                page.drawText('No hay alumnos asistentes con justificante para esta clase.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+                currentY -= rowHeight;
             }
+            currentY -= 5; // Small space before summary
+
+            // Class Summary
+            ensurePageSpace(rowHeight * 3);
+            page.drawText(`Total Alumnos en Clase: ${claseData.totalEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
             currentY -= 15;
-        } else {
-            ensurePageSpace(rowHeight);
-            page.drawText('Alumnos Pagados', { x: xMargin, y: currentY, ...pdfStyles.subheader });
-            currentY -= 20;
-            page.drawText('No hay alumnos con pago completo.', { x: xMargin, y: currentY, font: robotoFont, size: 9, color: pdfStyles.tableCell.color });
-            currentY -= 25;
+            page.drawText(`Total Asistentes (con justificante): ${claseData.asistentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            currentY -= 15;
+            page.drawText(`Total No Asistentes (sin justificante o no entregado): ${noAsistentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            currentY -= 25; // Space before next class or overall summary
         }
 
-        if (alumnosPendientesOParciales.length > 0) {
-            ensurePageSpace(rowHeight * 2);
-            page.drawText('Alumnos con Pago Pendiente o Parcial', { x: xMargin, y: currentY, ...pdfStyles.subheader });
-            currentY -= 20;
-            const fontsForTable = { normal: robotoFont, bold: robotoBoldFont };
-            console.log("DEBUG: fontsForTable passed to drawTable (Alumnos Pendientes):", "normal type:", typeof fontsForTable.normal, "bold type:", typeof fontsForTable.bold);
-            if (isGlobalExcursionViewAll) {
-                const pendientesPorClase = alumnosPendientesOParciales.reduce((acc, alumno) => {
-                    (acc[alumno.nombre_clase] = acc[alumno.nombre_clase] || []).push(alumno);
-                    return acc;
-                }, {});
-                for (const nombreClase of Object.keys(pendientesPorClase).sort()) {
-                    ensurePageSpace(rowHeight * 2);
-                    page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
-                    currentY -= 20;
-                    currentY = await drawTable(pdfDocLib, page, currentY, pendientesPorClase[nombreClase], columnsGrouped, fontsForTable, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
-                    currentY -= 10;
-                }
-            } else {
-                ensurePageSpace(rowHeight * (alumnosPendientesOParciales.length + 1));
-                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPendientesOParciales, columnsFull, fontsForTable, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
-            }
-        } else {
-            ensurePageSpace(rowHeight);
-            page.drawText('Alumnos con Pago Pendiente o Parcial', { x: xMargin, y: currentY, ...pdfStyles.subheader });
-            currentY -= 20;
-            page.drawText('No hay alumnos con pago pendiente o parcial.', { x: xMargin, y: currentY, font: robotoFont, size: 9, color: pdfStyles.tableCell.color });
-        }
+        // Overall Summary
+        ensurePageSpace(rowHeight * 4, true);
+        page.drawText('Resumen General de la Excursión', { x: xMargin, y: currentY, ...pdfStyles.header });
+        currentY -= 20;
+        page.drawText(`Total General Alumnos: ${totalGeneralAlumnos}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
+        currentY -= 15;
+        page.drawText(`Total General Asistentes (con justificante): ${totalGeneralAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
+        currentY -= 15;
+        page.drawText(`Total General No Asistentes: ${totalGeneralNoAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
         
         const pdfBytes = await pdfDocLib.save();
         res.contentType('application/pdf');
         res.send(Buffer.from(pdfBytes));
 
     } catch (error) {
-        console.error(`Error en GET /api/excursiones/${excursionId}/participaciones/reporte_pagos:`, error.message, error.stack);
-        res.status(500).json({ error: "Error interno del servidor al generar el reporte PDF." });
+        console.error(`Error en GET /api/excursiones/${excursionId}/participaciones/reporte_pagos (nuevo reporte asistencia):`, error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al generar el reporte de asistencia y justificantes." });
     }
 });
 
@@ -3109,6 +3086,139 @@ app.get('/api/ciclos', authenticateToken, async (req, res) => {
         res.status(500).json({ error: "Error interno del servidor al obtener los ciclos.", detalles: error.message });
     }
 });
+
+// Nuevo endpoint para Informe General de Secretaría en PDF
+app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION' && req.user.rol !== 'TESORERIA') {
+        return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol DIRECCION o TESORERIA.' });
+    }
+
+    try {
+        const pdfDocLib = await PDFDocument.create();
+        pdfDocLib.registerFontkit(fontkit);
+
+        const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
+        const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
+        
+        const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
+        const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
+
+        let page = pdfDocLib.addPage(PageSizes.A4);
+        const { width, height } = page.getSize();
+        let currentY = height - 40;
+        const xMargin = 40;
+        const contentWidth = width - (2 * xMargin);
+        const rowHeight = 18;
+
+        const pdfStyles = {
+            mainTitle: { font: robotoBoldFont, size: 18, color: rgb(0,0,0) },
+            sectionTitle: { font: robotoBoldFont, size: 14, color: rgb(0.1, 0.1, 0.1) },
+            tableHeader: { font: robotoBoldFont, size: 10, color: rgb(0,0,0) },
+            tableCell: { font: robotoFont, size: 9, color: rgb(0.1, 0.1, 0.1) },
+            text: { font: robotoFont, size: 10, color: rgb(0,0,0) }
+        };
+        
+        const ensurePageSpace = (neededSpace, isNewSection = false) => {
+            if (currentY - neededSpace < 40 || (isNewSection && currentY - neededSpace < 80) ) {
+                page = pdfDocLib.addPage(PageSizes.A4);
+                currentY = height - 40;
+                return true; 
+            }
+            return false; 
+        };
+
+        // PDF Title
+        page.drawText('Informe General de Secretaría', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
+        currentY -= (pdfStyles.mainTitle.size + 20);
+
+        // Section 1: Resumen Financiero de Excursiones
+        ensurePageSpace(pdfStyles.sectionTitle.size + rowHeight * 2, true);
+        page.drawText('Resumen Financiero de Excursiones', { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
+        currentY -= (pdfStyles.sectionTitle.size + 10);
+
+        const excursionesDb = await dbAllAsync("SELECT * FROM excursiones ORDER BY fecha_excursion DESC");
+        const excursionFinancialData = [];
+        for (const excursion of excursionesDb) {
+            const financialDetails = await getFinancialDetailsForExcursion(excursion.id, excursion);
+            const totalCostes = financialDetails.coste_total_autobuses + 
+                                financialDetails.coste_total_participacion_entradas + 
+                                financialDetails.coste_total_actividad_global;
+            excursionFinancialData.push({
+                nombre_excursion: excursion.nombre_excursion,
+                fecha_excursion: new Date(excursion.fecha_excursion).toLocaleDateString('es-ES'),
+                total_recaudado: financialDetails.total_dinero_recaudado.toFixed(2),
+                costes_totales: totalCostes.toFixed(2),
+                balance: financialDetails.balance_excursion.toFixed(2)
+            });
+        }
+
+        const columnsExcursiones = [
+            { header: 'Excursión', key: 'nombre_excursion', alignment: 'left'},
+            { header: 'Fecha', key: 'fecha_excursion', alignment: 'left'},
+            { header: 'Recaudado (€)', key: 'total_recaudado', alignment: 'right'},
+            { header: 'Costes (€)', key: 'costes_totales', alignment: 'right'},
+            { header: 'Balance (€)', key: 'balance', alignment: 'right'}
+        ];
+        const columnWidthsExcursiones = [175, 70, 90, 90, 90]; // Sum: 515, to fit contentWidth 515
+
+        if (excursionFinancialData.length > 0) {
+            ensurePageSpace(rowHeight * (excursionFinancialData.length +1));
+            currentY = await drawTable(pdfDocLib, page, currentY, excursionFinancialData, columnsExcursiones, 
+                                       { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, 
+                                       columnWidthsExcursiones, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+        } else {
+            ensurePageSpace(rowHeight);
+            page.drawText('No hay datos financieros de excursiones disponibles.', { x: xMargin, y: currentY, ...pdfStyles.text });
+            currentY -= rowHeight;
+        }
+        currentY -= 20; // Space after section
+
+        // Section 2: Listado de Tutores
+        ensurePageSpace(pdfStyles.sectionTitle.size + rowHeight * 2, true);
+        page.drawText('Listado de Tutores', { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
+        currentY -= (pdfStyles.sectionTitle.size + 10);
+        
+        const tutoresDb = await dbAllAsync("SELECT id, nombre_completo, email FROM usuarios WHERE rol = 'TUTOR' ORDER BY nombre_completo ASC");
+        const clasesDb = await dbAllAsync("SELECT id, nombre_clase, tutor_id FROM clases");
+        const clasesMap = clasesDb.reduce((map, clase) => {
+            if (clase.tutor_id) map[clase.tutor_id] = clase.nombre_clase;
+            return map;
+        }, {});
+
+        const tutorListData = tutoresDb.map(tutor => ({
+            nombre_tutor: tutor.nombre_completo,
+            email_tutor: tutor.email,
+            clase_asignada: clasesMap[tutor.id] || 'No asignada'
+        }));
+
+        const columnsTutores = [
+            { header: 'Nombre Tutor', key: 'nombre_tutor', alignment: 'left'},
+            { header: 'Email', key: 'email_tutor', alignment: 'left'},
+            { header: 'Clase Asignada', key: 'clase_asignada', alignment: 'left'}
+        ];
+        const columnWidthsTutores = [195, 200, 120]; // Sum: 515, to fit contentWidth 515
+
+        if (tutorListData.length > 0) {
+            ensurePageSpace(rowHeight * (tutorListData.length +1));
+            currentY = await drawTable(pdfDocLib, page, currentY, tutorListData, columnsTutores,
+                                   { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 },
+                                   columnWidthsTutores, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+        } else {
+            ensurePageSpace(rowHeight);
+            page.drawText('No hay tutores registrados.', { x: xMargin, y: currentY, ...pdfStyles.text });
+            currentY -= rowHeight;
+        }
+
+        const pdfBytes = await pdfDocLib.save();
+        res.contentType('application/pdf');
+        res.send(Buffer.from(pdfBytes));
+
+    } catch (error) {
+        console.error("Error en GET /api/secretaria/informe_general_pdf:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al generar el informe general PDF.", detalles: error.message });
+    }
+});
+
 
 // Conexión a la Base de Datos e Inicio del Servidor
 const DB_FILE_PATH_FINAL = path.join(__dirname, "database.db");
