@@ -21,3 +21,14 @@ To ensure the application is accessible from both internal and external networks
 *   **Dynamic External IP:** Your external IP address (`79.116.193.109`) might be dynamic and could change over time if assigned by your Internet Service Provider (ISP). If you can no longer access the application externally, check if your public IP has changed. For a permanent solution, consider using a Dynamic DNS (DDNS) service.
 *   **Router Configuration:** Ensure that port 3000 is correctly forwarded in your router settings to the internal IP address of the machine running the server (`192.168.1.7`).
 *   **Firewall:** Make sure that no firewall (on your server machine or network) is blocking incoming connections on port 3000.
+
+## Secure Connections (HTTPS)
+
+When running this application in an IDX environment (or any environment that provides an HTTPS proxy), you should always use the HTTPS URL provided by the environment for accessing the application. This URL typically looks like `https://*.idx.dev/...` or `https://*.cloud.goog/...`.
+
+Using the HTTPS URL ensures that:
+- Your connection to the server is encrypted.
+- PDF downloads and other API interactions are served over a secure connection, which should prevent browser warnings about insecure downloads.
+- JWT tokens and other sensitive data are transmitted securely.
+
+Avoid accessing the application via raw IP addresses or HTTP on public-facing URLs if a secure HTTPS option is available. For local development, `http://localhost:3000` is typical, but for previews shared or accessed externally, always prefer the HTTPS link provided by the platform.

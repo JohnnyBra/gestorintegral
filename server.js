@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const path = require('path');
+const morgan = require('morgan');
 require('dotenv').config();
 
 const fs = require('fs'); 
@@ -15,6 +16,7 @@ const fontkit = require('fontkit');
 // Removed pdfmake VFS setup and printer initialization
 
 const app = express();
+app.use(morgan('dev'));
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV";
 

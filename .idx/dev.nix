@@ -15,6 +15,10 @@
 
   # Sets environment variables in the workspace
   env = {};
+
+  # System packages to install
+  environment.systemPackages = [ pkgs.curl ];
+
   idx = {
     # Search for the extensions you want on https://open-vsx.org/ and use "publisher.id"
     extensions = [
