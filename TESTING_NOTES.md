@@ -35,15 +35,15 @@ Avoid accessing the application via raw IP addresses or HTTP on public-facing UR
 
 ## Testing the In-App Data Export Feature (Dirección Profile)
 
-After implementing the "Exportar Todos los Datos" feature and relocating it:
+After relocating the "Exportar Todos los Datos" button to a dedicated "Backup" section on the dashboard:
 
 **1. UI Verification:**
     - Log in as a user with the 'DIRECCION' role.
-    - Navigate to the main **Dashboard** view (usually the default view after login or by clicking a "Dashboard" or "Inicio" link).
-    - **Expected:** The "Exportar Todos los Datos" button should be visible at the end of the dashboard, typically after the calendar display, and should be enabled.
+    - Navigate to the main **Dashboard** view.
+    - **Expected:** A section titled "Copia de Seguridad y Exportación" (or similar, as implemented) should be visible on the dashboard. Within this section, the "Exportar Todos los Datos" button should be visible and enabled.
     - Log out and log in as a user with a different role (e.g., 'TUTOR', 'TESORERIA').
     - Navigate to the Dashboard view.
-    - **Expected:** The "Exportar Todos los Datos" button (or its container) should NOT be visible.
+    - **Expected:** The "Copia de Seguridad y Exportación" section (containing the export button) should NOT be visible.
 
 **2. Export Functionality (Happy Path):**
     - As a 'DIRECCION' user, click the "Exportar Todos los Datos" button.

@@ -354,6 +354,82 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar el resumen: ${error.message}</p>`;
         }
+
+        // Logic for "Exportar Todos los Datos" button on dashboard
+        const exportContainer = document.getElementById('dashboard-backup-section'); // Use the new container ID
+        const exportButtonDashboard = document.getElementById('exportAllDataBtn'); 
+
+        if (currentUser && currentUser.rol === 'DIRECCION' && exportContainer && exportButtonDashboard) {
+            exportContainer.style.display = 'block'; 
+
+            const newExportButton = exportButtonDashboard.cloneNode(true);
+            if (exportButtonDashboard.parentNode) {
+                exportButtonDashboard.parentNode.replaceChild(newExportButton, exportButtonDashboard);
+            } else {
+                // This case should not happen if HTML is correct and button is inside exportContainer's structure
+                console.error("Export button's parentNode not found during dashboard load.");
+                exportContainer.querySelector('div').appendChild(newExportButton); // Attempt to append if structure is as expected
+            }
+            
+            newExportButton.addEventListener('click', async () => {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    alert('Error de autenticación. Por favor, inicia sesión de nuevo.');
+                    return;
+                }
+
+                newExportButton.disabled = true;
+                newExportButton.textContent = 'Exportando...';
+
+                try {
+                    const response = await fetch('/api/direccion/export/all-data', {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        let errorMsg = response.statusText;
+                        try {
+                            const errData = await response.json();
+                            errorMsg = errData.error || errorMsg;
+                        } catch (e) { /* Ignore parsing error */ }
+                        throw new Error(errorMsg);
+                    }
+                    
+                    const contentDisposition = response.headers.get('content-disposition');
+                    let filename = 'export_gestion_escolar.zip'; 
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                        if (filenameMatch && filenameMatch.length > 1) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+                    
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    alert('Datos exportados correctamente como ' + filename);
+
+                } catch (error) {
+                    console.error('Error al exportar datos:', error);
+                    alert('Error al exportar datos: ' + error.message);
+                } finally {
+                    newExportButton.disabled = false;
+                    newExportButton.textContent = 'Exportar Todos los Datos';
+                }
+            });
+        } else if (exportContainer) {
+            exportContainer.style.display = 'none';
+        }
     }
 
     let listaDeClasesGlobal = []; 
