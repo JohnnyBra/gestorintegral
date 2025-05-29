@@ -7,60 +7,7 @@ const path = require('path');
 require('dotenv').config();
 
 const fs = require('fs'); 
-const PdfPrinter = require('pdfmake');
-const vfsFontsModule = require('pdfmake/build/vfs_fonts.js');
-
-console.log("Intentando configurar PdfPrinter.vfs (versión 3 de depuración)...");
-
-if (vfsFontsModule && typeof vfsFontsModule === 'object' && Object.keys(vfsFontsModule).length > 0) {
-    PdfPrinter.vfs = vfsFontsModule;
-    console.log("VFS asignado directamente desde vfsFontsModule.");
-
-    if (PdfPrinter.vfs) {
-        console.log("Claves en PdfPrinter.vfs (primeras 5):", Object.keys(PdfPrinter.vfs).slice(0, 5));
-        
-        const robotoRegularData = PdfPrinter.vfs['Roboto-Regular.ttf'];
-        if (robotoRegularData) {
-            console.log("¿Está 'Roboto-Regular.ttf' en VFS? Sí");
-            // console.log("   (Inicio de datos para Roboto-Regular.ttf):", typeof robotoRegularData === 'string' ? robotoRegularData.substring(0, 70) + "..." : "No es un string");
-        } else {
-            console.log("¿Está 'Roboto-Regular.ttf' en VFS? NO, FALTA!");
-        }
-
-        const robotoMediumData = PdfPrinter.vfs['Roboto-Medium.ttf'];
-        if (robotoMediumData) {
-            console.log("¿Está 'Roboto-Medium.ttf' en VFS (para negrita)? Sí");
-            console.log("   (Inicio de datos para Roboto-Medium.ttf):", typeof robotoMediumData === 'string' ? robotoMediumData.substring(0, 70) + "..." : "No es un string");
-        } else {
-            console.log("¿Está 'Roboto-Medium.ttf' en VFS (para negrita)? NO, FALTA!");
-        }
-
-    } else {
-        console.error("ERROR: PdfPrinter.vfs es null o undefined DESPUÉS de la asignación directa.");
-    }
-
-} else {
-    console.error("ERROR: vfsFontsModule no es un objeto válido o está vacío. No se puede configurar VFS.");
-    if (vfsFontsModule) {
-        console.log("Tipo de vfsFontsModule:", typeof vfsFontsModule);
-        console.log("Claves de vfsFontsModule:", Object.keys(vfsFontsModule));
-    }
-    if (!PdfPrinter.vfs) {
-        console.error("FALLO CRÍTICO: PdfPrinter.vfs no se pudo configurar. La generación de PDF probablemente fallará para fuentes personalizadas.");
-    }
-}
-
-// Define los descriptores de fuentes
-const fonts = {
-    Roboto: {
-        normal: 'Roboto-Regular.ttf',
-        bold: 'Roboto-Medium.ttf',
-        italics: 'Roboto-Italic.ttf',
-        bolditalics: 'Roboto-MediumItalic.ttf'
-    }
-};
-
-const printer = new PdfPrinter(fonts);
+const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -216,6 +163,150 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
     return { participating_scope_type, participating_scope_name };
 }
 
+// Helper function to draw tables with pdf-lib
+async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50) {
+    // pdfDoc: the PDFDocument instance
+    // page: the PDFPage instance
+    // startY: the Y coordinate to start drawing the table from (top edge)
+    // data: array of objects, where each object is a row
+    // columns: array of objects like { header: 'Header Name', key: 'dataKey', alignment: 'left'/'right' }
+    // fonts: { normal: robotoFont, bold: robotoBoldFont }
+    // sizes: { header: 10, cell: 9 }
+    // columnWidths: array of numbers representing width for each column
+    // rowHeight: height of each row
+    // headerStyle: { font: fonts.bold, size: sizes.header, color: rgb(0,0,0) }
+    // cellStyle: { font: fonts.normal, size: sizes.cell, color: rgb(0.2, 0.2, 0.2) }
+
+    let currentY = startY;
+    const { width } = page.getSize(); // Get page width
+    
+    // Calculate actual table width based on columnWidths
+    const tableActualWidth = columnWidths.reduce((sum, w) => sum + w, 0);
+    const tableEndX = xStart + tableActualWidth;
+
+    // Draw header
+    let currentX = xStart;
+    // Line above header
+    page.drawLine({
+        start: { x: xStart, y: currentY },
+        end: { x: tableEndX, y: currentY },
+        thickness: 0.7,
+        color: headerStyle.color || rgb(0, 0, 0)
+    });
+
+    columns.forEach((col, index) => {
+        page.drawText(col.header, {
+            x: currentX + 2, // Small padding
+            y: currentY - (rowHeight / 2) - (sizes.header / 3.5), // Adjusted for baseline
+            font: headerStyle.font,
+            size: headerStyle.size,
+            color: headerStyle.color
+        });
+        currentX += columnWidths[index];
+    });
+    currentY -= rowHeight;
+    // Line below header
+    page.drawLine({
+        start: { x: xStart, y: currentY },
+        end: { x: tableEndX, y: currentY },
+        thickness: 0.5,
+        color: headerStyle.color || rgb(0, 0, 0)
+    });
+
+    // Draw rows
+    data.forEach(row => {
+        if (currentY - rowHeight < 40) { // Check for page break
+             page = pdfDoc.addPage(PageSizes.A4);
+             currentY = height - 50; // Reset Y to top margin
+             // Optionally re-draw headers on new page if desired (not implemented here for brevity)
+        }
+
+        currentX = xStart;
+        columns.forEach((col, index) => {
+            let text = String(row[col.key] !== null && row[col.key] !== undefined ? row[col.key] : '');
+            if (col.key === 'cantidad_pagada' && typeof row[col.key] === 'number') {
+                text = row[col.key].toFixed(2);
+            }
+            
+            let textX = currentX;
+            const cellPadding = 5;
+
+            if (col.alignment === 'right') {
+                const textWidth = cellStyle.font.widthOfTextAtSize(text, cellStyle.size);
+                textX = currentX + columnWidths[index] - textWidth - cellPadding;
+            } else {
+                 textX = currentX + cellPadding;
+            }
+
+            page.drawText(text, {
+                x: textX,
+                y: currentY - (rowHeight / 2) - (sizes.cell / 3.5), // Adjusted for baseline
+                font: cellStyle.font,
+                size: cellStyle.size,
+                color: cellStyle.color
+            });
+            currentX += columnWidths[index];
+        });
+        currentY -= rowHeight;
+        // Line below row
+        page.drawLine({
+            start: { x: xStart, y: currentY },
+            end: { x: tableEndX, y: currentY },
+            thickness: 0.2,
+            color: rgb(0.7, 0.7, 0.7) // Lighter gray for row lines
+        });
+    });
+    return currentY; // Return the Y position after drawing the table
+}
+
+// Helper function to draw label and value with basic wrapping for value
+function drawFieldWithWrapping(page, x, y, label, value, fonts, styles, maxWidth, lineHeight) {
+    // page: PDFPage instance
+    // x, y: coordinates for the label
+    // label: string
+    // value: string
+    // fonts: { normal: robotoFont, bold: robotoBoldFont }
+    // styles: { label: { font, size, color }, value: { font, size, color } }
+    // maxWidth: maximum width for the value text before wrapping
+    // lineHeight: height for each line of text
+    // Returns the Y position after drawing this field
+
+    page.drawText(label, { 
+        x, 
+        y, 
+        font: styles.label.font, 
+        size: styles.label.size, 
+        color: styles.label.color 
+    });
+    y -= styles.label.size + 4; // Move down for value, plus some padding
+
+    const valueFont = styles.value.font;
+    const valueSize = styles.value.size;
+    const valueColor = styles.value.color;
+
+    let words = String(value).split(' ');
+    let currentLine = '';
+    
+    for (let word of words) {
+        let testLine = currentLine + (currentLine ? ' ' : '') + word;
+        let testWidth = valueFont.widthOfTextAtSize(testLine, valueSize);
+        if (testWidth > maxWidth && currentLine) {
+            page.drawText(currentLine, { x, y, font: valueFont, size: valueSize, color: valueColor });
+            y -= lineHeight;
+            currentLine = word;
+        } else {
+            currentLine = testLine;
+        }
+    }
+    if (currentLine) {
+        page.drawText(currentLine, { x, y, font: valueFont, size: valueSize, color: valueColor });
+        y -= lineHeight;
+    }
+    
+    return y - 10; // Return Y for next element, plus more padding
+}
+
+
 app.get('/api', (req, res) => {
     res.json({ message: "API del Gestor Escolar v5 - ¡Funcionando!" });
 });
@@ -353,8 +444,8 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
             const alumnoData = {
                 nombre_completo: ap.nombre_completo,
                 nombre_clase: ap.nombre_clase,
-                pago_realizado: ap.pago_realizado || 'No', // Default to 'No' if null
-                cantidad_pagada: ap.cantidad_pagada !== null && ap.cantidad_pagada !== undefined ? ap.cantidad_pagada : 0 // Default to 0 if null/undefined
+                pago_realizado: ap.pago_realizado || 'No', 
+                cantidad_pagada: ap.cantidad_pagada !== null && ap.cantidad_pagada !== undefined ? ap.cantidad_pagada : 0
             };
             if (alumnoData.pago_realizado === 'Sí') {
                 alumnosPagados.push(alumnoData);
@@ -363,119 +454,120 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
             }
         });
 
-        // PDF Definition
-        const docDefinition = {
-            content: [
-                { text: 'Reporte de Pagos de Excursión', style: 'header' },
-                { text: `Excursión: ${excursion.nombre_excursion}`, style: 'subheader' },
-                { text: `Fecha: ${new Date(excursion.fecha_excursion).toLocaleDateString('es-ES')}`, style: 'subheader', margin: [0, 0, 0, 20] },
-            ],
-            styles: {
-                header: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] },
-                subheader: { fontSize: 14, bold: true, margin: [0, 0, 0, 5] },
-                tableHeader: { bold: true, fontSize: 10, color: 'black' },
-                tableCell: { fontSize: 9 },
-                classHeader: { fontSize: 12, bold: true, margin: [0, 10, 0, 5], color: 'blue' }
-            },
-            defaultStyle: { font: 'Roboto' }
-        };
-
-        const buildTable = (alumnos, tituloSeccion) => {
-            const body = [[
-                { text: 'Nombre Alumno', style: 'tableHeader' },
-                { text: 'Clase', style: 'tableHeader' },
-                { text: 'Estado Pago', style: 'tableHeader' },
-                { text: 'Cantidad Pagada (€)', style: 'tableHeader' }
-            ]];
-            alumnos.forEach(a => {
-                body.push([
-                    { text: a.nombre_completo, style: 'tableCell' },
-                    { text: a.nombre_clase, style: 'tableCell' },
-                    { text: a.pago_realizado, style: 'tableCell' },
-                    { text: a.cantidad_pagada.toFixed(2), style: 'tableCell', alignment: 'right' }
-                ]);
-            });
-            return [
-                { text: tituloSeccion, style: 'subheader', margin: [0, 15, 0, 5] },
-                {
-                    table: {
-                        headerRows: 1,
-                        widths: ['*', 'auto', 'auto', 'auto'],
-                        body: body
-                    },
-                    layout: 'lightHorizontalLines'
-                }
-            ];
-        };
+        // PDF Generation with pdf-lib
+        const pdfDocLib = await PDFDocument.create();
+        let page = pdfDocLib.addPage(PageSizes.A4);
+        const { width, height } = page.getSize();
         
-        const buildTableGroupedByClass = (alumnos, tituloSeccion) => {
-            const content = [{ text: tituloSeccion, style: 'subheader', margin: [0, 15, 0, 5] }];
-            const alumnosPorClase = alumnos.reduce((acc, alumno) => {
-                (acc[alumno.nombre_clase] = acc[alumno.nombre_clase] || []).push(alumno);
-                return acc;
-            }, {});
+        const robotoFont = await pdfDocLib.embedFont(StandardFonts.Roboto);
+        const robotoBoldFont = await pdfDocLib.embedFont(StandardFonts.RobotoBold);
 
-            Object.keys(alumnosPorClase).sort().forEach(nombreClase => {
-                content.push({ text: `Clase: ${nombreClase}`, style: 'classHeader' });
-                const body = [[
-                    { text: 'Nombre Alumno', style: 'tableHeader' },
-                    { text: 'Estado Pago', style: 'tableHeader' },
-                    { text: 'Cantidad Pagada (€)', style: 'tableHeader' }
-                ]];
-                alumnosPorClase[nombreClase].forEach(a => {
-                    body.push([
-                        { text: a.nombre_completo, style: 'tableCell' },
-                        { text: a.pago_realizado, style: 'tableCell' },
-                        { text: a.cantidad_pagada.toFixed(2), style: 'tableCell', alignment: 'right' }
-                    ]);
-                });
-                content.push({
-                    table: {
-                        headerRows: 1,
-                        widths: ['*', 'auto', 'auto'],
-                        body: body
-                    },
-                    layout: 'lightHorizontalLines'
-                });
-            });
-            return content;
+        const pdfStyles = {
+            header: { font: robotoBoldFont, size: 18, color: rgb(0,0,0) },
+            subheader: { font: robotoBoldFont, size: 14, color: rgb(0,0,0) },
+            tableHeader: { font: robotoBoldFont, size: 10, color: rgb(0,0,0) },
+            tableCell: { font: robotoFont, size: 9, color: rgb(0.1, 0.1, 0.1) }, // Darker gray for cells
+            classHeader: { font: robotoBoldFont, size: 12, color: rgb(0.1, 0.1, 0.6) } // Blueish
         };
 
+        let currentY = height - 50;
+        const xMargin = 50;
+
+        page.drawText('Reporte de Pagos de Excursión', { x: xMargin, y: currentY, ...pdfStyles.header });
+        currentY -= 25;
+        page.drawText(`Excursión: ${excursion.nombre_excursion}`, { x: xMargin, y: currentY, ...pdfStyles.subheader });
+        currentY -= 20;
+        page.drawText(`Fecha: ${new Date(excursion.fecha_excursion).toLocaleDateString('es-ES')}`, { x: xMargin, y: currentY, ...pdfStyles.subheader });
+        currentY -= 30;
 
         const isGlobalExcursionViewAll = (userRol === 'DIRECCION' || userRol === 'TESORERIA') && excursion.para_clase_id === null && !viewClaseId;
+        
+        const columnsFull = [
+            { header: 'Nombre Alumno', key: 'nombre_completo', alignment: 'left'},
+            { header: 'Clase', key: 'nombre_clase', alignment: 'left'},
+            { header: 'Estado Pago', key: 'pago_realizado', alignment: 'left'},
+            { header: 'Pagado (€)', key: 'cantidad_pagada', alignment: 'right'}
+        ];
+        const columnWidthsFull = [240, 100, 80, 80]; // Adjusted widths
+
+        const columnsGrouped = [
+            { header: 'Nombre Alumno', key: 'nombre_completo', alignment: 'left'},
+            { header: 'Estado Pago', key: 'pago_realizado', alignment: 'left'},
+            { header: 'Pagado (€)', key: 'cantidad_pagada', alignment: 'right'}
+        ];
+        const columnWidthsGrouped = [280, 100, 100]; // Adjusted widths
+        const rowHeight = 20;
+
+        // Function to add a new page if needed
+        const ensurePageSpace = (neededSpace) => {
+            if (currentY - neededSpace < 40) { // 40 is bottom margin
+                page = pdfDocLib.addPage(PageSizes.A4);
+                currentY = height - 50; // Reset Y to top margin
+                return true; // Page was added
+            }
+            return false; // No page added
+        };
+
 
         if (alumnosPagados.length > 0) {
+            ensurePageSpace(rowHeight * 2); // Space for header and at least one row
+            page.drawText('Alumnos Pagados', { x: xMargin, y: currentY, ...pdfStyles.subheader });
+            currentY -= 20;
             if (isGlobalExcursionViewAll) {
-                docDefinition.content.push(...buildTableGroupedByClass(alumnosPagados, 'Alumnos Pagados'));
+                const pagadosPorClase = alumnosPagados.reduce((acc, alumno) => {
+                    (acc[alumno.nombre_clase] = acc[alumno.nombre_clase] || []).push(alumno);
+                    return acc;
+                }, {});
+                for (const nombreClase of Object.keys(pagadosPorClase).sort()) {
+                    ensurePageSpace(rowHeight * 2);
+                    page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
+                    currentY -= 20;
+                    currentY = await drawTable(pdfDocLib, page, currentY, pagadosPorClase[nombreClase], columnsGrouped, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                    currentY -= 10;
+                }
             } else {
-                docDefinition.content.push(...buildTable(alumnosPagados, 'Alumnos Pagados'));
+                ensurePageSpace(rowHeight * (alumnosPagados.length + 1));
+                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPagados, columnsFull, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
             }
+            currentY -= 15;
         } else {
-            docDefinition.content.push({ text: 'Alumnos Pagados', style: 'subheader', margin: [0, 15, 0, 5] });
-            docDefinition.content.push({ text: 'No hay alumnos con pago completo.', margin: [0, 0, 0, 10] });
+            ensurePageSpace(rowHeight);
+            page.drawText('Alumnos Pagados', { x: xMargin, y: currentY, ...pdfStyles.subheader });
+            currentY -= 20;
+            page.drawText('No hay alumnos con pago completo.', { x: xMargin, y: currentY, font: robotoFont, size: 9, color: pdfStyles.tableCell.color });
+            currentY -= 25;
         }
 
         if (alumnosPendientesOParciales.length > 0) {
-             if (isGlobalExcursionViewAll) {
-                docDefinition.content.push(...buildTableGroupedByClass(alumnosPendientesOParciales, 'Alumnos con Pago Pendiente o Parcial'));
+            ensurePageSpace(rowHeight * 2);
+            page.drawText('Alumnos con Pago Pendiente o Parcial', { x: xMargin, y: currentY, ...pdfStyles.subheader });
+            currentY -= 20;
+            if (isGlobalExcursionViewAll) {
+                const pendientesPorClase = alumnosPendientesOParciales.reduce((acc, alumno) => {
+                    (acc[alumno.nombre_clase] = acc[alumno.nombre_clase] || []).push(alumno);
+                    return acc;
+                }, {});
+                for (const nombreClase of Object.keys(pendientesPorClase).sort()) {
+                    ensurePageSpace(rowHeight * 2);
+                    page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
+                    currentY -= 20;
+                    currentY = await drawTable(pdfDocLib, page, currentY, pendientesPorClase[nombreClase], columnsGrouped, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                    currentY -= 10;
+                }
             } else {
-                docDefinition.content.push(...buildTable(alumnosPendientesOParciales, 'Alumnos con Pago Pendiente o Parcial'));
+                ensurePageSpace(rowHeight * (alumnosPendientesOParciales.length + 1));
+                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPendientesOParciales, columnsFull, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
             }
         } else {
-            docDefinition.content.push({ text: 'Alumnos con Pago Pendiente o Parcial', style: 'subheader', margin: [0, 15, 0, 5] });
-            docDefinition.content.push({ text: 'No hay alumnos con pago pendiente o parcial.', margin: [0, 0, 0, 10] });
+            ensurePageSpace(rowHeight);
+            page.drawText('Alumnos con Pago Pendiente o Parcial', { x: xMargin, y: currentY, ...pdfStyles.subheader });
+            currentY -= 20;
+            page.drawText('No hay alumnos con pago pendiente o parcial.', { x: xMargin, y: currentY, font: robotoFont, size: 9, color: pdfStyles.tableCell.color });
         }
         
-        // PDF Generation
-        const pdfDoc = printer.createPdfKitDocument(docDefinition);
-        const chunks = [];
-        pdfDoc.on('data', chunk => chunks.push(chunk));
-        pdfDoc.on('end', () => {
-            const resultBuffer = Buffer.concat(chunks);
-            res.contentType('application/pdf');
-            res.send(resultBuffer);
-        });
-        pdfDoc.end();
+        const pdfBytes = await pdfDocLib.save();
+        res.contentType('application/pdf');
+        res.send(Buffer.from(pdfBytes));
 
     } catch (error) {
         console.error(`Error en GET /api/excursiones/${excursionId}/participaciones/reporte_pagos:`, error.message, error.stack);
@@ -1807,79 +1899,63 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
             return res.status(403).json({ error: "No tiene permisos para ver la información de esta excursión." });
         }
 
-        // PDF Definition
-        const docDefinition = {
-            content: [
-                { text: excursion.nombre_excursion, style: 'mainTitle', alignment: 'center', margin: [0, 0, 0, 20] },
+        // PDF Generation with pdf-lib
+        const pdfDocLib = await PDFDocument.create();
+        const page = pdfDocLib.addPage(PageSizes.A4);
+        const { width, height } = page.getSize();
 
-                { text: 'Descripción de la Actividad:', style: 'fieldLabel' },
-                { text: excursion.actividad_descripcion || 'No especificada', style: 'fieldValue', margin: [0, 0, 0, 10] },
+        const robotoFont = await pdfDocLib.embedFont(StandardFonts.Roboto);
+        const robotoBoldFont = await pdfDocLib.embedFont(StandardFonts.RobotoBold);
 
-                { text: 'Lugar:', style: 'fieldLabel' },
-                { text: excursion.lugar || 'No especificado', style: 'fieldValue', margin: [0, 0, 0, 10] },
-
-                { text: 'Fecha:', style: 'fieldLabel' },
-                { text: excursion.fecha_excursion ? new Date(excursion.fecha_excursion).toLocaleDateString('es-ES') : 'No especificada', style: 'fieldValue', margin: [0, 0, 0, 10] },
-
-                {
-                    columns: [
-                        {
-                            width: 'auto',
-                            text: [
-                                { text: 'Hora de Salida: ', style: 'fieldLabel' },
-                                { text: excursion.hora_salida || 'No especificada', style: 'fieldValue' }
-                            ]
-                        },
-                        {
-                            width: '*',
-                            text: [
-                                { text: 'Hora de Llegada: ', style: 'fieldLabel' },
-                                { text: excursion.hora_llegada || 'No especificada', style: 'fieldValue' }
-                            ],
-                            margin: [20, 0, 0, 0] // Add some space between columns
-                        }
-                    ],
-                    columnGap: 10,
-                    margin: [0, 0, 0, 10]
-                },
-
-
-                { text: 'Coste por Alumno:', style: 'fieldLabel' },
-                { text: `${(excursion.coste_excursion_alumno || 0).toFixed(2).replace('.', ',')} €`, style: 'fieldValue', margin: [0, 0, 0, 10] },
-
-                { text: 'Vestimenta Requerida:', style: 'fieldLabel' },
-                { text: excursion.vestimenta || 'No especificada', style: 'fieldValue', margin: [0, 0, 0, 10] },
-
-                { text: 'Medio de Transporte:', style: 'fieldLabel' },
-                { text: excursion.transporte || 'No especificado', style: 'fieldValue', margin: [0, 0, 0, 10] },
-
-                { text: 'Justificación Pedagógica:', style: 'fieldLabel' },
-                { text: excursion.justificacion_texto || 'No especificada', style: 'fieldValue', margin: [0, 0, 0, 10] },
-            ],
-            styles: {
-                mainTitle: { fontSize: 22, bold: true, font: 'Roboto' },
-                fieldLabel: { fontSize: 12, bold: true, color: '#333333', font: 'Roboto' },
-                fieldValue: { fontSize: 12, color: '#555555', font: 'Roboto', margin: [0, 2, 0, 0] } // small top margin for value
-            },
-            defaultStyle: {
-                font: 'Roboto'
-            }
+        const styles = {
+            mainTitle: { font: robotoBoldFont, size: 22, color: rgb(0,0,0) },
+            fieldLabel: { font: robotoBoldFont, size: 12, color: rgb(0.2, 0.2, 0.2) }, // #333333
+            fieldValue: { font: robotoFont, size: 12, color: rgb(0.33, 0.33, 0.33) }  // #555555
         };
+        
+        const xMargin = 50;
+        const fieldMaxWidth = width - (2 * xMargin);
+        const lineHeight = 15; // Approximate line height for wrapped text
+        let currentY = height - 50;
+
+        // Main Title (Centered)
+        const titleText = excursion.nombre_excursion;
+        const titleWidth = styles.mainTitle.font.widthOfTextAtSize(titleText, styles.mainTitle.size);
+        page.drawText(titleText, {
+            x: (width - titleWidth) / 2,
+            y: currentY,
+            ...styles.mainTitle
+        });
+        currentY -= styles.mainTitle.size + 20; // Extra space after title
+
+        // Excursion Fields using helper
+        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Descripción de la Actividad:', excursion.actividad_descripcion || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Lugar:', excursion.lugar || 'No especificado', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Fecha:', excursion.fecha_excursion ? new Date(excursion.fecha_excursion).toLocaleDateString('es-ES') : 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+
+        // Hora Salida & Hora Llegada (side-by-side)
+        page.drawText('Hora de Salida:', { x: xMargin, y: currentY, ...styles.fieldLabel });
+        page.drawText(excursion.hora_salida || 'No especificada', { x: xMargin, y: currentY - (styles.fieldLabel.size + 2), ...styles.fieldValue });
+        
+        const secondColumnX = xMargin + (fieldMaxWidth / 2) + 20; // Adjust as needed
+        page.drawText('Hora de Llegada:', { x: secondColumnX, y: currentY, ...styles.fieldLabel });
+        page.drawText(excursion.hora_llegada || 'No especificada', { x: secondColumnX, y: currentY - (styles.fieldLabel.size + 2), ...styles.fieldValue });
+        currentY -= styles.fieldLabel.size + 2 + styles.fieldValue.size + 10;
+
+
+        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Coste por Alumno:', `${(excursion.coste_excursion_alumno || 0).toFixed(2).replace('.', ',')} €`, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Vestimenta Requerida:', excursion.vestimenta || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Medio de Transporte:', excursion.transporte || 'No especificado', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
+        currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Justificación Pedagógica:', excursion.justificacion_texto || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
 
         if (excursion.notas_excursion && excursion.notas_excursion.trim() !== '') {
-            docDefinition.content.push({ text: 'Notas Adicionales:', style: 'fieldLabel', margin: [0, 10, 0, 0] });
-            docDefinition.content.push({ text: excursion.notas_excursion, style: 'fieldValue', margin: [0, 0, 0, 10] });
+            currentY -= 10; // Extra space before notes
+            currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Notas Adicionales:', excursion.notas_excursion, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
         }
         
-        const pdfDoc = printer.createPdfKitDocument(docDefinition);
-        const chunks = [];
-        pdfDoc.on('data', chunk => chunks.push(chunk));
-        pdfDoc.on('end', () => {
-            const resultBuffer = Buffer.concat(chunks);
-            res.contentType('application/pdf');
-            res.send(resultBuffer);
-        });
-        pdfDoc.end();
+        const pdfBytes = await pdfDocLib.save();
+        res.contentType('application/pdf');
+        res.send(Buffer.from(pdfBytes));
 
     } catch (error) {
         console.error(`Error en GET /api/excursiones/${excursionId}/info_pdf:`, error.message, error.stack);
