@@ -6,6 +6,7 @@ const cors = require('cors');
 const path = require('path');
 const morgan = require('morgan');
 require('dotenv').config();
+const JSZip = require('jszip');
 
 const fs = require('fs'); 
 const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
@@ -168,6 +169,35 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
         console.error(`Error en getExcursionScopeDetails para excursion ID ${excursion.id}:`, error.message);
     }
     return { participating_scope_type, participating_scope_name };
+}
+
+// Helper function to convert records to CSV
+async function recordsToCsv(records, columns) {
+    if (!records) return ''; // Handle null or undefined records input
+
+    const escapeCsvValue = (value) => {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        const stringValue = String(value);
+        if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+    };
+
+    let csvString = columns.join(',') + '\n';
+
+    if (records.length === 0) {
+        return csvString; // Return only header if no records
+    }
+
+    records.forEach(record => {
+        const line = columns.map(col => escapeCsvValue(record[col])).join(',');
+        csvString += line + '\n';
+    });
+
+    return csvString;
 }
 
 // Helper function to draw tables with pdf-lib (re-adding)
@@ -3054,6 +3084,67 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
         res.status(500).json({ error: "Error interno del servidor al generar el resumen del dashboard.", detalles: error.message });
     }
 });
+
+// API Endpoint for Data Export (Direccion ROL only)
+app.get('/api/direccion/export/all-data', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado.' });
+    }
+
+    try {
+        const zip = new JSZip();
+
+        // Define tables and columns to export
+        const tablesToExport = [
+            { name: 'usuarios', columns: ['id', 'email', 'nombre_completo', 'password_hash', 'rol'] },
+            { name: 'ciclos', columns: ['id', 'nombre_ciclo'] },
+            { name: 'clases', columns: ['id', 'nombre_clase', 'tutor_id', 'ciclo_id'] },
+            { name: 'alumnos', columns: ['id', 'nombre_completo', 'apellidos_para_ordenar', 'clase_id'] },
+            { 
+                name: 'excursiones', 
+                columns: [
+                    'id', 'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 'hora_llegada', 
+                    'coste_excursion_alumno', 'vestimenta', 'transporte', 'justificacion_texto', 
+                    'actividad_descripcion', 'notas_excursion', 'numero_autobuses', 'coste_por_autobus', 
+                    'coste_entradas_individual', 'coste_actividad_global', 'creada_por_usuario_id', 'para_clase_id'
+                ] 
+            },
+            { 
+                name: 'participaciones_excursion', 
+                columns: [
+                    'id', 'alumno_id', 'excursion_id', 'autorizacion_firmada', 'fecha_autorizacion', 
+                    'pago_realizado', 'cantidad_pagada', 'fecha_pago', 'notas_participacion'
+                ] 
+            },
+            {
+                name: 'shared_excursiones',
+                columns: [
+                    'id', 'original_excursion_id', 'shared_by_usuario_id', 'shared_with_usuario_id', 
+                    'status', 'shared_at', 'processed_at', 'new_excursion_id_on_acceptance'
+                ]
+            }
+        ];
+
+        for (const table of tablesToExport) {
+            const records = await dbAllAsync(`SELECT ${table.columns.join(', ')} FROM ${table.name}`);
+            const csvString = await recordsToCsv(records, table.columns);
+            zip.file(`${table.name}.csv`, csvString);
+        }
+
+        const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 } });
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[-T:]/g, "");
+        const filename = `export_gestion_escolar_${timestamp}.zip`;
+
+        res.set('Content-Type', 'application/zip');
+        res.set('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(zipBuffer);
+
+    } catch (error) {
+        console.error("Error en /api/direccion/export/all-data:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno al generar la exportación.", detalles: error.message });
+    }
+});
+
 
 // Rutas de Tesorería
 app.get('/api/tesoreria/ingresos-por-clase', authenticateToken, async (req, res) => {
