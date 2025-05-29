@@ -8,7 +8,6 @@ require('dotenv').config();
 
 const fs = require('fs'); 
 const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
-console.log("DEBUG: StandardFonts object:", StandardFonts);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -166,12 +165,12 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
 
 // Helper function to draw tables with pdf-lib
 async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50) {
-    console.log("DEBUG drawTable: headerStyle.font type:", typeof headerStyle.font);
-    console.log("DEBUG drawTable: cellStyle.font type:", typeof cellStyle.font);
+    // console.log("DEBUG drawTable: headerStyle.font type:", typeof headerStyle.font);
+    // console.log("DEBUG drawTable: cellStyle.font type:", typeof cellStyle.font);
     // pdfDoc: the PDFDocument instance
     // page: the PDFPage instance
     // startY: the Y coordinate to start drawing the table from (top edge)
-    // // data: array of objects, where each object is a row
+    // data: array of objects, where each object is a row
     // columns: array of objects like { header: 'Header Name', key: 'dataKey', alignment: 'left'/'right' }
     // fonts: { normal: robotoFont, bold: robotoBoldFont }
     // sizes: { header: 10, cell: 9 }
@@ -362,6 +361,9 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
     }
 
     try {
+        const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
+        const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
+
         const excursion = await dbGetAsync("SELECT id, nombre_excursion, fecha_excursion, para_clase_id FROM excursiones WHERE id = ?", [excursionId]);
         if (!excursion) {
             return res.status(404).json({ error: "Excursión no encontrada." });
@@ -462,11 +464,11 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         let page = pdfDocLib.addPage(PageSizes.A4);
         const { width, height } = page.getSize();
         
-        const robotoFont = await pdfDocLib.embedFont(StandardFonts.Roboto);
-        console.log("DEBUG: Value of StandardFonts.RobotoBold:", StandardFonts.RobotoBold);
-        const robotoBoldFont = await pdfDocLib.embedFont(StandardFonts.RobotoBold);
-        console.log("DEBUG: Embedded robotoFont:", typeof robotoFont, Object.keys(robotoFont || {}));
-        console.log("DEBUG: Embedded robotoBoldFont:", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
+        const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
+        // console.log("DEBUG: Value of StandardFonts.RobotoBold:", StandardFonts.RobotoBold); // Commented out as requested
+        const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
+        console.log("DEBUG: Embedded robotoFont (from TTF):", typeof robotoFont, Object.keys(robotoFont || {}));
+        console.log("DEBUG: Embedded robotoBoldFont (from TTF):", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
 
         const pdfStyles = {
             header: { font: robotoBoldFont, size: 18, color: rgb(0,0,0) },
@@ -1885,6 +1887,9 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
     }
 
     try {
+        const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
+        const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
+
         const excursion = await dbGetAsync(
             `SELECT nombre_excursion, actividad_descripcion, lugar, fecha_excursion, 
                     hora_salida, hora_llegada, vestimenta, transporte, 
@@ -1930,8 +1935,10 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
         const page = pdfDocLib.addPage(PageSizes.A4);
         const { width, height } = page.getSize();
 
-        const robotoFont = await pdfDocLib.embedFont(StandardFonts.Roboto);
-        const robotoBoldFont = await pdfDocLib.embedFont(StandardFonts.RobotoBold);
+        const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
+        const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
+        console.log("DEBUG info_pdf: Embedded robotoFont (from TTF):", typeof robotoFont, Object.keys(robotoFont || {}));
+        console.log("DEBUG info_pdf: Embedded robotoBoldFont (from TTF):", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
 
         const styles = {
             mainTitle: { font: robotoBoldFont, size: 22, color: rgb(0,0,0) },
