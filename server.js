@@ -596,56 +596,6 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         res.send(Buffer.from(pdfBytes));
 
     } catch (error) {
-        const pageSetupForTable = { height, yMargin: yPageMargin, bottomMargin: pageBottomMargin };
-
-        // Loop by Class
-        for (const nombreClase of Object.keys(alumnosPorClase).sort()) {
-            const claseData = alumnosPorClase[nombreClase];
-            const alumnosAsistentesEnClase = claseData.alumnos.filter(a => a.autorizacion_firmada === 'Sí');
-            const noAsistentesEnClase = claseData.totalEnClase - claseData.asistentesEnClase;
-
-            currentY = ensurePageSpace(currentY, rowHeight * 3, true); // Space for class header and summary
-            
-            // Class Header
-            page.drawText(`Clase: ${claseData.nombre_clase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
-            currentY -= 20;
-
-            // Table of Attending Students
-            if (alumnosAsistentesEnClase.length > 0) {
-                currentY = ensurePageSpace(currentY, rowHeight * (alumnosAsistentesEnClase.length + 1));
-                 currentY = await drawTable(pdfDocLib, page, currentY, alumnosAsistentesEnClase, columnsAsistentes, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsAsistentes, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin, logoObject, pageSetupForTable);
-            } else {
-                currentY = ensurePageSpace(currentY, rowHeight);
-                page.drawText('No hay alumnos asistentes con justificante para esta clase.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });
-                currentY -= rowHeight;
-            }
-            currentY -= 15; // Increased padding after table or "no asistentes" message
-
-            // Class Summary
-            currentY = ensurePageSpace(currentY, rowHeight * 3);
-            page.drawText(`Total Alumnos en Clase: ${claseData.totalEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
-            currentY -= 15;
-            page.drawText(`Total Asistentes (con justificante): ${claseData.asistentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
-            currentY -= 15;
-            page.drawText(`Total No Asistentes (sin justificante o no entregado): ${noAsistentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
-            currentY -= 25; // Space before next class or overall summary
-        }
-
-        // Overall Summary
-        currentY = ensurePageSpace(currentY, rowHeight * 4, true);
-        page.drawText('Resumen General de la Excursión', { x: xMargin, y: currentY, ...pdfStyles.header });
-        currentY -= 20;
-        page.drawText(`Total General Alumnos: ${totalGeneralAlumnos}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
-        currentY -= 15;
-        page.drawText(`Total General Asistentes (con justificante): ${totalGeneralAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
-        currentY -= 15;
-        page.drawText(`Total General No Asistentes: ${totalGeneralNoAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
-        
-        const pdfBytes = await pdfDocLib.save();
-        res.contentType('application/pdf');
-        res.send(Buffer.from(pdfBytes));
-
-    } catch (error) {
         console.error(`Error en GET /api/excursiones/${excursionId}/participaciones/reporte_pagos (nuevo reporte asistencia):`, error.message, error.stack);
         res.status(500).json({ error: "Error interno del servidor al generar el reporte de asistencia y justificantes." });
     }
