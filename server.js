@@ -8,6 +8,11 @@ require('dotenv').config();
 
 const fs = require('fs'); 
 const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
+const fontkit = require('fontkit');
+
+// console.log("Intentando configurar PdfPrinter.vfs (versión 3 de depuración)..."); // Original pdfmake log
+
+// Removed pdfmake VFS setup and printer initialization
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -163,32 +168,13 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
     return { participating_scope_type, participating_scope_name };
 }
 
-// Helper function to draw tables with pdf-lib
+// Helper function to draw tables with pdf-lib (re-adding)
 async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50) {
-    // console.log("DEBUG drawTable: headerStyle.font type:", typeof headerStyle.font);
-    // console.log("DEBUG drawTable: cellStyle.font type:", typeof cellStyle.font);
-    // pdfDoc: the PDFDocument instance
-    // page: the PDFPage instance
-    // startY: the Y coordinate to start drawing the table from (top edge)
-    // data: array of objects, where each object is a row
-    // columns: array of objects like { header: 'Header Name', key: 'dataKey', alignment: 'left'/'right' }
-    // fonts: { normal: robotoFont, bold: robotoBoldFont }
-    // sizes: { header: 10, cell: 9 }
-    // columnWidths: array of numbers representing width for each column
-    // rowHeight: height of each row
-    // headerStyle: { font: fonts.bold, size: sizes.header, color: rgb(0,0,0) }
-    // cellStyle: { font: fonts.normal, size: sizes.cell, color: rgb(0.2, 0.2, 0.2) }
-
     let currentY = startY;
-    const { width } = page.getSize(); // Get page width
-    
-    // Calculate actual table width based on columnWidths
+    const { width, height } = page.getSize(); // Get page width and height for page breaks
     const tableActualWidth = columnWidths.reduce((sum, w) => sum + w, 0);
     const tableEndX = xStart + tableActualWidth;
 
-    // Draw header
-    let currentX = xStart;
-    // Line above header
     page.drawLine({
         start: { x: xStart, y: currentY },
         end: { x: tableEndX, y: currentY },
@@ -196,10 +182,11 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
         color: headerStyle.color || rgb(0, 0, 0)
     });
 
+    let currentX = xStart;
     columns.forEach((col, index) => {
         page.drawText(col.header, {
-            x: currentX + 2, // Small padding
-            y: currentY - (rowHeight / 2) - (sizes.header / 3.5), // Adjusted for baseline
+            x: currentX + 2,
+            y: currentY - (rowHeight / 2) - (sizes.header / 3.5),
             font: headerStyle.font,
             size: headerStyle.size,
             color: headerStyle.color
@@ -207,7 +194,6 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
         currentX += columnWidths[index];
     });
     currentY -= rowHeight;
-    // Line below header
     page.drawLine({
         start: { x: xStart, y: currentY },
         end: { x: tableEndX, y: currentY },
@@ -215,12 +201,19 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
         color: headerStyle.color || rgb(0, 0, 0)
     });
 
-    // Draw rows
-    data.forEach(row => {
-        if (currentY - rowHeight < 40) { // Check for page break
+    for (const row of data) { // Changed to for...of for potential async operations within loop if needed
+        if (currentY - rowHeight < 40) { 
              page = pdfDoc.addPage(PageSizes.A4);
-             currentY = height - 50; // Reset Y to top margin
-             // Optionally re-draw headers on new page if desired (not implemented here for brevity)
+             currentY = height - 50; 
+             // Re-draw headers on new page
+             let newPageX = xStart;
+             page.drawLine({ start: { x: xStart, y: currentY }, end: { x: tableEndX, y: currentY }, thickness: 0.7, color: headerStyle.color || rgb(0,0,0) });
+             columns.forEach((col, index) => {
+                page.drawText(col.header, { x: newPageX + 2, y: currentY - (rowHeight / 2) - (sizes.header / 3.5), font: headerStyle.font, size: headerStyle.size, color: headerStyle.color });
+                newPageX += columnWidths[index];
+             });
+             currentY -= rowHeight;
+             page.drawLine({ start: { x: xStart, y: currentY }, end: { x: tableEndX, y: currentY }, thickness: 0.5, color: headerStyle.color || rgb(0,0,0) });
         }
 
         currentX = xStart;
@@ -242,7 +235,7 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
 
             page.drawText(text, {
                 x: textX,
-                y: currentY - (rowHeight / 2) - (sizes.cell / 3.5), // Adjusted for baseline
+                y: currentY - (rowHeight / 2) - (sizes.cell / 3.5),
                 font: cellStyle.font,
                 size: cellStyle.size,
                 color: cellStyle.color
@@ -250,29 +243,18 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
             currentX += columnWidths[index];
         });
         currentY -= rowHeight;
-        // Line below row
         page.drawLine({
             start: { x: xStart, y: currentY },
             end: { x: tableEndX, y: currentY },
             thickness: 0.2,
-            color: rgb(0.7, 0.7, 0.7) // Lighter gray for row lines
+            color: rgb(0.7, 0.7, 0.7)
         });
-    });
-    return currentY; // Return the Y position after drawing the table
+    }
+    return currentY;
 }
 
-// Helper function to draw label and value with basic wrapping for value
+// Helper function to draw label and value with basic wrapping for value (re-adding)
 function drawFieldWithWrapping(page, x, y, label, value, fonts, styles, maxWidth, lineHeight) {
-    // page: PDFPage instance
-    // x, y: coordinates for the label
-    // label: string
-    // value: string
-    // fonts: { normal: robotoFont, bold: robotoBoldFont }
-    // styles: { label: { font, size, color }, value: { font, size, color } }
-    // maxWidth: maximum width for the value text before wrapping
-    // lineHeight: height for each line of text
-    // Returns the Y position after drawing this field
-
     page.drawText(label, { 
         x, 
         y, 
@@ -280,7 +262,7 @@ function drawFieldWithWrapping(page, x, y, label, value, fonts, styles, maxWidth
         size: styles.label.size, 
         color: styles.label.color 
     });
-    y -= styles.label.size + 4; // Move down for value, plus some padding
+    y -= styles.label.size + 4; 
 
     const valueFont = styles.value.font;
     const valueSize = styles.value.size;
@@ -304,10 +286,8 @@ function drawFieldWithWrapping(page, x, y, label, value, fonts, styles, maxWidth
         page.drawText(currentLine, { x, y, font: valueFont, size: valueSize, color: valueColor });
         y -= lineHeight;
     }
-    
-    return y - 10; // Return Y for next element, plus more padding
+    return y - 10; 
 }
-
 
 app.get('/api', (req, res) => {
     res.json({ message: "API del Gestor Escolar v5 - ¡Funcionando!" });
@@ -361,9 +341,6 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
     }
 
     try {
-        const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
-        const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
-
         const excursion = await dbGetAsync("SELECT id, nombre_excursion, fecha_excursion, para_clase_id FROM excursiones WHERE id = ?", [excursionId]);
         if (!excursion) {
             return res.status(404).json({ error: "Excursión no encontrada." });
@@ -441,7 +418,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
 
         alumnosParticipaciones = await dbAllAsync(sqlAlumnos, paramsAlumnos);
 
-        // Prepare data for PDF
+        // Prepare data for PDF (logic remains the same)
         const alumnosPagados = [];
         const alumnosPendientesOParciales = [];
 
@@ -458,24 +435,30 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                 alumnosPendientesOParciales.push(alumnoData);
             }
         });
-
+        
         // PDF Generation with pdf-lib
         const pdfDocLib = await PDFDocument.create();
-        let page = pdfDocLib.addPage(PageSizes.A4);
-        const { width, height } = page.getSize();
+        pdfDocLib.registerFontkit(fontkit); // Register fontkit
+
+        const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
+        const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
+        console.log("DEBUG: robotoRegularBuffer type:", typeof robotoRegularBuffer, "length:", robotoRegularBuffer ? robotoRegularBuffer.length : 'N/A');
+        console.log("DEBUG: robotoBoldBuffer type:", typeof robotoBoldBuffer, "length:", robotoBoldBuffer ? robotoBoldBuffer.length : 'N/A');
         
         const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
-        // console.log("DEBUG: Value of StandardFonts.RobotoBold:", StandardFonts.RobotoBold); // Commented out as requested
         const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
         console.log("DEBUG: Embedded robotoFont (from TTF):", typeof robotoFont, Object.keys(robotoFont || {}));
         console.log("DEBUG: Embedded robotoBoldFont (from TTF):", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
+
+        let page = pdfDocLib.addPage(PageSizes.A4);
+        const { width, height } = page.getSize();
 
         const pdfStyles = {
             header: { font: robotoBoldFont, size: 18, color: rgb(0,0,0) },
             subheader: { font: robotoBoldFont, size: 14, color: rgb(0,0,0) },
             tableHeader: { font: robotoBoldFont, size: 10, color: rgb(0,0,0) },
-            tableCell: { font: robotoFont, size: 9, color: rgb(0.1, 0.1, 0.1) }, // Darker gray for cells
-            classHeader: { font: robotoBoldFont, size: 12, color: rgb(0.1, 0.1, 0.6) } // Blueish
+            tableCell: { font: robotoFont, size: 9, color: rgb(0.1, 0.1, 0.1) },
+            classHeader: { font: robotoBoldFont, size: 12, color: rgb(0.1, 0.1, 0.6) }
         };
 
         let currentY = height - 50;
@@ -496,31 +479,31 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
             { header: 'Estado Pago', key: 'pago_realizado', alignment: 'left'},
             { header: 'Pagado (€)', key: 'cantidad_pagada', alignment: 'right'}
         ];
-        const columnWidthsFull = [240, 100, 80, 80]; // Adjusted widths
+        const columnWidthsFull = [240, 100, 80, 80];
 
         const columnsGrouped = [
             { header: 'Nombre Alumno', key: 'nombre_completo', alignment: 'left'},
             { header: 'Estado Pago', key: 'pago_realizado', alignment: 'left'},
             { header: 'Pagado (€)', key: 'cantidad_pagada', alignment: 'right'}
         ];
-        const columnWidthsGrouped = [280, 100, 100]; // Adjusted widths
+        const columnWidthsGrouped = [280, 100, 100];
         const rowHeight = 20;
 
-        // Function to add a new page if needed
         const ensurePageSpace = (neededSpace) => {
-            if (currentY - neededSpace < 40) { // 40 is bottom margin
+            if (currentY - neededSpace < 40) {
                 page = pdfDocLib.addPage(PageSizes.A4);
-                currentY = height - 50; // Reset Y to top margin
-                return true; // Page was added
+                currentY = height - 50;
+                return true;
             }
-            return false; // No page added
+            return false;
         };
 
-
         if (alumnosPagados.length > 0) {
-            ensurePageSpace(rowHeight * 2); // Space for header and at least one row
+            ensurePageSpace(rowHeight * 2);
             page.drawText('Alumnos Pagados', { x: xMargin, y: currentY, ...pdfStyles.subheader });
             currentY -= 20;
+            const fontsForTable = { normal: robotoFont, bold: robotoBoldFont };
+             console.log("DEBUG: fontsForTable passed to drawTable (Alumnos Pagados):", "normal type:", typeof fontsForTable.normal, "bold type:", typeof fontsForTable.bold);
             if (isGlobalExcursionViewAll) {
                 const pagadosPorClase = alumnosPagados.reduce((acc, alumno) => {
                     (acc[alumno.nombre_clase] = acc[alumno.nombre_clase] || []).push(alumno);
@@ -530,22 +513,12 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                     ensurePageSpace(rowHeight * 2);
                     page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
                     currentY -= 20;
-                    const fontsForPagadosGroupedTable = { normal: robotoFont, bold: robotoBoldFont };
-                    console.log("DEBUG: fontsForTable passed to drawTable (pagadosPorClase - " + nombreClase + "):", 
-                        "normal type:", typeof fontsForPagadosGroupedTable.normal, 
-                        "bold type:", typeof fontsForPagadosGroupedTable.bold
-                    );
-                    currentY = await drawTable(pdfDocLib, page, currentY, pagadosPorClase[nombreClase], columnsGrouped, fontsForPagadosGroupedTable, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                    currentY = await drawTable(pdfDocLib, page, currentY, pagadosPorClase[nombreClase], columnsGrouped, fontsForTable, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
                     currentY -= 10;
                 }
             } else {
                 ensurePageSpace(rowHeight * (alumnosPagados.length + 1));
-                const fontsForPagadosFullTable = { normal: robotoFont, bold: robotoBoldFont };
-                console.log("DEBUG: fontsForTable passed to drawTable (alumnosPagados - full):", 
-                    "normal type:", typeof fontsForPagadosFullTable.normal, 
-                    "bold type:", typeof fontsForPagadosFullTable.bold
-                );
-                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPagados, columnsFull, fontsForPagadosFullTable, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPagados, columnsFull, fontsForTable, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
             }
             currentY -= 15;
         } else {
@@ -560,6 +533,8 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
             ensurePageSpace(rowHeight * 2);
             page.drawText('Alumnos con Pago Pendiente o Parcial', { x: xMargin, y: currentY, ...pdfStyles.subheader });
             currentY -= 20;
+            const fontsForTable = { normal: robotoFont, bold: robotoBoldFont };
+            console.log("DEBUG: fontsForTable passed to drawTable (Alumnos Pendientes):", "normal type:", typeof fontsForTable.normal, "bold type:", typeof fontsForTable.bold);
             if (isGlobalExcursionViewAll) {
                 const pendientesPorClase = alumnosPendientesOParciales.reduce((acc, alumno) => {
                     (acc[alumno.nombre_clase] = acc[alumno.nombre_clase] || []).push(alumno);
@@ -569,22 +544,12 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                     ensurePageSpace(rowHeight * 2);
                     page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
                     currentY -= 20;
-                    const fontsForPendientesGroupedTable = { normal: robotoFont, bold: robotoBoldFont };
-                    console.log("DEBUG: fontsForTable passed to drawTable (pendientesPorClase - " + nombreClase + "):", 
-                        "normal type:", typeof fontsForPendientesGroupedTable.normal, 
-                        "bold type:", typeof fontsForPendientesGroupedTable.bold
-                    );
-                    currentY = await drawTable(pdfDocLib, page, currentY, pendientesPorClase[nombreClase], columnsGrouped, fontsForPendientesGroupedTable, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                    currentY = await drawTable(pdfDocLib, page, currentY, pendientesPorClase[nombreClase], columnsGrouped, fontsForTable, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
                     currentY -= 10;
                 }
             } else {
                 ensurePageSpace(rowHeight * (alumnosPendientesOParciales.length + 1));
-                const fontsForPendientesFullTable = { normal: robotoFont, bold: robotoBoldFont };
-                console.log("DEBUG: fontsForTable passed to drawTable (alumnosPendientesOParciales - full):", 
-                    "normal type:", typeof fontsForPendientesFullTable.normal, 
-                    "bold type:", typeof fontsForPendientesFullTable.bold
-                );
-                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPendientesOParciales, columnsFull, fontsForPendientesFullTable, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPendientesOParciales, columnsFull, fontsForTable, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
             }
         } else {
             ensurePageSpace(rowHeight);
@@ -1889,7 +1854,7 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
     try {
         const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
         const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
-
+        
         const excursion = await dbGetAsync(
             `SELECT nombre_excursion, actividad_descripcion, lugar, fecha_excursion, 
                     hora_salida, hora_llegada, vestimenta, transporte, 
@@ -1932,26 +1897,27 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
 
         // PDF Generation with pdf-lib
         const pdfDocLib = await PDFDocument.create();
-        const page = pdfDocLib.addPage(PageSizes.A4);
-        const { width, height } = page.getSize();
-
+        pdfDocLib.registerFontkit(fontkit); // Register fontkit
+        
         const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
         const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
         console.log("DEBUG info_pdf: Embedded robotoFont (from TTF):", typeof robotoFont, Object.keys(robotoFont || {}));
         console.log("DEBUG info_pdf: Embedded robotoBoldFont (from TTF):", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
+        
+        const page = pdfDocLib.addPage(PageSizes.A4);
+        const { width, height } = page.getSize();
 
         const styles = {
             mainTitle: { font: robotoBoldFont, size: 22, color: rgb(0,0,0) },
-            fieldLabel: { font: robotoBoldFont, size: 12, color: rgb(0.2, 0.2, 0.2) }, // #333333
-            fieldValue: { font: robotoFont, size: 12, color: rgb(0.33, 0.33, 0.33) }  // #555555
+            fieldLabel: { font: robotoBoldFont, size: 12, color: rgb(0.2, 0.2, 0.2) },
+            fieldValue: { font: robotoFont, size: 12, color: rgb(0.33, 0.33, 0.33) }
         };
         
         const xMargin = 50;
         const fieldMaxWidth = width - (2 * xMargin);
-        const lineHeight = 15; // Approximate line height for wrapped text
+        const lineHeight = 15;
         let currentY = height - 50;
 
-        // Main Title (Centered)
         const titleText = excursion.nombre_excursion;
         const titleWidth = styles.mainTitle.font.widthOfTextAtSize(titleText, styles.mainTitle.size);
         page.drawText(titleText, {
@@ -1959,22 +1925,19 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
             y: currentY,
             ...styles.mainTitle
         });
-        currentY -= styles.mainTitle.size + 20; // Extra space after title
+        currentY -= styles.mainTitle.size + 20;
 
-        // Excursion Fields using helper
         currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Descripción de la Actividad:', excursion.actividad_descripcion || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
         currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Lugar:', excursion.lugar || 'No especificado', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
         currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Fecha:', excursion.fecha_excursion ? new Date(excursion.fecha_excursion).toLocaleDateString('es-ES') : 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
 
-        // Hora Salida & Hora Llegada (side-by-side)
         page.drawText('Hora de Salida:', { x: xMargin, y: currentY, ...styles.fieldLabel });
         page.drawText(excursion.hora_salida || 'No especificada', { x: xMargin, y: currentY - (styles.fieldLabel.size + 2), ...styles.fieldValue });
         
-        const secondColumnX = xMargin + (fieldMaxWidth / 2) + 20; // Adjust as needed
+        const secondColumnX = xMargin + (fieldMaxWidth / 2) + 20;
         page.drawText('Hora de Llegada:', { x: secondColumnX, y: currentY, ...styles.fieldLabel });
         page.drawText(excursion.hora_llegada || 'No especificada', { x: secondColumnX, y: currentY - (styles.fieldLabel.size + 2), ...styles.fieldValue });
         currentY -= styles.fieldLabel.size + 2 + styles.fieldValue.size + 10;
-
 
         currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Coste por Alumno:', `${(excursion.coste_excursion_alumno || 0).toFixed(2).replace('.', ',')} €`, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
         currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Vestimenta Requerida:', excursion.vestimenta || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
@@ -1982,7 +1945,7 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
         currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Justificación Pedagógica:', excursion.justificacion_texto || 'No especificada', { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
 
         if (excursion.notas_excursion && excursion.notas_excursion.trim() !== '') {
-            currentY -= 10; // Extra space before notes
+            currentY -= 10; 
             currentY = drawFieldWithWrapping(page, xMargin, currentY, 'Notas Adicionales:', excursion.notas_excursion, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, fieldMaxWidth, lineHeight);
         }
         
