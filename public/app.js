@@ -1236,6 +1236,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (canShare) {
                          accionesHtml += ` <button class="share-excursion primary" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}"><i class="fas fa-share-alt"></i> Compartir</button>`;
                     }
+                    // Add new button for Info General PDF
+                    if (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR' || currentUser.rol === 'TESORERIA' || currentUser.rol === 'COORDINACION') {
+                        accionesHtml += ` <button class="download-info-general-pdf info" data-excursion-id="${ex.id}" data-excursion-nombre="${ex.nombre_excursion}"><i class="fas fa-file-pdf"></i> Info PDF</button>`;
+                    }
             html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
 
                 });
@@ -1274,6 +1278,40 @@ document.addEventListener('DOMContentLoaded', () => {
                     const id = e.target.dataset.id;
                     const nombre = e.target.dataset.nombre;
                     handleShareExcursion(id, nombre);
+                });
+            });
+
+            // Event listener for the new "Info General PDF" buttons
+            excursionesContentDiv.querySelectorAll('.download-info-general-pdf').forEach(button => {
+                button.addEventListener('click', async function() {
+                    const excursionId = this.dataset.excursionId;
+                    const excursionNombre = this.dataset.excursionNombre;
+                    const apiUrl = `${API_BASE_URL}/excursiones/${excursionId}/info_pdf`;
+
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${currentToken}` }
+                        });
+
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const downloadUrl = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.style.display = 'none';
+                            a.href = downloadUrl;
+                            a.download = `Info_Excursion_${excursionNombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(downloadUrl);
+                            a.remove();
+                        } else {
+                            const errorData = await response.json();
+                            showGlobalError(errorData.error || `Error ${response.status} al generar el PDF de información general.`);
+                        }
+                    } catch (err) {
+                        showGlobalError(`Error de red o conexión al generar PDF de información general: ${err.message}`);
+                    }
                 });
             });
 
@@ -1513,7 +1551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div>Recaudado: ${r.sumaTotalCantidadPagadaGlobal.toFixed(2)} €</div></div>`;
             
             if (currentUser.rol === 'TUTOR' || currentUser.rol === 'DIRECCION' || currentUser.rol === 'TESORERIA') {
-                resumenHtml += `<button id="btnGenerarReportePagos" data-excursion-id="${excursionId}" data-excursion-nombre="${excursionNombre}" class="info" style="margin-top: 10px; margin-bottom: 10px;"><i class="fas fa-file-pdf"></i> Descargar Reporte Pagos (PDF)</button>`;
+                resumenHtml += `<button id="btnGenerarReportePagos" data-excursion-id="${excursionId}" data-excursion-nombre="${excursionNombre}" class="info" style="margin-top: 10px; margin-bottom: 10px;"><i class="fas fa-file-pdf"></i> Listado Asistencia/Justificantes (PDF)</button>`;
             }
 
             if (r.resumenPorClase && r.resumenPorClase.length > 0) {
@@ -1558,7 +1596,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const a = document.createElement('a');
                             a.style.display = 'none';
                             a.href = downloadUrl;
-                            a.download = `Reporte_Pagos_${exNombre.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+                            a.download = `Listado_Asistencia_${exNombre.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
                             document.body.appendChild(a);
                             a.click();
                             window.URL.revokeObjectURL(downloadUrl);
@@ -2016,11 +2054,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         contentDiv.innerHTML = "<p>Cargando datos de tesorería...</p>"; 
         
+        let html = '';
+
+        // Botón para Informe General de Secretaría
+        if (currentUser && (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TESORERIA')) {
+            html += `<div style="margin-bottom: 20px;">
+                        <button id="btnGenerarInformeSecretaria" class="primary"><i class="fas fa-file-alt"></i> Generar Informe General Secretaría (PDF)</button>
+                     </div>`;
+        }
+        
         const ingresosClaseDiv = document.getElementById('tesoreria-ingresos-clase'); 
-        let html = ''; 
+        // let html = ''; // html ya está inicializado arriba
 
         if (ingresosClaseDiv) {
-            ingresosClaseDiv.innerHTML = '<p>Cargando ingresos por clase...</p>'; 
+            // ingresosClaseDiv.innerHTML = '<p>Cargando ingresos por clase...</p>'; // No es necesario, ya hay un cargando general
             try {
                 const ingresosData = await apiFetch('/tesoreria/ingresos-por-clase');
                 let ingresosHtml = '<h4>Ingresos Totales por Clase</h4>';
@@ -2132,6 +2179,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     openTesoreriaFinancialModal(excursionId);
                 });
             });
+
+            // Event Listener para el nuevo botón de Informe de Secretaría
+            const btnInformeSecretaria = document.getElementById('btnGenerarInformeSecretaria');
+            if (btnInformeSecretaria) {
+                btnInformeSecretaria.addEventListener('click', async () => {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/secretaria/informe_general_pdf`, {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${currentToken}` }
+                        });
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const downloadUrl = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.style.display = 'none';
+                            a.href = downloadUrl;
+                            a.download = `Informe_General_Secretaria_${new Date().toISOString().split('T')[0]}.pdf`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(downloadUrl);
+                            a.remove();
+                        } else {
+                            const errorData = await response.json();
+                            showGlobalError(errorData.error || `Error ${response.status} al generar el PDF de secretaría.`);
+                        }
+                    } catch (err) {
+                        showGlobalError(`Error de red o conexión al generar PDF de secretaría: ${err.message}`);
+                    }
+                });
+            }
 
         } catch (error) {
             contentDiv.innerHTML = `<p class="error-message">Error al cargar datos de tesorería: ${error.message}</p>`;
