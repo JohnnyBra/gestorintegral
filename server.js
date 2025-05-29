@@ -8,7 +8,7 @@ require('dotenv').config();
 
 const fs = require('fs'); 
 const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
-// console.log("DEBUG: StandardFonts object:", StandardFonts);
+console.log("DEBUG: StandardFonts object:", StandardFonts);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -166,12 +166,12 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
 
 // Helper function to draw tables with pdf-lib
 async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50) {
-    // console.log("DEBUG drawTable: headerStyle.font type:", typeof headerStyle.font);
-    // console.log("DEBUG drawTable: cellStyle.font type:", typeof cellStyle.font);
+    console.log("DEBUG drawTable: headerStyle.font type:", typeof headerStyle.font);
+    console.log("DEBUG drawTable: cellStyle.font type:", typeof cellStyle.font);
     // pdfDoc: the PDFDocument instance
     // page: the PDFPage instance
     // startY: the Y coordinate to start drawing the table from (top edge)
-    // data: array of objects, where each object is a row
+    // // data: array of objects, where each object is a row
     // columns: array of objects like { header: 'Header Name', key: 'dataKey', alignment: 'left'/'right' }
     // fonts: { normal: robotoFont, bold: robotoBoldFont }
     // sizes: { header: 10, cell: 9 }
