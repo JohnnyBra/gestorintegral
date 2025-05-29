@@ -463,6 +463,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         const { width, height } = page.getSize();
         
         const robotoFont = await pdfDocLib.embedFont(StandardFonts.Roboto);
+        console.log("DEBUG: Value of StandardFonts.RobotoBold:", StandardFonts.RobotoBold);
         const robotoBoldFont = await pdfDocLib.embedFont(StandardFonts.RobotoBold);
         console.log("DEBUG: Embedded robotoFont:", typeof robotoFont, Object.keys(robotoFont || {}));
         console.log("DEBUG: Embedded robotoBoldFont:", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
