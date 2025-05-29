@@ -1754,12 +1754,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     async function loadAdminUsuarios() {
-        if (!adminUsuariosContentDiv || !currentUser || currentUser.rol !== 'DIRECCION') {
+        const direccionActionsDiv = document.getElementById('direccion-actions-section');
+    
+        if (!currentUser || currentUser.rol !== 'DIRECCION') {
             if (adminUsuariosContentDiv) adminUsuariosContentDiv.innerHTML = "<p class='error-message'>Acceso denegado.</p>";
+            if (direccionActionsDiv) direccionActionsDiv.style.display = 'none';
+            if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = '';
+            return;
+        }
+    
+        if (direccionActionsDiv) {
+            direccionActionsDiv.style.display = 'block'; 
+        } else {
+            console.error("Error: El div 'direccion-actions-section' no se encontró en el HTML.");
+        }
+    
+        if (!adminUsuariosContentDiv) {
+            console.error("Error: El div 'admin-usuarios-content' no se encontró.");
             return;
         }
         adminUsuariosContentDiv.innerHTML = "<p>Cargando usuarios...</p>";
         if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = ''; 
+    
         try {
             const data = await apiFetch('/usuarios');
             let html = '<h3>Listado de Usuarios</h3>';
@@ -1773,8 +1789,12 @@ document.addEventListener('DOMContentLoaded', () => {
             } else { html += '<tr><td colspan="6" style="text-align:center;">No hay usuarios.</td></tr>'; }
             html += '</tbody></table>';
             adminUsuariosContentDiv.innerHTML = html; 
+    
+            // Listener for exportAllDataBtn was here, now moved to loadDashboardData
+    
             const btnShowForm = document.getElementById('btnShowFormNuevoUsuarioTutor');
             if (btnShowForm) btnShowForm.addEventListener('click', () => showFormAdminUsuario(null, null));
+            
             adminUsuariosContentDiv.querySelectorAll('.edit-usuario').forEach(b => {
                 b.onclick = async (e) => {
                     const userId = e.target.dataset.id;
@@ -1783,7 +1803,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
             adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre));
-        } catch (error) { showGlobalError(`Error cargando usuarios: ${error.message}`, adminUsuariosContentDiv); }
+        } catch (error) { 
+            showGlobalError(`Error cargando usuarios: ${error.message}`, adminUsuariosContentDiv); 
+            if (direccionActionsDiv) direccionActionsDiv.style.display = 'none';
+        }
     }
     function showFormAdminUsuario(userId = null, initialUserData = null) {
         if (!formAdminUsuarioWrapper) return;

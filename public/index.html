@@ -67,6 +67,9 @@
                     <hr class="dashboard-divider">
                     <h4>Calendario de Excursiones</h4>
                     <div id="excursion-calendar-container"></div>
+                    <div id="dashboard-export-container" class="section" style="text-align: center; margin-top: 20px; display: none;">
+                        <button id="exportAllDataBtn" class="button is-info">Exportar Todos los Datos</button>
+                    </div>
                 </div>
 
                <div id="clases-section" class="main-section" style="display:none;">
@@ -105,9 +108,10 @@
                     <div id="admin-usuarios-content">
                         <!-- User list will be rendered here by loadAdminUsuarios -->
                     </div>
-                    <div id="direccion-actions-section" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
+                    <!-- Old export button location removed. The div can remain if other actions are planned. -->
+                    <div id="direccion-actions-section" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; display: none;"> 
                         <h4>Acciones Adicionales (Dirección)</h4>
-                        <button id="exportAllDataBtn" class="button is-info">Exportar Todos los Datos</button>
+                        <!-- Other Direccion-specific buttons could go here -->
                     </div>
                     <div id="formAdminUsuarioWrapper" class="form-wrapper" style="margin-top:20px;">
                             <!-- User creation form will be rendered here by showFormAdminUsuario -->            
