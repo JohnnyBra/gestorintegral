@@ -8,6 +8,7 @@ require('dotenv').config();
 
 const fs = require('fs'); 
 const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
+// console.log("DEBUG: StandardFonts object:", StandardFonts);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -165,6 +166,8 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
 
 // Helper function to draw tables with pdf-lib
 async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50) {
+    // console.log("DEBUG drawTable: headerStyle.font type:", typeof headerStyle.font);
+    // console.log("DEBUG drawTable: cellStyle.font type:", typeof cellStyle.font);
     // pdfDoc: the PDFDocument instance
     // page: the PDFPage instance
     // startY: the Y coordinate to start drawing the table from (top edge)
@@ -461,6 +464,8 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         
         const robotoFont = await pdfDocLib.embedFont(StandardFonts.Roboto);
         const robotoBoldFont = await pdfDocLib.embedFont(StandardFonts.RobotoBold);
+        console.log("DEBUG: Embedded robotoFont:", typeof robotoFont, Object.keys(robotoFont || {}));
+        console.log("DEBUG: Embedded robotoBoldFont:", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
 
         const pdfStyles = {
             header: { font: robotoBoldFont, size: 18, color: rgb(0,0,0) },
@@ -522,12 +527,22 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                     ensurePageSpace(rowHeight * 2);
                     page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
                     currentY -= 20;
-                    currentY = await drawTable(pdfDocLib, page, currentY, pagadosPorClase[nombreClase], columnsGrouped, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                    const fontsForPagadosGroupedTable = { normal: robotoFont, bold: robotoBoldFont };
+                    console.log("DEBUG: fontsForTable passed to drawTable (pagadosPorClase - " + nombreClase + "):", 
+                        "normal type:", typeof fontsForPagadosGroupedTable.normal, 
+                        "bold type:", typeof fontsForPagadosGroupedTable.bold
+                    );
+                    currentY = await drawTable(pdfDocLib, page, currentY, pagadosPorClase[nombreClase], columnsGrouped, fontsForPagadosGroupedTable, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
                     currentY -= 10;
                 }
             } else {
                 ensurePageSpace(rowHeight * (alumnosPagados.length + 1));
-                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPagados, columnsFull, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                const fontsForPagadosFullTable = { normal: robotoFont, bold: robotoBoldFont };
+                console.log("DEBUG: fontsForTable passed to drawTable (alumnosPagados - full):", 
+                    "normal type:", typeof fontsForPagadosFullTable.normal, 
+                    "bold type:", typeof fontsForPagadosFullTable.bold
+                );
+                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPagados, columnsFull, fontsForPagadosFullTable, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
             }
             currentY -= 15;
         } else {
@@ -551,12 +566,22 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                     ensurePageSpace(rowHeight * 2);
                     page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
                     currentY -= 20;
-                    currentY = await drawTable(pdfDocLib, page, currentY, pendientesPorClase[nombreClase], columnsGrouped, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                    const fontsForPendientesGroupedTable = { normal: robotoFont, bold: robotoBoldFont };
+                    console.log("DEBUG: fontsForTable passed to drawTable (pendientesPorClase - " + nombreClase + "):", 
+                        "normal type:", typeof fontsForPendientesGroupedTable.normal, 
+                        "bold type:", typeof fontsForPendientesGroupedTable.bold
+                    );
+                    currentY = await drawTable(pdfDocLib, page, currentY, pendientesPorClase[nombreClase], columnsGrouped, fontsForPendientesGroupedTable, { header: 10, cell: 9 }, columnWidthsGrouped, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
                     currentY -= 10;
                 }
             } else {
                 ensurePageSpace(rowHeight * (alumnosPendientesOParciales.length + 1));
-                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPendientesOParciales, columnsFull, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                const fontsForPendientesFullTable = { normal: robotoFont, bold: robotoBoldFont };
+                console.log("DEBUG: fontsForTable passed to drawTable (alumnosPendientesOParciales - full):", 
+                    "normal type:", typeof fontsForPendientesFullTable.normal, 
+                    "bold type:", typeof fontsForPendientesFullTable.bold
+                );
+                currentY = await drawTable(pdfDocLib, page, currentY, alumnosPendientesOParciales, columnsFull, fontsForPendientesFullTable, { header: 10, cell: 9 }, columnWidthsFull, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
             }
         } else {
             ensurePageSpace(rowHeight);
