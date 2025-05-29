@@ -169,9 +169,12 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
 }
 
 // Helper function to draw tables with pdf-lib (re-adding)
-async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50) {
+async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50, logoDetails = null, pageSetup = null) {
     let currentY = startY;
-    const { width, height } = page.getSize(); // Get page width and height for page breaks
+    // const { width, height } = page.getSize(); // Use pageSetup.height if available
+    const pageHeight = pageSetup ? pageSetup.height : page.getSize().height;
+    const yPageMargin = pageSetup ? pageSetup.yMargin : 40; // Default if not provided
+    const pageBottomMargin = pageSetup ? pageSetup.bottomMargin : 40; // Default if not provided
     const tableActualWidth = columnWidths.reduce((sum, w) => sum + w, 0);
     const tableEndX = xStart + tableActualWidth;
 
@@ -202,9 +205,19 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
     });
 
     for (const row of data) { // Changed to for...of for potential async operations within loop if needed
-        if (currentY - rowHeight < 40) { 
+        if (currentY - rowHeight < pageBottomMargin) { 
              page = pdfDoc.addPage(PageSizes.A4);
-             currentY = height - 50; 
+             if (logoDetails && logoDetails.image) {
+                page.drawImage(logoDetails.image, {
+                    x: logoDetails.x,
+                    y: logoDetails.yTop,
+                    width: logoDetails.dims.width,
+                    height: logoDetails.dims.height,
+                });
+                currentY = pageHeight - yPageMargin - logoDetails.dims.height - logoDetails.paddingBelow;
+             } else {
+                currentY = pageHeight - yPageMargin; 
+             }
              // Re-draw headers on new page
              let newPageX = xStart;
              page.drawLine({ start: { x: xStart, y: currentY }, end: { x: tableEndX, y: currentY }, thickness: 0.7, color: headerStyle.color || rgb(0,0,0) });
@@ -450,8 +463,35 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
         const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
 
+        // Load logo
+        const logoPath = path.join(__dirname, 'public', 'folder', 'logo.jpg');
+        let logoImage, logoDims;
+        try {
+            const logoBuffer = fs.readFileSync(logoPath);
+            logoImage = await pdfDocLib.embedJpg(logoBuffer);
+            const logoScale = 50 / logoImage.width; // Aim for 50 points width
+            logoDims = { width: logoImage.width * logoScale, height: logoImage.height * logoScale };
+        } catch (logoError) {
+            console.error("Error cargando logo:", logoError.message);
+            // No se detiene la generación del PDF, simplemente no habrá logo.
+            logoImage = null;
+            logoDims = { width: 0, height: 0 };
+        }
+        
         let page = pdfDocLib.addPage(PageSizes.A4);
         const { width, height } = page.getSize();
+        const yPageMargin = 40; // Standard top/bottom margin for the page
+        const xMargin = 40;     // Standard left/right margin for content
+
+        // Draw logo on first page
+        if (logoImage) {
+            page.drawImage(logoImage, {
+                x: xMargin,
+                y: height - yPageMargin - logoDims.height,
+                width: logoDims.width,
+                height: logoDims.height,
+            });
+        }
 
         const pdfStyles = {
             mainTitle: { font: robotoBoldFont, size: 16, color: rgb(0,0,0) },
@@ -463,21 +503,37 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
             summaryText: { font: robotoFont, size: 10, color: rgb(0,0,0) },
             boldSummaryText: { font: robotoBoldFont, size: 10, color: rgb(0,0,0) }
         };
-
-        let currentY = height - 40;
-        const xMargin = 40;
+        
+        // Initial currentY, adjusted for logo
+        let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0); // 15 padding below logo
         const contentWidth = width - (2 * xMargin);
         const rowHeight = 18;
+        const pageBottomMargin = 40;
 
-        const ensurePageSpace = (neededSpace, isNewSection = false) => {
-            if (currentY - neededSpace < 40 || (isNewSection && currentY - neededSpace < 80)) { // More space for new section headers
+
+        const logoObject = { image: logoImage, dims: logoDims, x: xMargin, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
+
+        const ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
+            let localCurrentY = currentYVal;
+            if (localCurrentY - neededSpace < pageBottomMargin || (isNewSection && localCurrentY - neededSpace < (pageBottomMargin + 40))) { // More space for new section headers
                 page = pdfDocLib.addPage(PageSizes.A4);
-                currentY = height - 40;
-                return true; // New page added
+                if (logoObject.image) {
+                    page.drawImage(logoObject.image, {
+                        x: logoObject.x,
+                        y: logoObject.yTop,
+                        width: logoObject.dims.width,
+                        height: logoObject.dims.height,
+                    });
+                }
+                localCurrentY = height - yPageMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
+                // Caller might need to redraw section headers if isNewSection was true and new page created.
+                // This simple version just resets Y. A more complex one might return a flag.
             }
-            return false; // No new page
+            return localCurrentY;
         };
         
+        currentY = ensurePageSpace(currentY, pdfStyles.mainTitle.size + pdfStyles.header.size * 2 + 40); // Estimate space for titles
+
         // Overall Title
         page.drawText('Listado de Asistencia y Justificantes', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
         currentY -= 20;
@@ -527,6 +583,56 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
 
         // Overall Summary
         ensurePageSpace(rowHeight * 4, true);
+        page.drawText('Resumen General de la Excursión', { x: xMargin, y: currentY, ...pdfStyles.header });
+        currentY -= 20;
+        page.drawText(`Total General Alumnos: ${totalGeneralAlumnos}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
+        currentY -= 15;
+        page.drawText(`Total General Asistentes (con justificante): ${totalGeneralAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
+        currentY -= 15;
+        page.drawText(`Total General No Asistentes: ${totalGeneralNoAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
+        
+        const pdfBytes = await pdfDocLib.save();
+        res.contentType('application/pdf');
+        res.send(Buffer.from(pdfBytes));
+
+    } catch (error) {
+        const pageSetupForTable = { height, yMargin: yPageMargin, bottomMargin: pageBottomMargin };
+
+        // Loop by Class
+        for (const nombreClase of Object.keys(alumnosPorClase).sort()) {
+            const claseData = alumnosPorClase[nombreClase];
+            const alumnosAsistentesEnClase = claseData.alumnos.filter(a => a.autorizacion_firmada === 'Sí');
+            const noAsistentesEnClase = claseData.totalEnClase - claseData.asistentesEnClase;
+
+            currentY = ensurePageSpace(currentY, rowHeight * 3, true); // Space for class header and summary
+            
+            // Class Header
+            page.drawText(`Clase: ${claseData.nombre_clase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
+            currentY -= 20;
+
+            // Table of Attending Students
+            if (alumnosAsistentesEnClase.length > 0) {
+                currentY = ensurePageSpace(currentY, rowHeight * (alumnosAsistentesEnClase.length + 1));
+                 currentY = await drawTable(pdfDocLib, page, currentY, alumnosAsistentesEnClase, columnsAsistentes, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsAsistentes, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin, logoObject, pageSetupForTable);
+            } else {
+                currentY = ensurePageSpace(currentY, rowHeight);
+                page.drawText('No hay alumnos asistentes con justificante para esta clase.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+                currentY -= rowHeight;
+            }
+            currentY -= 15; // Increased padding after table or "no asistentes" message
+
+            // Class Summary
+            currentY = ensurePageSpace(currentY, rowHeight * 3);
+            page.drawText(`Total Alumnos en Clase: ${claseData.totalEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            currentY -= 15;
+            page.drawText(`Total Asistentes (con justificante): ${claseData.asistentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            currentY -= 15;
+            page.drawText(`Total No Asistentes (sin justificante o no entregado): ${noAsistentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            currentY -= 25; // Space before next class or overall summary
+        }
+
+        // Overall Summary
+        currentY = ensurePageSpace(currentY, rowHeight * 4, true);
         page.drawText('Resumen General de la Excursión', { x: xMargin, y: currentY, ...pdfStyles.header });
         currentY -= 20;
         page.drawText(`Total General Alumnos: ${totalGeneralAlumnos}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
@@ -1878,11 +1984,38 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
         
         const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
         const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
-        console.log("DEBUG info_pdf: Embedded robotoFont (from TTF):", typeof robotoFont, Object.keys(robotoFont || {}));
-        console.log("DEBUG info_pdf: Embedded robotoBoldFont (from TTF):", typeof robotoBoldFont, Object.keys(robotoBoldFont || {}));
+        // console.log("DEBUG info_pdf: Embedded robotoFont (from TTF):", typeof robotoFont, Object.keys(robotoFont || {})); // Keep if needed
+        // console.log("DEBUG info_pdf: Embedded robotoBoldFont (from TTF):", typeof robotoBoldFont, Object.keys(robotoBoldFont || {})); // Keep if needed
+
+        // Load logo
+        const logoPath = path.join(__dirname, 'public', 'folder', 'logo.jpg');
+        let logoImage, logoDims;
+        try {
+            const logoBuffer = fs.readFileSync(logoPath);
+            logoImage = await pdfDocLib.embedJpg(logoBuffer);
+            const logoScale = 50 / logoImage.width; // Aim for 50 points width
+            logoDims = { width: logoImage.width * logoScale, height: logoImage.height * logoScale };
+        } catch (logoError) {
+            console.error("Error cargando logo para Info PDF:", logoError.message);
+            logoImage = null;
+            logoDims = { width: 0, height: 0 };
+        }
         
         const page = pdfDocLib.addPage(PageSizes.A4);
         const { width, height } = page.getSize();
+        const xMargin = 50; // Existing left/right margin
+        const yPageMargin = 50; // Define top margin, similar to xMargin for consistency
+        const paddingBelowLogo = 20;
+
+        // Draw logo on the page
+        if (logoImage) {
+            page.drawImage(logoImage, {
+                x: xMargin,
+                y: height - yPageMargin - logoDims.height,
+                width: logoDims.width,
+                height: logoDims.height,
+            });
+        }
 
         const styles = {
             mainTitle: { font: robotoBoldFont, size: 22, color: rgb(0,0,0) },
@@ -1890,15 +2023,19 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
             fieldValue: { font: robotoFont, size: 12, color: rgb(0.33, 0.33, 0.33) }
         };
         
-        const xMargin = 50;
         const fieldMaxWidth = width - (2 * xMargin);
         const lineHeight = 15;
-        let currentY = height - 50;
+        // Adjust initial currentY to be below the logo (or where logo would be if it failed to load)
+        let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? paddingBelowLogo : 0);
+
 
         const titleText = excursion.nombre_excursion;
         const titleWidth = styles.mainTitle.font.widthOfTextAtSize(titleText, styles.mainTitle.size);
+        // Center title if space allows, otherwise, draw at xMargin
+        const titleX = titleWidth > fieldMaxWidth ? xMargin : (width - titleWidth) / 2;
+
         page.drawText(titleText, {
-            x: (width - titleWidth) / 2,
+            x: titleX,
             y: currentY,
             ...styles.mainTitle
         });
@@ -3103,10 +3240,37 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
         const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
 
+        // Load logo
+        const logoPath = path.join(__dirname, 'public', 'folder', 'logo.jpg');
+        let logoImage, logoDims;
+        try {
+            const logoBuffer = fs.readFileSync(logoPath);
+            logoImage = await pdfDocLib.embedJpg(logoBuffer);
+            const logoScale = 50 / logoImage.width; // Aim for 50 points width
+            logoDims = { width: logoImage.width * logoScale, height: logoImage.height * logoScale };
+        } catch (logoError) {
+            console.error("Error cargando logo para Informe General:", logoError.message);
+            logoImage = null;
+            logoDims = { width: 0, height: 0 };
+        }
+
         let page = pdfDocLib.addPage(PageSizes.A4);
         const { width, height } = page.getSize();
-        let currentY = height - 40;
+        const yPageMargin = 40; 
         const xMargin = 40;
+        const pageBottomMargin = 40;
+
+        // Draw logo on first page
+        if (logoImage) {
+            page.drawImage(logoImage, {
+                x: xMargin,
+                y: height - yPageMargin - logoDims.height,
+                width: logoDims.width,
+                height: logoDims.height,
+            });
+        }
+        
+        let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0); // 15 padding below logo
         const contentWidth = width - (2 * xMargin);
         const rowHeight = 18;
 
@@ -3118,21 +3282,35 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             text: { font: robotoFont, size: 10, color: rgb(0,0,0) }
         };
         
-        const ensurePageSpace = (neededSpace, isNewSection = false) => {
-            if (currentY - neededSpace < 40 || (isNewSection && currentY - neededSpace < 80) ) {
+        const logoObject = { image: logoImage, dims: logoDims, x: xMargin, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
+        const pageSetup = { height, yMargin: yPageMargin, bottomMargin: pageBottomMargin, xMargin: xMargin };
+
+
+        const ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
+            let localCurrentY = currentYVal;
+            if (localCurrentY - neededSpace < pageSetup.bottomMargin || (isNewSection && localCurrentY - neededSpace < (pageSetup.bottomMargin + 40))) {
                 page = pdfDocLib.addPage(PageSizes.A4);
-                currentY = height - 40;
-                return true; 
+                if (logoObject.image) {
+                    page.drawImage(logoObject.image, {
+                        x: logoObject.x,
+                        y: logoObject.yTop,
+                        width: logoObject.dims.width,
+                        height: logoObject.dims.height,
+                    });
+                }
+                localCurrentY = pageSetup.height - pageSetup.yMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
             }
-            return false; 
+            return localCurrentY;
         };
+        
+        currentY = ensurePageSpace(currentY, pdfStyles.mainTitle.size + pdfStyles.sectionTitle.size + 20, true);
 
         // PDF Title
         page.drawText('Informe General de Secretaría', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
         currentY -= (pdfStyles.mainTitle.size + 20);
 
         // Section 1: Resumen Financiero de Excursiones
-        ensurePageSpace(pdfStyles.sectionTitle.size + rowHeight * 2, true);
+        currentY = ensurePageSpace(currentY, pdfStyles.sectionTitle.size + rowHeight * 2, true);
         page.drawText('Resumen Financiero de Excursiones', { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
         currentY -= (pdfStyles.sectionTitle.size + 10);
 
@@ -3162,19 +3340,20 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         const columnWidthsExcursiones = [175, 70, 90, 90, 90]; // Sum: 515, to fit contentWidth 515
 
         if (excursionFinancialData.length > 0) {
-            ensurePageSpace(rowHeight * (excursionFinancialData.length +1));
+            currentY = ensurePageSpace(currentY, rowHeight * (excursionFinancialData.length +1));
             currentY = await drawTable(pdfDocLib, page, currentY, excursionFinancialData, columnsExcursiones, 
                                        { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, 
-                                       columnWidthsExcursiones, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                                       columnWidthsExcursiones, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin,
+                                       logoObject, pageSetup);
         } else {
-            ensurePageSpace(rowHeight);
+            currentY = ensurePageSpace(currentY, rowHeight);
             page.drawText('No hay datos financieros de excursiones disponibles.', { x: xMargin, y: currentY, ...pdfStyles.text });
             currentY -= rowHeight;
         }
         currentY -= 20; // Space after section
 
         // Section 2: Listado de Tutores
-        ensurePageSpace(pdfStyles.sectionTitle.size + rowHeight * 2, true);
+        currentY = ensurePageSpace(currentY, pdfStyles.sectionTitle.size + rowHeight * 2, true);
         page.drawText('Listado de Tutores', { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
         currentY -= (pdfStyles.sectionTitle.size + 10);
         
@@ -3199,12 +3378,13 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         const columnWidthsTutores = [195, 200, 120]; // Sum: 515, to fit contentWidth 515
 
         if (tutorListData.length > 0) {
-            ensurePageSpace(rowHeight * (tutorListData.length +1));
+            currentY = ensurePageSpace(currentY, rowHeight * (tutorListData.length +1));
             currentY = await drawTable(pdfDocLib, page, currentY, tutorListData, columnsTutores,
                                    { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 },
-                                   columnWidthsTutores, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+                                   columnWidthsTutores, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin,
+                                   logoObject, pageSetup);
         } else {
-            ensurePageSpace(rowHeight);
+            currentY = ensurePageSpace(currentY, rowHeight);
             page.drawText('No hay tutores registrados.', { x: xMargin, y: currentY, ...pdfStyles.text });
             currentY -= rowHeight;
         }
