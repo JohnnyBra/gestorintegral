@@ -513,7 +513,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                 page.drawText('No hay alumnos asistentes con justificante para esta clase.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });
                 currentY -= rowHeight;
             }
-            currentY -= 5; // Small space before summary
+            currentY -= 15; // Increased padding after table or "no asistentes" message
 
             // Class Summary
             ensurePageSpace(rowHeight * 3);

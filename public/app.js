@@ -1236,6 +1236,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (canShare) {
                          accionesHtml += ` <button class="share-excursion primary" data-id="${ex.id}" data-nombre="${ex.nombre_excursion}"><i class="fas fa-share-alt"></i> Compartir</button>`;
                     }
+                    // Add new button for Info General PDF
+                    if (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR' || currentUser.rol === 'TESORERIA' || currentUser.rol === 'COORDINACION') {
+                        accionesHtml += ` <button class="download-info-general-pdf info" data-excursion-id="${ex.id}" data-excursion-nombre="${ex.nombre_excursion}"><i class="fas fa-file-pdf"></i> Info PDF</button>`;
+                    }
             html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
 
                 });
@@ -1274,6 +1278,40 @@ document.addEventListener('DOMContentLoaded', () => {
                     const id = e.target.dataset.id;
                     const nombre = e.target.dataset.nombre;
                     handleShareExcursion(id, nombre);
+                });
+            });
+
+            // Event listener for the new "Info General PDF" buttons
+            excursionesContentDiv.querySelectorAll('.download-info-general-pdf').forEach(button => {
+                button.addEventListener('click', async function() {
+                    const excursionId = this.dataset.excursionId;
+                    const excursionNombre = this.dataset.excursionNombre;
+                    const apiUrl = `${API_BASE_URL}/excursiones/${excursionId}/info_pdf`;
+
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${currentToken}` }
+                        });
+
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const downloadUrl = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.style.display = 'none';
+                            a.href = downloadUrl;
+                            a.download = `Info_Excursion_${excursionNombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(downloadUrl);
+                            a.remove();
+                        } else {
+                            const errorData = await response.json();
+                            showGlobalError(errorData.error || `Error ${response.status} al generar el PDF de información general.`);
+                        }
+                    } catch (err) {
+                        showGlobalError(`Error de red o conexión al generar PDF de información general: ${err.message}`);
+                    }
                 });
             });
 
