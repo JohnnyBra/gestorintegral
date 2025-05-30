@@ -3198,7 +3198,7 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
             if (error.response) {
                 // The request was made and the server responded with a status code
                 // that falls out of the range of 2xx
-                return res.status(error.response.status).json({ 
+                return res.status(error.response.status).json({
                     error: `HTTP error downloading file: ${error.response.status} ${error.response.statusText}`,
                     url: fileUrl
                 });
@@ -3308,6 +3308,7 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                         } else if (tableName === 'clases') {
                             const nombre_clase = row.nombre_clase?.trim();
                             const tutor_id_raw = row.tutor_id?.trim();
+                            console.log(`[IMPORT CLASES DEBUG] Processing class: "${row.nombre_clase}", Raw tutor_id from CSV: "${row.tutor_id}"`);
                             const ciclo_id_raw = row.ciclo_id?.trim();
 
                             if (!nombre_clase) {
@@ -3325,16 +3326,21 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                             let tutor_id = null;
                             if (tutor_id_raw && tutor_id_raw !== '') {
                                 tutor_id = parseInt(tutor_id_raw);
+                                console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Parsed tutor_id: ${tutor_id}`);
                                 if (isNaN(tutor_id)) {
+                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", tutor_id is NaN after parseInt. Raw value was: "${tutor_id_raw}". Skipping.`);
                                     tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Invalid tutor_id format.' });
                                     tableSummary.skippedFK++;
                                     continue;
                                 }
                                 const tutorExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [tutor_id]);
                                 if (!tutorExists) {
+                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} NOT FOUND in usuarios table. Skipping.`);
                                     tableSummary.skippedFK++;
                                     tableSummary.errors.push({ rowIdentifier: nombre_clase, error: `Foreign key violation: tutor_id ${tutor_id} not found.`});
                                     continue;
+                                } else {
+                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} FOUND in usuarios table.`);
                                 }
                             }
                             
@@ -3353,7 +3359,7 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                     continue;
                                 }
                             }
-
+                            console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", FINAL params for INSERT: nombre_clase="${nombre_clase}", tutor_id=${tutor_id}, ciclo_id=${ciclo_id}`);
                             const insertSql = "INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)";
                             await dbRunAsync(insertSql, [nombre_clase, tutor_id, ciclo_id]);
                             tableSummary.insertedRows++;
