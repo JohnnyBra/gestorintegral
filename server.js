@@ -3117,7 +3117,7 @@ app.get('/api/direccion/export/all-data', authenticateToken, async (req, res) =>
                 ] 
             },
             {
-                name: 'shared_excursiones',
+                name: 'shared_excursions',
                 columns: [
                     'id', 'original_excursion_id', 'shared_by_usuario_id', 'shared_with_usuario_id', 
                     'status', 'shared_at', 'processed_at', 'new_excursion_id_on_acceptance'
