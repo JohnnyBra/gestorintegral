@@ -1887,6 +1887,108 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
             adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre));
+
+            // --- BEGIN: Logic for Import Data button ---
+            const triggerImportBtn = document.getElementById('triggerImportDataBtn');
+            const importDataFile = document.getElementById('importDataFile');
+            const importDataUrl = document.getElementById('importDataUrl');
+            const importDataStatus = document.getElementById('importDataStatus');
+
+            if (triggerImportBtn && importDataFile && importDataUrl && importDataStatus) {
+                triggerImportBtn.addEventListener('click', async () => {
+                    importDataStatus.textContent = ''; // Clear previous messages
+                    importDataStatus.style.color = 'inherit';
+
+
+                    const file = importDataFile.files[0];
+                    const url = importDataUrl.value.trim();
+
+                    if (file) {
+                        importDataStatus.textContent = 'Importando desde archivo...';
+                        const formData = new FormData();
+                        formData.append('importFile', file);
+
+                        try {
+                            const response = await fetch('/api/direccion/import/all-data', {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${currentToken}` },
+                                body: formData
+                            });
+                            const result = await response.json();
+                            if (response.ok) {
+                                importDataStatus.style.color = 'green';
+                                importDataStatus.textContent = 'Importación completada con éxito. Refresca la página o navega a otra sección y vuelve para ver todos los cambios.';
+                                alert('Importación completada. Se recomienda recargar la página o volver a cargar los datos de las secciones afectadas.');
+                                loadAdminUsuarios(); // Reload user list
+                            } else {
+                                throw result; // Throw the JSON error response from backend
+                            }
+                        } catch (error) {
+                            console.error('Error en la importación desde archivo:', error);
+                            importDataStatus.style.color = 'red';
+                            let detailedMsg = `Error: ${error.error || error.message || 'Desconocido'}. `;
+                            if (error.summary) {
+                                detailedMsg += `Resumen: ${JSON.stringify(error.summary, null, 2)}`;
+                            } else if (error.missing_files) {
+                                detailedMsg += `Archivos faltantes: ${error.missing_files.join(', ')}.`;
+                            } else if (error.details) {
+                                detailedMsg += `Detalles: ${error.details}.`;
+                            }
+                            importDataStatus.textContent = detailedMsg;
+                        } finally {
+                            importDataFile.value = ''; 
+                            importDataUrl.value = ''; 
+                        }
+                    } else if (url) {
+                        importDataStatus.textContent = 'Importando desde URL...';
+                        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                            importDataStatus.style.color = 'red';
+                            importDataStatus.textContent = 'URL inválida. Debe empezar con http:// o https://';
+                            return;
+                        }
+
+                        try {
+                            const response = await fetch('/api/direccion/import/all-data', {
+                                method: 'POST',
+                                headers: {
+                                    'Authorization': `Bearer ${currentToken}`,
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ file_url: url })
+                            });
+                            const result = await response.json();
+                            if (response.ok) {
+                                importDataStatus.style.color = 'green';
+                                importDataStatus.textContent = 'Importación desde URL completada con éxito. Refresca la página o navega a otra sección y vuelve para ver todos los cambios.';
+                                alert('Importación completada. Se recomienda recargar la página o volver a cargar los datos de las secciones afectadas.');
+                                loadAdminUsuarios(); // Reload user list
+                            } else {
+                                throw result; // Throw the JSON error response from backend
+                            }
+                        } catch (error) {
+                            console.error('Error en la importación desde URL:', error);
+                            importDataStatus.style.color = 'red';
+                            let detailedMsg = `Error: ${error.error || error.message || 'Desconocido'}. `;
+                            if (error.summary) {
+                                detailedMsg += `Resumen: ${JSON.stringify(error.summary, null, 2)}`;
+                            } else if (error.missing_files) {
+                                detailedMsg += `Archivos faltantes: ${error.missing_files.join(', ')}.`;
+                            } else if (error.details) {
+                                detailedMsg += `Detalles: ${error.details}.`;
+                            }
+                            importDataStatus.textContent = detailedMsg;
+                        } finally {
+                            importDataFile.value = ''; 
+                            importDataUrl.value = ''; 
+                        }
+                    } else {
+                        importDataStatus.style.color = 'red';
+                        importDataStatus.textContent = 'Por favor, selecciona un archivo ZIP o introduce una URL.';
+                    }
+                });
+            }
+            // --- END: Logic for Import Data button ---
+
         } catch (error) { 
             showGlobalError(`Error cargando usuarios: ${error.message}`, adminUsuariosContentDiv); 
             if (direccionActionsDiv) direccionActionsDiv.style.display = 'none';

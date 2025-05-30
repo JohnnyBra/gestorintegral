@@ -116,6 +116,24 @@
                     <!-- Old export button location removed. The div can remain if other actions are planned. -->
                     <div id="direccion-actions-section" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; display: none;"> 
                         <h4>Acciones Adicionales (Dirección)</h4>
+                        <div id="import-data-container" style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; background-color: #f5f5f5; border-radius: 5px;">
+                            <h5>Importar Datos desde Archivo ZIP</h5>
+                            <p style="font-size: 0.9em; color: #555;">
+                                Selecciona un archivo ZIP (como el generado por "Exportar Todos los Datos") o introduce una URL directa a un archivo ZIP.
+                            </p>
+                            <div style="margin-top: 10px;">
+                                <label for="importDataFile" style="display: block; margin-bottom: 5px;">Subir archivo ZIP:</label>
+                                <input type="file" id="importDataFile" accept=".zip" style="margin-bottom: 10px; display: block; width: 100%; padding: 8px; box-sizing: border-box;">
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <label for="importDataUrl" style="display: block; margin-bottom: 5px;">O introduce URL del archivo ZIP:</label>
+                                <input type="text" id="importDataUrl" placeholder="https://example.com/backup.zip" style="margin-bottom: 10px; display: block; width: 100%; padding: 8px; box-sizing: border-box;">
+                            </div>
+                            <button id="triggerImportDataBtn" class="button is-primary" style="margin-top: 10px; background-color: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer;">
+                                <i class="fas fa-upload"></i> Importar Datos
+                            </button>
+                            <div id="importDataStatus" style="margin-top: 15px; font-weight: bold;"></div>
+                        </div>
                         <!-- Other Direccion-specific buttons could go here -->
                     </div>
                     <div id="formAdminUsuarioWrapper" class="form-wrapper" style="margin-top:20px;">
