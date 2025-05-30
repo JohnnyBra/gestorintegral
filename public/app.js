@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showGlobalError(message, targetDiv = null) {
-        console.error("ERROR APP:", message); // This console.error is acceptable for a global error handler
+        console.error("ERROR APP:", message); 
         if (targetDiv) {
             targetDiv.innerHTML = `<p class="error-message">${message}</p>`;
         } else if (loginErrorP && loginSection && loginSection.style.display === 'block') {
@@ -354,21 +354,25 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar el resumen: ${error.message}</p>`;
         }
+        
+        // --- BEGIN: Logic for "Exportar Todos los Datos" button on dashboard ---
+        const backupSection = document.getElementById('dashboard-backup-section'); 
+        const exportButtonOnDashboard = document.getElementById('exportAllDataBtn'); 
 
-        // Logic for "Exportar Todos los Datos" button on dashboard
-        const exportContainer = document.getElementById('dashboard-backup-section'); // Use the new container ID
-        const exportButtonDashboard = document.getElementById('exportAllDataBtn'); 
+        if (currentUser && currentUser.rol === 'DIRECCION' && backupSection && exportButtonOnDashboard) {
+            backupSection.style.display = 'block'; 
 
-        if (currentUser && currentUser.rol === 'DIRECCION' && exportContainer && exportButtonDashboard) {
-            exportContainer.style.display = 'block'; 
-
-            const newExportButton = exportButtonDashboard.cloneNode(true);
-            if (exportButtonDashboard.parentNode) {
-                exportButtonDashboard.parentNode.replaceChild(newExportButton, exportButtonDashboard);
+            const newExportButton = exportButtonOnDashboard.cloneNode(true);
+            // The button is inside a div, which is inside backupSection.
+            // div#dashboard-backup-section > div > button#exportAllDataBtn
+            const buttonContainer = exportButtonOnDashboard.parentNode; 
+            if (buttonContainer) {
+                 buttonContainer.replaceChild(newExportButton, exportButtonOnDashboard);
             } else {
-                // This case should not happen if HTML is correct and button is inside exportContainer's structure
-                console.error("Export button's parentNode not found during dashboard load.");
-                exportContainer.querySelector('div').appendChild(newExportButton); // Attempt to append if structure is as expected
+                 console.error("Export button's parentNode not found. This should not happen if HTML is correct.");
+                 // As a fallback, if structure is not as expected, try to append to backupSection directly,
+                 // though this might not match intended layout.
+                 backupSection.appendChild(newExportButton);
             }
             
             newExportButton.addEventListener('click', async () => {
@@ -427,9 +431,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     newExportButton.textContent = 'Exportar Todos los Datos';
                 }
             });
-        } else if (exportContainer) {
-            exportContainer.style.display = 'none';
+        } else if (backupSection) { 
+            backupSection.style.display = 'none';
         }
+        // --- END: Logic for "Exportar Todos los Datos" button on dashboard ---
     }
 
     let listaDeClasesGlobal = []; 
@@ -1834,20 +1839,21 @@ document.addEventListener('DOMContentLoaded', () => {
     
         if (!currentUser || currentUser.rol !== 'DIRECCION') {
             if (adminUsuariosContentDiv) adminUsuariosContentDiv.innerHTML = "<p class='error-message'>Acceso denegado.</p>";
-            if (direccionActionsDiv) direccionActionsDiv.style.display = 'none';
-            if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = '';
+            if (direccionActionsDiv) direccionActionsDiv.style.display = 'none'; // Hide actions if not DIRECCION
+            if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = ''; // Clear any forms
             return;
         }
     
+        // Ensure the 'DIRECCION' specific actions container is visible (even if export button moved)
         if (direccionActionsDiv) {
-            direccionActionsDiv.style.display = 'block'; 
+            direccionActionsDiv.style.display = 'block'; // Or 'flex' or as per its design if it has other content
         } else {
             console.error("Error: El div 'direccion-actions-section' no se encontró en el HTML.");
         }
     
         if (!adminUsuariosContentDiv) {
-            console.error("Error: El div 'admin-usuarios-content' no se encontró.");
-            return;
+             console.error("Error: El div 'admin-usuarios-content' no se encontró.");
+             return;
         }
         adminUsuariosContentDiv.innerHTML = "<p>Cargando usuarios...</p>";
         if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = ''; 
@@ -1866,7 +1872,8 @@ document.addEventListener('DOMContentLoaded', () => {
             html += '</tbody></table>';
             adminUsuariosContentDiv.innerHTML = html; 
     
-            // Listener for exportAllDataBtn was here, now moved to loadDashboardData
+            // EXPORT_BUTTON_LOGIC_REMOVAL_POINT
+            // Old export button logic was here and is now removed.
     
             const btnShowForm = document.getElementById('btnShowFormNuevoUsuarioTutor');
             if (btnShowForm) btnShowForm.addEventListener('click', () => showFormAdminUsuario(null, null));
