@@ -366,13 +366,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // The button is inside a div, which is inside backupSection.
             // div#dashboard-backup-section > div > button#exportAllDataBtn
             const buttonContainer = exportButtonOnDashboard.parentNode; 
-            if (buttonContainer) {
+            if (buttonContainer) { // Check if button has a parent before replacing
                  buttonContainer.replaceChild(newExportButton, exportButtonOnDashboard);
             } else {
-                 console.error("Export button's parentNode not found. This should not happen if HTML is correct.");
-                 // As a fallback, if structure is not as expected, try to append to backupSection directly,
-                 // though this might not match intended layout.
-                 backupSection.appendChild(newExportButton);
+                 console.error("Export button's parentNode not found during dashboard load. This might indicate an unexpected HTML structure. Appending to backupSection directly as a fallback.");
+                 backupSection.appendChild(newExportButton); // Fallback: append to the main backup section if the inner div isn't found
             }
             
             newExportButton.addEventListener('click', async () => {
@@ -1845,10 +1843,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     
         // Ensure the 'DIRECCION' specific actions container is visible (even if export button moved)
+        // This div might be used for other Direccion actions in this view later.
+        // If it only contained the export button, it might be better to hide it if no other actions are planned for this specific div.
+        // For now, we ensure it's visible if the user is DIRECCION and the section loads.
         if (direccionActionsDiv) {
-            direccionActionsDiv.style.display = 'block'; // Or 'flex' or as per its design if it has other content
+             direccionActionsDiv.style.display = 'block'; 
         } else {
-            console.error("Error: El div 'direccion-actions-section' no se encontró en el HTML.");
+            // console.error("Error: El div 'direccion-actions-section' no se encontró en el HTML."); // Commented out as it's no longer strictly necessary for export
         }
     
         if (!adminUsuariosContentDiv) {
