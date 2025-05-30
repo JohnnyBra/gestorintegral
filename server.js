@@ -9,6 +9,7 @@ require('dotenv').config();
 const JSZip = require('jszip');
 const multer = require('multer');
 const Papa = require('papaparse');
+const axios = require('axios'); // Added axios
 
 const fs = require('fs'); 
 const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
@@ -3158,26 +3159,68 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
         return res.status(403).json({ error: 'No autorizado.' });
     }
 
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded.' });
-    }
-
-    // Validate file type and extension
-    if (req.file.mimetype !== 'application/zip' && req.file.mimetype !== 'application/x-zip-compressed') {
-        return res.status(400).json({ error: 'Invalid file type. Only ZIP files are allowed.' });
-    }
-    if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
-        return res.status(400).json({ error: 'Invalid file extension. Only .zip files are allowed.' });
-    }
-
-    console.log('Uploaded file original name:', req.file.originalname);
-    console.log('Uploaded file size:', req.file.size);
-
     const importSummary = [];
+    let fileBuffer;
+    let sourceDescription;
+
+    if (req.file) {
+        // Validate file type and extension for uploaded file
+        if (req.file.mimetype !== 'application/zip' && req.file.mimetype !== 'application/x-zip-compressed') {
+            return res.status(400).json({ error: 'Invalid file type for upload. Only ZIP files are allowed.' });
+        }
+        if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
+            return res.status(400).json({ error: 'Invalid file extension for upload. Only .zip files are allowed.' });
+        }
+        fileBuffer = req.file.buffer;
+        sourceDescription = `Uploaded file: ${req.file.originalname}, Size: ${req.file.size}`;
+        console.log(sourceDescription);
+
+    } else if (req.body.file_url) {
+        const fileUrl = req.body.file_url;
+        sourceDescription = `File from URL: ${fileUrl}`;
+        console.log(sourceDescription);
+
+        // Validate URL format
+        if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
+            return res.status(400).json({ error: 'Invalid file_url format. Must be http or https.' });
+        }
+
+        try {
+            const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+            // Optional: Check Content-Type header if available and strict
+            // const contentType = response.headers['content-type'];
+            // if (contentType && !contentType.includes('application/zip') && !contentType.includes('application/x-zip-compressed')) {
+            //     return res.status(400).json({ error: 'Downloaded file content-type is not ZIP.' });
+            // }
+            fileBuffer = response.data;
+        } catch (error) {
+            console.error(`Error downloading file from URL ${fileUrl}:`, error.message);
+            if (error.response) {
+                // The request was made and the server responded with a status code
+                // that falls out of the range of 2xx
+                return res.status(error.response.status).json({ 
+                    error: `HTTP error downloading file: ${error.response.status} ${error.response.statusText}`,
+                    url: fileUrl
+                });
+            } else if (error.request) {
+                // The request was made but no response was received
+                return res.status(500).json({ error: 'Network error: No response received from file URL.', url: fileUrl });
+            } else {
+                // Something happened in setting up the request that triggered an Error
+                return res.status(500).json({ error: `Error downloading file: ${error.message}`, url: fileUrl });
+            }
+        }
+    } else {
+        return res.status(400).json({ error: 'No importFile uploaded and no file_url provided.' });
+    }
+
+    if (!fileBuffer) { // Should be caught by earlier checks, but as a safeguard
+        return res.status(500).json({ error: 'File buffer is not available for processing.' });
+    }
 
     try {
         const zip = new JSZip();
-        const loadedZip = await zip.loadAsync(req.file.buffer);
+        const loadedZip = await zip.loadAsync(fileBuffer);
 
         // Validate presence of expected CSV files
         const expectedCsvFiles = ['usuarios.csv', 'ciclos.csv', 'clases.csv', 'alumnos.csv', 'excursiones.csv', 'participaciones_excursion.csv', 'shared_excursions.csv'];

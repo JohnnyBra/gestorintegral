@@ -25,6 +25,9 @@
                     <li id="nav-shared-excursions" style="display:none;">
                         <a href="#" data-section="shared-excursions"><i class="fas fa-inbox"></i> Recibidas</a>
                     </li>
+                    <li id="nav-import-export" style="display:none;"> <!-- Initial display:none controlled by JS later -->
+                        <a href="#" data-section="import-export"><i class="fas fa-exchange-alt"></i> Importar/Exportar</a>
+                    </li>
                     <li id="nav-admin-usuarios" style="display:none;"> 
                         <a href="#" data-section="admin-usuarios"><i class="fas fa-users-cog"></i> Admin Usuarios</a>
                     </li>
@@ -68,13 +71,6 @@
                     <h4>Calendario de Excursiones</h4>
                     <div id="excursion-calendar-container"></div>
 
-                    <div id="dashboard-backup-section" class="section" style="display: none; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc;">
-                        <h4 class="title is-4">Copia de Seguridad y Exportación</h4>
-                        <p>Aquí puedes exportar los datos de la aplicación.</p>
-                        <div style="margin-top: 15px; text-align: center;">
-                            <button id="exportAllDataBtn" class="button is-info">Exportar Todos los Datos</button>
-                        </div>
-                    </div>
                 </div>
 
                <div id="clases-section" class="main-section" style="display:none;">
@@ -136,6 +132,37 @@
                 </section>
 
                 <!-- Sección de Coordinación eliminada -->
+
+                <div id="import-export-section" class="main-section" style="display:none;">
+                    <h2>Importar/Exportar Datos</h2>
+                    <div id="import-export-content" style="padding: 20px; border-top: 1px solid #eee;">
+                        <div id="import-data-container" style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; background-color: #f5f5f5; border-radius: 5px;">
+                            <h5>Importar Datos desde Archivo ZIP</h5>
+                            <p style="font-size: 0.9em; color: #555;">
+                                Selecciona un archivo ZIP (como el generado por "Exportar Todos los Datos") o introduce una URL directa a un archivo ZIP.
+                            </p>
+                            <div style="margin-top: 10px;">
+                                <label for="importDataFile" style="display: block; margin-bottom: 5px;">Subir archivo ZIP:</label>
+                                <input type="file" id="importDataFile" accept=".zip" style="margin-bottom: 10px; display: block; width: 100%; padding: 8px; box-sizing: border-box;">
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <label for="importDataUrl" style="display: block; margin-bottom: 5px;">O introduce URL del archivo ZIP:</label>
+                                <input type="text" id="importDataUrl" placeholder="https://example.com/backup.zip" style="margin-bottom: 10px; display: block; width: 100%; padding: 8px; box-sizing: border-box;">
+                            </div>
+                            <button id="triggerImportDataBtn" class="button is-primary" style="margin-top: 10px; background-color: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer;">
+                                <i class="fas fa-upload"></i> Importar Datos
+                            </button>
+                            <div id="importDataStatus" style="margin-top: 15px; font-weight: bold;"></div>
+                        </div>
+                        <div id="export-data-container" class="section" style="margin-top: 30px; padding: 15px; border: 1px solid #ddd; background-color: #f5f5f5; border-radius: 5px;">
+                            <h4 class="title is-4">Copia de Seguridad y Exportación</h4>
+                            <p>Aquí puedes exportar los datos de la aplicación.</p>
+                            <div style="margin-top: 15px; text-align: center;">
+                                <button id="exportAllDataBtn" class="button is-info">Exportar Todos los Datos</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
             </main>
             <div class="footer-credit">Creado por Javi Barrero</div>

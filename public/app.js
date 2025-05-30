@@ -187,6 +187,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const isAdmin = currentUser.rol === 'DIRECCION';
         const adminUsuariosLinkLi = mainNavSidebar.querySelector('a[data-section="admin-usuarios"]');
         if (adminUsuariosLinkLi) adminUsuariosLinkLi.parentElement.style.display = isAdmin ? 'list-item' : 'none';
+
+        const importExportLinkLi = document.getElementById('nav-import-export');
+        if (importExportLinkLi) {
+            importExportLinkLi.style.display = (currentUser && currentUser.rol === 'DIRECCION') ? 'list-item' : 'none';
+        }
         
         const sharedExcursionsLinkLi = mainNavSidebar.querySelector('a[data-section="shared-excursions"]').parentElement;
         if (sharedExcursionsLinkLi) sharedExcursionsLinkLi.style.display = (currentUser && currentUser.rol === 'TUTOR') ? 'list-item' : 'none';
@@ -273,11 +278,193 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (currentUser && currentUser.rol === 'TUTOR') loadPendingShares();
                 break;
             case 'admin-usuarios': if (currentUser && currentUser.rol === 'DIRECCION') loadAdminUsuarios(); break;
+            case 'import-export': if (currentUser && currentUser.rol === 'DIRECCION') loadImportExportSection(); break;
             case 'tesoreria': 
                 if (currentUser && (currentUser.rol === 'TESORERIA' || currentUser.rol === 'DIRECCION')) loadTesoreriaData();
                 break;
         }
     }
+
+    async function loadImportExportSection() {
+        const contentDiv = document.getElementById('import-export-content');
+        if (!contentDiv) {
+            console.error("Error: El div 'import-export-content' no se encontró.");
+            return;
+        }
+        // contentDiv.innerHTML = ''; // Clear previous content if any, though static HTML is fine for now
+
+        // --- BEGIN: Logic for Import Data button ---
+        const triggerImportBtn = document.getElementById('triggerImportDataBtn');
+        const importDataFile = document.getElementById('importDataFile');
+        const importDataUrl = document.getElementById('importDataUrl');
+        const importDataStatus = document.getElementById('importDataStatus');
+
+        if (triggerImportBtn && importDataFile && importDataUrl && importDataStatus) {
+            // Clone and replace the button to remove old event listeners if this function can be called multiple times
+            const newTriggerImportBtn = triggerImportBtn.cloneNode(true);
+            triggerImportBtn.parentNode.replaceChild(newTriggerImportBtn, triggerImportBtn);
+
+            newTriggerImportBtn.addEventListener('click', async () => {
+                importDataStatus.textContent = ''; // Clear previous messages
+                importDataStatus.style.color = 'inherit';
+
+                const file = importDataFile.files[0];
+                const url = importDataUrl.value.trim();
+
+                if (file) {
+                    importDataStatus.textContent = 'Importando desde archivo...';
+                    const formData = new FormData();
+                    formData.append('importFile', file);
+
+                    try {
+                        const response = await fetch('/api/direccion/import/all-data', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${currentToken}` },
+                            body: formData
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            importDataStatus.style.color = 'green';
+                            importDataStatus.textContent = 'Importación completada con éxito.';
+                            alert('Importación completada. Por favor, recargue la página o navegue a las secciones relevantes para ver los cambios.');
+                            // Consider which sections to reload or prompt user
+                        } else {
+                            throw result; 
+                        }
+                    } catch (error) {
+                        console.error('Error en la importación desde archivo:', error);
+                        importDataStatus.style.color = 'red';
+                        let detailedMsg = `Error: ${error.error || error.message || 'Desconocido'}. `;
+                        if (error.summary) {
+                            detailedMsg += `Resumen: ${JSON.stringify(error.summary, null, 2)}`;
+                        } else if (error.missing_files) {
+                            detailedMsg += `Archivos faltantes: ${error.missing_files.join(', ')}.`;
+                        } else if (error.details) {
+                            detailedMsg += `Detalles: ${error.details}.`;
+                        }
+                        importDataStatus.textContent = detailedMsg;
+                    } finally {
+                        importDataFile.value = ''; 
+                        importDataUrl.value = ''; 
+                    }
+                } else if (url) {
+                    importDataStatus.textContent = 'Importando desde URL...';
+                    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                        importDataStatus.style.color = 'red';
+                        importDataStatus.textContent = 'URL inválida. Debe empezar con http:// o https://';
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/direccion/import/all-data', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${currentToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ file_url: url })
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            importDataStatus.style.color = 'green';
+                            importDataStatus.textContent = 'Importación desde URL completada con éxito.';
+                            alert('Importación completada. Por favor, recargue la página o navegue a las secciones relevantes para ver los cambios.');
+                        } else {
+                            throw result; 
+                        }
+                    } catch (error) {
+                        console.error('Error en la importación desde URL:', error);
+                        importDataStatus.style.color = 'red';
+                        let detailedMsg = `Error: ${error.error || error.message || 'Desconocido'}. `;
+                        if (error.summary) {
+                            detailedMsg += `Resumen: ${JSON.stringify(error.summary, null, 2)}`;
+                        } else if (error.missing_files) {
+                            detailedMsg += `Archivos faltantes: ${error.missing_files.join(', ')}.`;
+                        } else if (error.details) {
+                            detailedMsg += `Detalles: ${error.details}.`;
+                        }
+                        importDataStatus.textContent = detailedMsg;
+                    } finally {
+                        importDataFile.value = ''; 
+                        importDataUrl.value = ''; 
+                    }
+                } else {
+                    importDataStatus.style.color = 'red';
+                    importDataStatus.textContent = 'Por favor, selecciona un archivo ZIP o introduce una URL.';
+                }
+            });
+        }
+        // --- END: Logic for Import Data button ---
+
+        // --- BEGIN: Logic for "Exportar Todos los Datos" button ---
+        // Note: The button ID is 'exportAllDataBtn' as it was in the dashboard backup section
+        const exportButton = document.getElementById('exportAllDataBtn'); 
+
+        if (currentUser && currentUser.rol === 'DIRECCION' && exportButton) {
+            // Clone and replace to ensure no old listeners if this function is called multiple times
+            const newExportButton = exportButton.cloneNode(true);
+            exportButton.parentNode.replaceChild(newExportButton, exportButton);
+            
+            newExportButton.addEventListener('click', async () => {
+                const token = localStorage.getItem('authToken'); // currentToken should also be available
+                if (!token) {
+                    alert('Error de autenticación. Por favor, inicia sesión de nuevo.');
+                    return;
+                }
+
+                newExportButton.disabled = true;
+                newExportButton.textContent = 'Exportando...';
+
+                try {
+                    const response = await fetch('/api/direccion/export/all-data', {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        let errorMsg = response.statusText;
+                        try {
+                            const errData = await response.json();
+                            errorMsg = errData.error || errorMsg;
+                        } catch (e) { /* Ignore parsing error */ }
+                        throw new Error(errorMsg);
+                    }
+                    
+                    const contentDisposition = response.headers.get('content-disposition');
+                    let filename = 'export_gestion_escolar.zip'; 
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                        if (filenameMatch && filenameMatch.length > 1) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+                    
+                    const blob = await response.blob();
+                    const fileUrl = window.URL.createObjectURL(blob); // Renamed to avoid conflict with outer scope `url`
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = fileUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(fileUrl);
+                    document.body.removeChild(a);
+                    alert('Datos exportados correctamente como ' + filename);
+
+                } catch (error) {
+                    console.error('Error al exportar datos:', error);
+                    alert('Error al exportar datos: ' + error.message);
+                } finally {
+                    newExportButton.disabled = false;
+                    newExportButton.textContent = 'Exportar Todos los Datos';
+                }
+            });
+        }
+        // --- END: Logic for "Exportar Todos los Datos" button ---
+    }
+
 
     async function loadDashboardData() {
         if (!dashboardSummaryContentDiv) return;
@@ -355,84 +542,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar el resumen: ${error.message}</p>`;
         }
         
-        // --- BEGIN: Logic for "Exportar Todos los Datos" button on dashboard ---
-        const backupSection = document.getElementById('dashboard-backup-section'); 
-        const exportButtonOnDashboard = document.getElementById('exportAllDataBtn'); 
-
-        if (currentUser && currentUser.rol === 'DIRECCION' && backupSection && exportButtonOnDashboard) {
-            backupSection.style.display = 'block'; 
-
-            const newExportButton = exportButtonOnDashboard.cloneNode(true);
-            // The button is inside a div, which is inside backupSection.
-            // div#dashboard-backup-section > div > button#exportAllDataBtn
-            const buttonContainer = exportButtonOnDashboard.parentNode; 
-            if (buttonContainer) { // Check if button has a parent before replacing
-                 buttonContainer.replaceChild(newExportButton, exportButtonOnDashboard);
-            } else {
-                 console.error("Export button's parentNode not found during dashboard load. This might indicate an unexpected HTML structure. Appending to backupSection directly as a fallback.");
-                 backupSection.appendChild(newExportButton); // Fallback: append to the main backup section if the inner div isn't found
-            }
-            
-            newExportButton.addEventListener('click', async () => {
-                const token = localStorage.getItem('authToken');
-                if (!token) {
-                    alert('Error de autenticación. Por favor, inicia sesión de nuevo.');
-                    return;
-                }
-
-                newExportButton.disabled = true;
-                newExportButton.textContent = 'Exportando...';
-
-                try {
-                    const response = await fetch('/api/direccion/export/all-data', {
-                        method: 'GET',
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    });
-
-                    if (!response.ok) {
-                        let errorMsg = response.statusText;
-                        try {
-                            const errData = await response.json();
-                            errorMsg = errData.error || errorMsg;
-                        } catch (e) { /* Ignore parsing error */ }
-                        throw new Error(errorMsg);
-                    }
-                    
-                    const contentDisposition = response.headers.get('content-disposition');
-                    let filename = 'export_gestion_escolar.zip'; 
-                    if (contentDisposition) {
-                        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-                        if (filenameMatch && filenameMatch.length > 1) {
-                            filename = filenameMatch[1];
-                        }
-                    }
-                    
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                    alert('Datos exportados correctamente como ' + filename);
-
-                } catch (error) {
-                    console.error('Error al exportar datos:', error);
-                    alert('Error al exportar datos: ' + error.message);
-                } finally {
-                    newExportButton.disabled = false;
-                    newExportButton.textContent = 'Exportar Todos los Datos';
-                }
-            });
-        } else if (backupSection) { 
-            backupSection.style.display = 'none';
-        }
-        // --- END: Logic for "Exportar Todos los Datos" button on dashboard ---
+        // The export UI and its logic have been moved to loadImportExportSection.
+        // No specific visibility control for a backup section is needed here anymore.
     }
 
     let listaDeClasesGlobal = []; 
@@ -1887,9 +1998,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
             adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre));
+
+            // Import logic has been moved to loadImportExportSection
+            // The direccionActionsDiv might still be used for other Direccion-specific actions,
+            // so its visibility control remains for now if it's not solely for the moved import UI.
+
         } catch (error) { 
             showGlobalError(`Error cargando usuarios: ${error.message}`, adminUsuariosContentDiv); 
-            if (direccionActionsDiv) direccionActionsDiv.style.display = 'none';
+            // If direccionActionsDiv was purely for import, it would be hidden here too.
+            // For now, assuming it might have other uses.
+            // if (direccionActionsDiv) direccionActionsDiv.style.display = 'none';
         }
     }
     function showFormAdminUsuario(userId = null, initialUserData = null) {
