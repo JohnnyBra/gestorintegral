@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showGlobalError(message, targetDiv = null) {
-        console.error("ERROR APP:", message); // This console.error is acceptable for a global error handler
+        console.error("ERROR APP:", message); 
         if (targetDiv) {
             targetDiv.innerHTML = `<p class="error-message">${message}</p>`;
         } else if (loginErrorP && loginSection && loginSection.style.display === 'block') {
@@ -354,6 +354,85 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar el resumen: ${error.message}</p>`;
         }
+        
+        // --- BEGIN: Logic for "Exportar Todos los Datos" button on dashboard ---
+        const backupSection = document.getElementById('dashboard-backup-section'); 
+        const exportButtonOnDashboard = document.getElementById('exportAllDataBtn'); 
+
+        if (currentUser && currentUser.rol === 'DIRECCION' && backupSection && exportButtonOnDashboard) {
+            backupSection.style.display = 'block'; 
+
+            const newExportButton = exportButtonOnDashboard.cloneNode(true);
+            // The button is inside a div, which is inside backupSection.
+            // div#dashboard-backup-section > div > button#exportAllDataBtn
+            const buttonContainer = exportButtonOnDashboard.parentNode; 
+            if (buttonContainer) { // Check if button has a parent before replacing
+                 buttonContainer.replaceChild(newExportButton, exportButtonOnDashboard);
+            } else {
+                 console.error("Export button's parentNode not found during dashboard load. This might indicate an unexpected HTML structure. Appending to backupSection directly as a fallback.");
+                 backupSection.appendChild(newExportButton); // Fallback: append to the main backup section if the inner div isn't found
+            }
+            
+            newExportButton.addEventListener('click', async () => {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    alert('Error de autenticación. Por favor, inicia sesión de nuevo.');
+                    return;
+                }
+
+                newExportButton.disabled = true;
+                newExportButton.textContent = 'Exportando...';
+
+                try {
+                    const response = await fetch('/api/direccion/export/all-data', {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        let errorMsg = response.statusText;
+                        try {
+                            const errData = await response.json();
+                            errorMsg = errData.error || errorMsg;
+                        } catch (e) { /* Ignore parsing error */ }
+                        throw new Error(errorMsg);
+                    }
+                    
+                    const contentDisposition = response.headers.get('content-disposition');
+                    let filename = 'export_gestion_escolar.zip'; 
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                        if (filenameMatch && filenameMatch.length > 1) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+                    
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    alert('Datos exportados correctamente como ' + filename);
+
+                } catch (error) {
+                    console.error('Error al exportar datos:', error);
+                    alert('Error al exportar datos: ' + error.message);
+                } finally {
+                    newExportButton.disabled = false;
+                    newExportButton.textContent = 'Exportar Todos los Datos';
+                }
+            });
+        } else if (backupSection) { 
+            backupSection.style.display = 'none';
+        }
+        // --- END: Logic for "Exportar Todos los Datos" button on dashboard ---
     }
 
     let listaDeClasesGlobal = []; 
@@ -1754,12 +1833,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     async function loadAdminUsuarios() {
-        if (!adminUsuariosContentDiv || !currentUser || currentUser.rol !== 'DIRECCION') {
+        const direccionActionsDiv = document.getElementById('direccion-actions-section');
+    
+        if (!currentUser || currentUser.rol !== 'DIRECCION') {
             if (adminUsuariosContentDiv) adminUsuariosContentDiv.innerHTML = "<p class='error-message'>Acceso denegado.</p>";
+            if (direccionActionsDiv) direccionActionsDiv.style.display = 'none'; // Hide actions if not DIRECCION
+            if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = ''; // Clear any forms
             return;
+        }
+    
+        // Ensure the 'DIRECCION' specific actions container is visible (even if export button moved)
+        // This div might be used for other Direccion actions in this view later.
+        // If it only contained the export button, it might be better to hide it if no other actions are planned for this specific div.
+        // For now, we ensure it's visible if the user is DIRECCION and the section loads.
+        if (direccionActionsDiv) {
+             direccionActionsDiv.style.display = 'block'; 
+        } else {
+            // console.error("Error: El div 'direccion-actions-section' no se encontró en el HTML."); // Commented out as it's no longer strictly necessary for export
+        }
+    
+        if (!adminUsuariosContentDiv) {
+             console.error("Error: El div 'admin-usuarios-content' no se encontró.");
+             return;
         }
         adminUsuariosContentDiv.innerHTML = "<p>Cargando usuarios...</p>";
         if (formAdminUsuarioWrapper) formAdminUsuarioWrapper.innerHTML = ''; 
+    
         try {
             const data = await apiFetch('/usuarios');
             let html = '<h3>Listado de Usuarios</h3>';
@@ -1773,8 +1872,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } else { html += '<tr><td colspan="6" style="text-align:center;">No hay usuarios.</td></tr>'; }
             html += '</tbody></table>';
             adminUsuariosContentDiv.innerHTML = html; 
+    
+            // EXPORT_BUTTON_LOGIC_REMOVAL_POINT
+            // Old export button logic was here and is now removed.
+    
             const btnShowForm = document.getElementById('btnShowFormNuevoUsuarioTutor');
             if (btnShowForm) btnShowForm.addEventListener('click', () => showFormAdminUsuario(null, null));
+            
             adminUsuariosContentDiv.querySelectorAll('.edit-usuario').forEach(b => {
                 b.onclick = async (e) => {
                     const userId = e.target.dataset.id;
@@ -1783,7 +1887,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
             adminUsuariosContentDiv.querySelectorAll('.delete-usuario').forEach(b => b.onclick = (e) => deleteAdminUsuario(e.target.dataset.id, e.target.dataset.nombre));
-        } catch (error) { showGlobalError(`Error cargando usuarios: ${error.message}`, adminUsuariosContentDiv); }
+        } catch (error) { 
+            showGlobalError(`Error cargando usuarios: ${error.message}`, adminUsuariosContentDiv); 
+            if (direccionActionsDiv) direccionActionsDiv.style.display = 'none';
+        }
     }
     function showFormAdminUsuario(userId = null, initialUserData = null) {
         if (!formAdminUsuarioWrapper) return;

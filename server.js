@@ -6,6 +6,9 @@ const cors = require('cors');
 const path = require('path');
 const morgan = require('morgan');
 require('dotenv').config();
+const JSZip = require('jszip');
+const multer = require('multer');
+const Papa = require('papaparse');
 
 const fs = require('fs'); 
 const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
@@ -168,6 +171,35 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
         console.error(`Error en getExcursionScopeDetails para excursion ID ${excursion.id}:`, error.message);
     }
     return { participating_scope_type, participating_scope_name };
+}
+
+// Helper function to convert records to CSV
+async function recordsToCsv(records, columns) {
+    if (!records) return ''; // Handle null or undefined records input
+
+    const escapeCsvValue = (value) => {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        const stringValue = String(value);
+        if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+    };
+
+    let csvString = columns.join(',') + '\n';
+
+    if (records.length === 0) {
+        return csvString; // Return only header if no records
+    }
+
+    records.forEach(record => {
+        const line = columns.map(col => escapeCsvValue(record[col])).join(',');
+        csvString += line + '\n';
+    });
+
+    return csvString;
 }
 
 // Helper function to draw tables with pdf-lib (re-adding)
@@ -3052,6 +3084,541 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error("Error en GET /api/dashboard/summary:", error.message, error.stack);
         res.status(500).json({ error: "Error interno del servidor al generar el resumen del dashboard.", detalles: error.message });
+    }
+});
+
+// API Endpoint for Data Export (Direccion ROL only)
+app.get('/api/direccion/export/all-data', authenticateToken, async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado.' });
+    }
+
+    try {
+        const zip = new JSZip();
+
+        // Define tables and columns to export
+        const tablesToExport = [
+            { name: 'usuarios', columns: ['id', 'email', 'nombre_completo', 'password_hash', 'rol'] },
+            { name: 'ciclos', columns: ['id', 'nombre_ciclo'] },
+            { name: 'clases', columns: ['id', 'nombre_clase', 'tutor_id', 'ciclo_id'] },
+            { name: 'alumnos', columns: ['id', 'nombre_completo', 'apellidos_para_ordenar', 'clase_id'] },
+            { 
+                name: 'excursiones', 
+                columns: [
+                    'id', 'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 'hora_llegada', 
+                    'coste_excursion_alumno', 'vestimenta', 'transporte', 'justificacion_texto', 
+                    'actividad_descripcion', 'notas_excursion', 'numero_autobuses', 'coste_por_autobus', 
+                    'coste_entradas_individual', 'coste_actividad_global', 'creada_por_usuario_id', 'para_clase_id'
+                ] 
+            },
+            { 
+                name: 'participaciones_excursion', 
+                columns: [
+                    'id', 'alumno_id', 'excursion_id', 'autorizacion_firmada', 'fecha_autorizacion', 
+                    'pago_realizado', 'cantidad_pagada', 'fecha_pago', 'notas_participacion'
+                ] 
+            },
+            {
+                name: 'shared_excursions',
+                columns: [
+                    'id', 'original_excursion_id', 'shared_by_usuario_id', 'shared_with_usuario_id', 
+                    'status', 'shared_at', 'processed_at', 'new_excursion_id_on_acceptance'
+                ]
+            }
+        ];
+
+        for (const table of tablesToExport) {
+            const records = await dbAllAsync(`SELECT ${table.columns.join(', ')} FROM ${table.name}`);
+            const csvString = await recordsToCsv(records, table.columns);
+            zip.file(`${table.name}.csv`, csvString);
+        }
+
+        const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 } });
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[-T:]/g, "");
+        const filename = `export_gestion_escolar_${timestamp}.zip`;
+
+        res.set('Content-Type', 'application/zip');
+        res.set('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(zipBuffer);
+
+    } catch (error) {
+        console.error("Error en /api/direccion/export/all-data:", error.message, error.stack);
+        res.status(500).json({ error: "Error interno al generar la exportación.", detalles: error.message });
+    }
+});
+
+// API Endpoint for Data Import (Direccion ROL only)
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+const tableOrder = ['usuarios', 'ciclos', 'clases', 'alumnos', 'excursiones', 'participaciones_excursion', 'shared_excursions'];
+
+app.post('/api/direccion/import/all-data', authenticateToken, upload.single('importFile'), async (req, res) => {
+    if (req.user.rol !== 'DIRECCION') {
+        return res.status(403).json({ error: 'No autorizado.' });
+    }
+
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded.' });
+    }
+
+    // Validate file type and extension
+    if (req.file.mimetype !== 'application/zip' && req.file.mimetype !== 'application/x-zip-compressed') {
+        return res.status(400).json({ error: 'Invalid file type. Only ZIP files are allowed.' });
+    }
+    if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
+        return res.status(400).json({ error: 'Invalid file extension. Only .zip files are allowed.' });
+    }
+
+    console.log('Uploaded file original name:', req.file.originalname);
+    console.log('Uploaded file size:', req.file.size);
+
+    const importSummary = [];
+
+    try {
+        const zip = new JSZip();
+        const loadedZip = await zip.loadAsync(req.file.buffer);
+
+        // Validate presence of expected CSV files
+        const expectedCsvFiles = ['usuarios.csv', 'ciclos.csv', 'clases.csv', 'alumnos.csv', 'excursiones.csv', 'participaciones_excursion.csv', 'shared_excursions.csv'];
+        const actualFilenames = Object.keys(loadedZip.files);
+        const missingFiles = expectedCsvFiles.filter(f => !actualFilenames.includes(f));
+
+        if (missingFiles.length > 0) {
+            return res.status(400).json({ error: 'Missing required CSV files in ZIP.', missing_files: missingFiles });
+        }
+
+        for (const tableName of tableOrder) {
+            const fileName = `${tableName}.csv`;
+            const tableSummary = {
+                tableName,
+                processedRows: 0,
+                insertedRows: 0,
+                skippedExisting: 0,
+                skippedFK: 0,
+                errors: []
+            };
+
+            if (!loadedZip.files[fileName]) {
+                console.log(`File ${fileName} not found in ZIP. Skipping.`);
+                tableSummary.errors.push({ type: 'FILE_NOT_FOUND', message: `File ${fileName} not found in ZIP.` });
+                importSummary.push(tableSummary);
+                continue;
+            }
+
+            try {
+                const csvString = await loadedZip.file(fileName).async('string');
+                const parsedData = Papa.parse(csvString, { header: true, skipEmptyLines: true });
+
+                if (!parsedData.data || parsedData.data.length === 0) {
+                    console.log(`No data found in ${fileName}. Skipping.`);
+                    tableSummary.errors.push({ type: 'EMPTY_FILE', message: `No data found in ${fileName}.` });
+                    importSummary.push(tableSummary);
+                    continue;
+                }
+
+                await dbRunAsync('BEGIN TRANSACTION;');
+                console.log(`Starting processing for table: ${tableName}`);
+
+                let fileFailed = false;
+                for (const row of parsedData.data) {
+                    tableSummary.processedRows++;
+                    try {
+                        if (tableName === 'usuarios') {
+                            const email = row.email?.trim();
+                            const nombre_completo = row.nombre_completo?.trim();
+                            const password_raw = row.password || row.password_hash; // CSV might have 'password' or 'password_hash'
+                            const rol = row.rol?.trim();
+
+                            if (!email || !nombre_completo || !password_raw || !rol) {
+                                tableSummary.errors.push({ rowIdentifier: email || `Row ${tableSummary.processedRows}`, error: 'Missing required fields (email, nombre_completo, password, rol).' });
+                                continue;
+                            }
+                            
+                            const existingUser = await dbGetAsync("SELECT id FROM usuarios WHERE email = ?", [email]);
+                            if (existingUser) {
+                                tableSummary.skippedExisting++;
+                                tableSummary.errors.push({ rowIdentifier: email, error: 'User with this email already exists.' });
+                                continue;
+                            }
+
+                            const password_hash = await bcrypt.hash(password_raw, 10);
+                            
+                            const insertSql = "INSERT INTO usuarios (email, nombre_completo, password_hash, rol) VALUES (?, ?, ?, ?)";
+                            await dbRunAsync(insertSql, [email, nombre_completo, password_hash, rol]);
+                            tableSummary.insertedRows++;
+                        } else if (tableName === 'ciclos') {
+                            const nombre_ciclo = row.nombre_ciclo?.trim();
+                            if (!nombre_ciclo) {
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Missing required field (nombre_ciclo).' });
+                                continue;
+                            }
+                            const existingCiclo = await dbGetAsync("SELECT id FROM ciclos WHERE nombre_ciclo = ?", [nombre_ciclo]);
+                            if (existingCiclo) {
+                                tableSummary.skippedExisting++;
+                                tableSummary.errors.push({ rowIdentifier: nombre_ciclo, error: 'Ciclo with this name already exists.' });
+                                continue;
+                            }
+                            const insertSql = "INSERT INTO ciclos (nombre_ciclo) VALUES (?)";
+                            await dbRunAsync(insertSql, [nombre_ciclo]);
+                            tableSummary.insertedRows++;
+                        } else if (tableName === 'clases') {
+                            const nombre_clase = row.nombre_clase?.trim();
+                            const tutor_id_raw = row.tutor_id?.trim();
+                            const ciclo_id_raw = row.ciclo_id?.trim();
+
+                            if (!nombre_clase) {
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Missing required field (nombre_clase).' });
+                                continue;
+                            }
+
+                            const existingClase = await dbGetAsync("SELECT id FROM clases WHERE nombre_clase = ?", [nombre_clase]);
+                            if (existingClase) {
+                                tableSummary.skippedExisting++;
+                                tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Clase with this name already exists.' });
+                                continue;
+                            }
+
+                            let tutor_id = null;
+                            if (tutor_id_raw && tutor_id_raw !== '') {
+                                tutor_id = parseInt(tutor_id_raw);
+                                if (isNaN(tutor_id)) {
+                                    tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Invalid tutor_id format.' });
+                                    tableSummary.skippedFK++;
+                                    continue;
+                                }
+                                const tutorExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [tutor_id]);
+                                if (!tutorExists) {
+                                    tableSummary.skippedFK++;
+                                    tableSummary.errors.push({ rowIdentifier: nombre_clase, error: `Foreign key violation: tutor_id ${tutor_id} not found.`});
+                                    continue;
+                                }
+                            }
+                            
+                            let ciclo_id = null;
+                            if (ciclo_id_raw && ciclo_id_raw !== '') {
+                                ciclo_id = parseInt(ciclo_id_raw);
+                                if (isNaN(ciclo_id)) {
+                                    tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Invalid ciclo_id format.' });
+                                    tableSummary.skippedFK++;
+                                    continue;
+                                }
+                                const cicloExists = await dbGetAsync("SELECT id FROM ciclos WHERE id = ?", [ciclo_id]);
+                                if (!cicloExists) {
+                                    tableSummary.skippedFK++;
+                                    tableSummary.errors.push({ rowIdentifier: nombre_clase, error: `Foreign key violation: ciclo_id ${ciclo_id} not found.`});
+                                    continue;
+                                }
+                            }
+
+                            const insertSql = "INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)";
+                            await dbRunAsync(insertSql, [nombre_clase, tutor_id, ciclo_id]);
+                            tableSummary.insertedRows++;
+                        } else if (tableName === 'alumnos') {
+                            const nombre_completo = row.nombre_completo?.trim();
+                            const apellidos_para_ordenar = row.apellidos_para_ordenar?.trim() || nombre_completo?.split(' ').slice(1).join(' ') || ''; // Basic fallback for ordering
+                            const clase_id_raw = row.clase_id?.trim();
+
+                            if (!nombre_completo || !clase_id_raw) {
+                                tableSummary.errors.push({ rowIdentifier: nombre_completo || `Row ${tableSummary.processedRows}`, error: 'Missing required fields (nombre_completo, clase_id).' });
+                                continue;
+                            }
+
+                            const clase_id = parseInt(clase_id_raw);
+                            if (isNaN(clase_id)) {
+                                tableSummary.errors.push({ rowIdentifier: nombre_completo, error: 'Invalid clase_id format.' });
+                                tableSummary.skippedFK++; // Technically a format error but impacts FK
+                                continue;
+                            }
+
+                            const claseExists = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [clase_id]);
+                            if (!claseExists) {
+                                tableSummary.skippedFK++;
+                                tableSummary.errors.push({ rowIdentifier: nombre_completo, error: `Foreign key violation: clase_id ${clase_id} not found.`});
+                                continue;
+                            }
+                            
+                            const existingAlumno = await dbGetAsync("SELECT id FROM alumnos WHERE nombre_completo = ? AND clase_id = ?", [nombre_completo, clase_id]);
+                            if (existingAlumno) {
+                                tableSummary.skippedExisting++;
+                                tableSummary.errors.push({ rowIdentifier: nombre_completo, error: `Alumno with name ${nombre_completo} already exists in clase_id ${clase_id}.` });
+                                continue;
+                            }
+
+                            const insertSql = "INSERT INTO alumnos (nombre_completo, apellidos_para_ordenar, clase_id) VALUES (?, ?, ?)";
+                            await dbRunAsync(insertSql, [nombre_completo, apellidos_para_ordenar, clase_id]);
+                            tableSummary.insertedRows++;
+                        } else if (tableName === 'excursiones') {
+                            // Data extraction and cleaning
+                            const nombre_excursion = row.nombre_excursion?.trim();
+                            const fecha_excursion_raw = row.fecha_excursion?.trim();
+                            const lugar = row.lugar?.trim();
+                            const hora_salida = row.hora_salida?.trim();
+                            const hora_llegada = row.hora_llegada?.trim();
+                            const coste_excursion_alumno_raw = row.coste_excursion_alumno?.trim();
+                            const vestimenta = row.vestimenta?.trim();
+                            const transporte = row.transporte?.trim();
+                            const justificacion_texto = row.justificacion_texto?.trim();
+                            const actividad_descripcion = row.actividad_descripcion?.trim();
+                            const notas_excursion = row.notas_excursion?.trim() || null;
+                            const numero_autobuses_raw = row.numero_autobuses?.trim();
+                            const coste_por_autobus_raw = row.coste_por_autobus?.trim();
+                            const coste_entradas_individual_raw = row.coste_entradas_individual?.trim();
+                            const coste_actividad_global_raw = row.coste_actividad_global?.trim();
+                            const creada_por_usuario_id_raw = row.creada_por_usuario_id?.trim();
+                            const para_clase_id_raw = row.para_clase_id?.trim();
+
+                            // Basic validation for required fields
+                            if (!nombre_excursion || !fecha_excursion_raw || !lugar || !hora_salida || !hora_llegada || !creada_por_usuario_id_raw) {
+                                tableSummary.errors.push({ rowIdentifier: nombre_excursion || `Row ${tableSummary.processedRows}`, error: 'Missing required fields for excursiones (e.g., nombre_excursion, fecha_excursion, lugar, hora_salida, hora_llegada, creada_por_usuario_id).' });
+                                continue;
+                            }
+
+                            // Type conversions and FK checks
+                            const fecha_excursion = fecha_excursion_raw; // Assuming YYYY-MM-DD string from CSV is fine for SQLite
+                            const coste_excursion_alumno = (coste_excursion_alumno_raw && coste_excursion_alumno_raw !== '') ? parseFloat(coste_excursion_alumno_raw) : 0;
+                            const numero_autobuses = (numero_autobuses_raw && numero_autobuses_raw !== '') ? parseInt(numero_autobuses_raw) : null;
+                            const coste_por_autobus = (coste_por_autobus_raw && coste_por_autobus_raw !== '') ? parseFloat(coste_por_autobus_raw) : null;
+                            const coste_entradas_individual = (coste_entradas_individual_raw && coste_entradas_individual_raw !== '') ? parseFloat(coste_entradas_individual_raw) : null;
+                            const coste_actividad_global = (coste_actividad_global_raw && coste_actividad_global_raw !== '') ? parseFloat(coste_actividad_global_raw) : null;
+                            
+                            const creada_por_usuario_id = parseInt(creada_por_usuario_id_raw);
+                            if (isNaN(creada_por_usuario_id)) {
+                                tableSummary.errors.push({ rowIdentifier: nombre_excursion, error: 'Invalid creada_por_usuario_id format.' });
+                                tableSummary.skippedFK++;
+                                continue;
+                            }
+                            const creadorExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [creada_por_usuario_id]);
+                            if (!creadorExists) {
+                                tableSummary.skippedFK++;
+                                tableSummary.errors.push({ rowIdentifier: nombre_excursion, error: `Foreign key violation: creada_por_usuario_id ${creada_por_usuario_id} not found.`});
+                                continue;
+                            }
+
+                            let para_clase_id = null;
+                            if (para_clase_id_raw && para_clase_id_raw !== '') {
+                                para_clase_id = parseInt(para_clase_id_raw);
+                                if (isNaN(para_clase_id)) {
+                                    tableSummary.errors.push({ rowIdentifier: nombre_excursion, error: 'Invalid para_clase_id format.' });
+                                    tableSummary.skippedFK++;
+                                    continue;
+                                }
+                                const claseDestinoExists = await dbGetAsync("SELECT id FROM clases WHERE id = ?", [para_clase_id]);
+                                if (!claseDestinoExists) {
+                                    tableSummary.skippedFK++;
+                                    tableSummary.errors.push({ rowIdentifier: nombre_excursion, error: `Foreign key violation: para_clase_id ${para_clase_id} not found.`});
+                                    continue;
+                                }
+                            }
+                            
+                            // Constructing SQL
+                            const cols = [
+                                'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 'hora_llegada',
+                                'coste_excursion_alumno', 'vestimenta', 'transporte', 'justificacion_texto',
+                                'actividad_descripcion', 'notas_excursion', 'numero_autobuses', 'coste_por_autobus',
+                                'coste_entradas_individual', 'coste_actividad_global', 'creada_por_usuario_id', 'para_clase_id'
+                            ];
+                            const params = [
+                                nombre_excursion, fecha_excursion, lugar, hora_salida, hora_llegada,
+                                coste_excursion_alumno, vestimenta, transporte, justificacion_texto,
+                                actividad_descripcion, notas_excursion, numero_autobuses, coste_por_autobus,
+                                coste_entradas_individual, coste_actividad_global, creada_por_usuario_id, para_clase_id
+                            ];
+                            const placeholders = cols.map(() => '?').join(',');
+                            const insertSql = `INSERT INTO excursiones (${cols.join(',')}) VALUES (${placeholders})`;
+                            
+                            await dbRunAsync(insertSql, params);
+                            tableSummary.insertedRows++;
+                        } else if (tableName === 'participaciones_excursion') {
+                            const alumno_id_raw = row.alumno_id?.trim();
+                            const excursion_id_raw = row.excursion_id?.trim();
+                            const autorizacion_firmada = row.autorizacion_firmada?.trim() || 'No';
+                            const fecha_autorizacion_raw = row.fecha_autorizacion?.trim();
+                            const pago_realizado = row.pago_realizado?.trim() || 'No';
+                            const cantidad_pagada_raw = row.cantidad_pagada?.trim();
+                            const fecha_pago_raw = row.fecha_pago?.trim();
+                            const notas_participacion = row.notas_participacion?.trim() || null;
+
+                            if (!alumno_id_raw || !excursion_id_raw) {
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Missing required fields (alumno_id, excursion_id).' });
+                                continue;
+                            }
+
+                            const alumno_id = parseInt(alumno_id_raw);
+                            const excursion_id = parseInt(excursion_id_raw);
+                            const cantidad_pagada = (cantidad_pagada_raw && cantidad_pagada_raw !== '') ? parseFloat(cantidad_pagada_raw) : 0;
+                            const fecha_autorizacion = (fecha_autorizacion_raw && fecha_autorizacion_raw !== '') ? fecha_autorizacion_raw : null;
+                            const fecha_pago = (fecha_pago_raw && fecha_pago_raw !== '') ? fecha_pago_raw : null;
+
+                            if (isNaN(alumno_id) || isNaN(excursion_id)) {
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Invalid alumno_id or excursion_id format.' });
+                                tableSummary.skippedFK++;
+                                continue;
+                            }
+
+                            const alumnoExists = await dbGetAsync("SELECT id FROM alumnos WHERE id = ?", [alumno_id]);
+                            if (!alumnoExists) {
+                                tableSummary.skippedFK++;
+                                tableSummary.errors.push({ rowIdentifier: `Alumno ${alumno_id} / Excursion ${excursion_id}`, error: `Foreign key violation: alumno_id ${alumno_id} not found.`});
+                                continue;
+                            }
+                            const excursionExists = await dbGetAsync("SELECT id FROM excursiones WHERE id = ?", [excursion_id]);
+                            if (!excursionExists) {
+                                tableSummary.skippedFK++;
+                                tableSummary.errors.push({ rowIdentifier: `Alumno ${alumno_id} / Excursion ${excursion_id}`, error: `Foreign key violation: excursion_id ${excursion_id} not found.`});
+                                continue;
+                            }
+
+                            const existingParticipation = await dbGetAsync("SELECT id FROM participaciones_excursion WHERE alumno_id = ? AND excursion_id = ?", [alumno_id, excursion_id]);
+                            if (existingParticipation) {
+                                tableSummary.skippedExisting++;
+                                tableSummary.errors.push({ rowIdentifier: `Alumno ${alumno_id} / Excursion ${excursion_id}`, error: 'Participation record already exists.' });
+                                continue;
+                            }
+                            
+                            const cols = [
+                                'alumno_id', 'excursion_id', 'autorizacion_firmada', 'fecha_autorizacion',
+                                'pago_realizado', 'cantidad_pagada', 'fecha_pago', 'notas_participacion'
+                            ];
+                            const params = [
+                                alumno_id, excursion_id, autorizacion_firmada, fecha_autorizacion,
+                                pago_realizado, cantidad_pagada, fecha_pago, notas_participacion
+                            ];
+                            const placeholders = cols.map(() => '?').join(',');
+                            const insertSql = `INSERT INTO participaciones_excursion (${cols.join(',')}) VALUES (${placeholders})`;
+
+                            await dbRunAsync(insertSql, params);
+                            tableSummary.insertedRows++;
+                        } else if (tableName === 'shared_excursions') {
+                            const original_excursion_id_raw = row.original_excursion_id?.trim();
+                            const shared_by_usuario_id_raw = row.shared_by_usuario_id?.trim();
+                            const shared_with_usuario_id_raw = row.shared_with_usuario_id?.trim();
+                            const status = row.status?.trim() || 'pending';
+                            const shared_at_raw = row.shared_at?.trim(); // Assuming ISO 8601 or YYYY-MM-DD HH:MM:SS
+                            const processed_at_raw = row.processed_at?.trim();
+                            const new_excursion_id_on_acceptance_raw = row.new_excursion_id_on_acceptance?.trim();
+
+                            if (!original_excursion_id_raw || !shared_by_usuario_id_raw || !shared_with_usuario_id_raw) {
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Missing required fields (original_excursion_id, shared_by_usuario_id, shared_with_usuario_id).' });
+                                continue;
+                            }
+
+                            const original_excursion_id = parseInt(original_excursion_id_raw);
+                            const shared_by_usuario_id = parseInt(shared_by_usuario_id_raw);
+                            const shared_with_usuario_id = parseInt(shared_with_usuario_id_raw);
+                            const shared_at = (shared_at_raw && shared_at_raw !== '') ? shared_at_raw : new Date().toISOString();
+                            const processed_at = (processed_at_raw && processed_at_raw !== '') ? processed_at_raw : null;
+                            
+                            let new_excursion_id_on_acceptance = null;
+                            if (new_excursion_id_on_acceptance_raw && new_excursion_id_on_acceptance_raw !== '') {
+                                new_excursion_id_on_acceptance = parseInt(new_excursion_id_on_acceptance_raw);
+                                if (isNaN(new_excursion_id_on_acceptance)) {
+                                     tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Invalid new_excursion_id_on_acceptance format.' });
+                                     tableSummary.skippedFK++;
+                                     continue;
+                                }
+                            }
+
+                            if (isNaN(original_excursion_id) || isNaN(shared_by_usuario_id) || isNaN(shared_with_usuario_id)) {
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Invalid ID format for one of the required IDs.' });
+                                tableSummary.skippedFK++;
+                                continue;
+                            }
+
+                            // FK Checks
+                            const originalExcursionExists = await dbGetAsync("SELECT id FROM excursiones WHERE id = ?", [original_excursion_id]);
+                            if (!originalExcursionExists) {
+                                tableSummary.skippedFK++;
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: `FK violation: original_excursion_id ${original_excursion_id} not found.`});
+                                continue;
+                            }
+                            const sharedByUserExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [shared_by_usuario_id]);
+                            if (!sharedByUserExists) {
+                                tableSummary.skippedFK++;
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: `FK violation: shared_by_usuario_id ${shared_by_usuario_id} not found.`});
+                                continue;
+                            }
+                            const sharedWithUserExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [shared_with_usuario_id]);
+                            if (!sharedWithUserExists) {
+                                tableSummary.skippedFK++;
+                                tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: `FK violation: shared_with_usuario_id ${shared_with_usuario_id} not found.`});
+                                continue;
+                            }
+                            if (new_excursion_id_on_acceptance !== null) {
+                                const newExcursionExists = await dbGetAsync("SELECT id FROM excursiones WHERE id = ?", [new_excursion_id_on_acceptance]);
+                                if (!newExcursionExists) {
+                                    tableSummary.skippedFK++;
+                                    tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: `FK violation: new_excursion_id_on_acceptance ${new_excursion_id_on_acceptance} not found.`});
+                                    continue;
+                                }
+                            }
+                            
+                            // Optional: Add a check for existing identical share if desired, though not strictly required by schema if IDs are new.
+                            // For simplicity, we'll assume new inserts are intended if no ID collision.
+
+                            const cols = [
+                                'original_excursion_id', 'shared_by_usuario_id', 'shared_with_usuario_id', 
+                                'status', 'shared_at', 'processed_at', 'new_excursion_id_on_acceptance'
+                            ];
+                            const params = [
+                                original_excursion_id, shared_by_usuario_id, shared_with_usuario_id,
+                                status, shared_at, processed_at, new_excursion_id_on_acceptance
+                            ];
+                            const placeholders = cols.map(() => '?').join(',');
+                            const insertSql = `INSERT INTO shared_excursions (${cols.join(',')}) VALUES (${placeholders})`;
+
+                            await dbRunAsync(insertSql, params);
+                            tableSummary.insertedRows++;
+                        }
+                        // All table processing logic should be complete now.
+
+                    } catch (rowError) {
+                        console.error(`Error processing row for ${tableName}:`, rowError.message, row);
+                        tableSummary.errors.push({ rowIdentifier: row.id || `Row ${tableSummary.processedRows}`, error: rowError.message });
+                        // If a single row fails, we might decide to rollback the whole file or continue
+                        // For now, let's mark file as failed and break to rollback this file's transaction
+                        fileFailed = true;
+                        break; 
+                    }
+                }
+                
+                if (fileFailed) {
+                    await dbRunAsync('ROLLBACK;');
+                    console.log(`Rolled back ${tableName} due to critical row processing error.`);
+                } else if (tableSummary.errors.length > 0 && tableSummary.insertedRows < (tableSummary.processedRows - tableSummary.skippedExisting - tableSummary.skippedFK)) {
+                    // This condition implies some non-critical errors might have occurred but we still inserted some rows.
+                    // Depending on strategy, could also rollback. For now, commit what was successful before non-critical errors.
+                    // OR if any error means rollback, then this 'else if' is not needed, and fileFailed would handle it.
+                    // Let's refine: if any error is in tableSummary.errors that is not a skip, we should consider rollback.
+                    // For now, the logic is: critical error (rowError caught) -> rollback. Other errors logged, and we commit.
+                    // This needs to be more robust.
+                    // TEMPORARY: Commit and log. A more robust strategy would be to rollback if any error occurred that wasn't a 'skip'.
+                    await dbRunAsync('COMMIT;');
+                    console.log(`Committed ${tableName} with some non-critical errors or skips. Review logs.`);
+                }
+                 else if (tableSummary.processedRows > 0) { // Only commit if there were rows to process
+                    await dbRunAsync('COMMIT;');
+                    console.log(`Successfully processed and committed ${tableName}`);
+                } else {
+                    // No rows processed or inserted, no need to commit, but not an error state for the transaction itself
+                    await dbRunAsync('ROLLBACK;'); // Or just do nothing if BEGIN was conditional
+                    console.log(`No data processed for ${tableName}, transaction effectively rolled back or not started.`);
+                }
+
+
+            } catch (fileProcessingError) {
+                console.error(`Error processing file ${fileName}:`, fileProcessingError.message);
+                tableSummary.errors.push({ type: 'FILE_PROCESSING_ERROR', message: fileProcessingError.message });
+                await dbRunAsync('ROLLBACK;'); // Rollback if file parsing or initial transaction setup fails
+            }
+            importSummary.push(tableSummary);
+        }
+        
+        res.status(200).json({ message: 'Import process completed.', summary: importSummary });
+
+    } catch (zipError) {
+        console.error("Error processing ZIP file:", zipError.message);
+        return res.status(400).json({ error: 'Invalid ZIP file.', details: zipError.message });
     }
 });
 

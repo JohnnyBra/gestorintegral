@@ -32,3 +32,63 @@ Using the HTTPS URL ensures that:
 - JWT tokens and other sensitive data are transmitted securely.
 
 Avoid accessing the application via raw IP addresses or HTTP on public-facing URLs if a secure HTTPS option is available. For local development, `http://localhost:3000` is typical, but for previews shared or accessed externally, always prefer the HTTPS link provided by the platform.
+
+## Testing the In-App Data Export Feature (Dirección Profile)
+
+After relocating the "Exportar Todos los Datos" button to a dedicated "Backup" section on the dashboard:
+
+**1. UI Verification:**
+    - Log in as a user with the 'DIRECCION' role.
+    - Navigate to the main **Dashboard** view.
+    - **Expected:** A section titled "Copia de Seguridad y Exportación" (or similar, as implemented) should be visible on the dashboard. Within this section, the "Exportar Todos los Datos" button should be visible and enabled.
+    - Log out and log in as a user with a different role (e.g., 'TUTOR', 'TESORERIA').
+    - Navigate to the Dashboard view.
+    - **Expected:** The "Copia de Seguridad y Exportación" section (containing the export button) should NOT be visible.
+
+**2. Export Functionality (Happy Path):**
+    - As a 'DIRECCION' user, click the "Exportar Todos los Datos" button.
+    - **Expected:**
+        - A loading indicator should appear (e.g., button text changes to "Exportando...", button disabled).
+        - After a short period, a file download should initiate for a ZIP file (e.g., `export_gestion_escolar_YYYYMMDDHHMMSS.zip`).
+        - A success message should be displayed (e.g., an alert or UI notification).
+        - The loading indicator should disappear (button returns to normal state).
+
+**3. ZIP File and CSV Content Verification:**
+    - Open the downloaded ZIP file.
+    - **Expected:** The ZIP file should contain the following CSV files:
+        - `usuarios.csv`
+        - `ciclos.csv`
+        - `clases.csv`
+        - `alumnos.csv`
+        - `excursiones.csv`
+        - `participaciones_excursion.csv`
+        - `shared_excursiones.csv`
+    - Open each CSV file with a spreadsheet program or text editor.
+    - **For each CSV file, verify:**
+        - **Headers:** The first row contains the correct column headers as designed (e.g., `id,email,nombre_completo,password_hash,rol` for `usuarios.csv`).
+        - **Data Integrity:**
+            - Data from the database is accurately represented.
+            - Special characters (commas, double quotes, newlines) within data fields are correctly escaped (e.g., enclosed in double quotes, internal double quotes are doubled `""`).
+            - `null` or `undefined` values from the database are represented as empty strings in the CSV.
+            - Number of data rows matches the number of records in the corresponding database table.
+        - **Encoding:** Text (especially names with accents or special characters) is displayed correctly (should be UTF-8).
+
+**4. Edge Case: Export with Empty Database:**
+    - (If possible and safe) Test with a mostly empty database (e.g., only the initial Dirección user, no other data).
+    - Perform the export.
+    - **Expected:**
+        - The ZIP file should still be generated.
+        - CSV files should contain only their header rows (or be empty if that was the implemented behavior for `recordsToCsv` with no records).
+
+**5. API Access Control (Manual API Request):**
+    - Using a tool like Postman or `curl`, try to make a GET request to `/api/direccion/export/all-data`:
+        - Without any JWT token.
+          - **Expected:** `401 Unauthorized` error.
+        - With a JWT token from a non-'DIRECCION' user (e.g., 'TUTOR').
+          - **Expected:** `403 Forbidden` error.
+        - With a JWT token from a 'DIRECCION' user.
+          - **Expected:** Successful response (ZIP file download).
+
+**6. Error Handling (Frontend):**
+    - (If possible to simulate) If the API call fails (e.g., server returns a 500 error, or network error):
+    - **Expected:** An error message should be displayed to the user on the frontend (e.g., "Error al exportar datos: Server Error"). The loading indicator should be reset.
