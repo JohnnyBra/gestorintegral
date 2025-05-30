@@ -3307,9 +3307,9 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                             tableSummary.insertedRows++;
                         } else if (tableName === 'clases') {
                             const nombre_clase = row.nombre_clase?.trim();
-                            const tutor_id_raw = row.tutor_id?.trim();
-                            console.log(`[IMPORT CLASES DEBUG] Processing class: "${row.nombre_clase}", Raw tutor_id from CSV: "${row.tutor_id}"`);
-                            const ciclo_id_raw = row.ciclo_id?.trim();
+                            const tutor_id_raw = row.tutor_id?.trim(); // Existing context
+                            console.log(`[IMPORT CLASES DEBUG] Processing class: "${row.nombre_clase}", Raw tutor_id from CSV: "${row.tutor_id}"`); // ADD THIS LOG (using row.tutor_id directly for raw value)
+                            const ciclo_id_raw = row.ciclo_id?.trim(); // Existing context
 
                             if (!nombre_clase) {
                                 tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Missing required field (nombre_clase).' });
@@ -3325,22 +3325,22 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
 
                             let tutor_id = null;
                             if (tutor_id_raw && tutor_id_raw !== '') {
-                                tutor_id = parseInt(tutor_id_raw);
-                                console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Parsed tutor_id: ${tutor_id}`);
-                                if (isNaN(tutor_id)) {
-                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", tutor_id is NaN after parseInt. Raw value was: "${tutor_id_raw}". Skipping.`);
-                                    tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Invalid tutor_id format.' });
-                                    tableSummary.skippedFK++;
-                                    continue;
-                                }
-                                const tutorExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [tutor_id]);
+                                tutor_id = parseInt(tutor_id_raw); // Existing line
+                                console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Parsed tutor_id: ${tutor_id}`); // ADD THIS LOG
+                                if (isNaN(tutor_id)) { // Existing line
+                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", tutor_id is NaN after parseInt. Raw value was: "${tutor_id_raw}". Skipping.`); // ADD THIS LOG (provide raw value for context)
+                                    tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Invalid tutor_id format.' }); // Existing line
+                                    tableSummary.skippedFK++; // Existing line
+                                    continue; // Existing line
+                                } // Existing line
+                                const tutorExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [tutor_id]); // Existing line
                                 if (!tutorExists) {
-                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} NOT FOUND in usuarios table. Skipping.`);
+                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} NOT FOUND in usuarios table. Skipping.`); // ADD THIS LOG
                                     tableSummary.skippedFK++;
                                     tableSummary.errors.push({ rowIdentifier: nombre_clase, error: `Foreign key violation: tutor_id ${tutor_id} not found.`});
                                     continue;
                                 } else {
-                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} FOUND in usuarios table.`);
+                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} FOUND in usuarios table.`); // ADD THIS LOG
                                 }
                             }
                             
@@ -3359,9 +3359,17 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                     continue;
                                 }
                             }
-                            console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", FINAL params for INSERT: nombre_clase="${nombre_clase}", tutor_id=${tutor_id}, ciclo_id=${ciclo_id}`);
+                            console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", FINAL params for INSERT: nombre_clase="${nombre_clase}", tutor_id=${tutor_id}, ciclo_id=${ciclo_id}`); // MODIFIED LOG to show all params being inserted
                             const insertSql = "INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)";
                             await dbRunAsync(insertSql, [nombre_clase, tutor_id, ciclo_id]);
+                            if (tutor_id !== null) { // Only check if we attempted to insert a non-null tutor_id
+                                try {
+                                    const insertedClaseRow = await dbGetAsync("SELECT id, nombre_clase, tutor_id, ciclo_id FROM clases WHERE nombre_clase = ?", [nombre_clase]);
+                                    console.log(`[IMPORT CLASES POST-INSERT CHECK] For class "${nombre_clase}" (attempted tutor_id: ${tutor_id}), re-read from DB: ${insertedClaseRow ? `Found - tutor_id: ${insertedClaseRow.tutor_id}, ciclo_id: ${insertedClaseRow.ciclo_id}` : 'NOT FOUND after insert attempt'}`);
+                                } catch (readbackError) {
+                                    console.error(`[IMPORT CLASES POST-INSERT CHECK] Error reading back class "${nombre_clase}": ${readbackError.message}`);
+                                }
+                            }
                             tableSummary.insertedRows++;
                         } else if (tableName === 'alumnos') {
                             const nombre_completo = row.nombre_completo?.trim();
