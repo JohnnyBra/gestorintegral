@@ -3271,6 +3271,29 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                             console.log(`[CLASES ROW ENTRY] Processing CSV row for class name (raw): "${row.nombre_clase}", Raw tutor_id: "${row.tutor_id}"`);
                             if (row.nombre_clase === 'PRIMARIA 3B') {
                                 console.log("<<<<< FOUND PRIMARIA 3B ROW IN CSV PARSED DATA >>>>>");
+                                // --- Start of new detailed logging for PRIMARIA 3B ---
+                                const tutor_id_raw_primaria3b = row.tutor_id?.trim();
+                                console.log(`[PRIMARIA 3B TRACE] tutor_id_raw_primaria3b: "${tutor_id_raw_primaria3b}"`);
+
+                                if (tutor_id_raw_primaria3b && tutor_id_raw_primaria3b !== '') {
+                                    const parsed_tutor_id_primaria3b = parseInt(tutor_id_raw_primaria3b);
+                                    console.log(`[PRIMARIA 3B TRACE] parsed_tutor_id_primaria3b: ${parsed_tutor_id_primaria3b}`);
+
+                                    const is_nan_check_primaria3b = isNaN(parsed_tutor_id_primaria3b);
+                                    console.log(`[PRIMARIA 3B TRACE] isNaN(parsed_tutor_id_primaria3b): ${is_nan_check_primaria3b}`);
+
+                                    if (!is_nan_check_primaria3b) {
+                                        try {
+                                            const tutor_exists_primaria3b = await dbGetAsync("SELECT id, email, rol FROM usuarios WHERE id = ?", [parsed_tutor_id_primaria3b]);
+                                            console.log(`[PRIMARIA 3B TRACE] tutor_exists_primaria3b check result: ${tutor_exists_primaria3b ? JSON.stringify(tutor_exists_primaria3b) : 'NOT FOUND'}`);
+                                        } catch (dbError) {
+                                            console.error(`[PRIMARIA 3B TRACE] Error during dbGetAsync for tutorExists: ${dbError.message}`);
+                                        }
+                                    }
+                                } else {
+                                    console.log(`[PRIMARIA 3B TRACE] tutor_id_raw_primaria3b is empty or null. Will result in tutor_id = null.`);
+                                }
+                                // --- End of new detailed logging for PRIMARIA 3B ---
                             }
                         }
                         if (tableName === 'usuarios') {
@@ -3376,6 +3399,15 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                             // The [CLASES INSERT PREP] log was here and is now removed as per instructions.
                             const insertSql = "INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)";
                             await dbRunAsync(insertSql, [nombre_clase, tutor_id, ciclo_id]);
+
+                            if (nombre_clase === "PRIMARIA 3B") { // Check if this was the class just inserted
+                                try {
+                                    const insertedClaseRowPrimaria3B = await dbGetAsync("SELECT id, nombre_clase, tutor_id, ciclo_id FROM clases WHERE nombre_clase = ?", ["PRIMARIA 3B"]);
+                                    console.log(`[PRIMARIA 3B POST-INSERT CHECK] Re-read from DB: ${insertedClaseRowPrimaria3B ? `Found - tutor_id: ${insertedClaseRowPrimaria3B.tutor_id}, ciclo_id: ${insertedClaseRowPrimaria3B.ciclo_id}` : 'NOT FOUND after insert attempt'}`);
+                                } catch (readbackError) {
+                                    console.error(`[PRIMARIA 3B POST-INSERT CHECK] Error reading back class "PRIMARIA 3B": ${readbackError.message}`);
+                                }
+                            }
                             tableSummary.insertedRows++;
                         } else if (tableName === 'alumnos') {
                             const nombre_completo = row.nombre_completo?.trim();
