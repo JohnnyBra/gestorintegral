@@ -1942,7 +1942,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Event listener for editing fields
             container.querySelectorAll('.participacion-field-edit').forEach(input => {
                 const eventType = (input.tagName === 'SELECT' || input.type === 'date') ? 'change' : 'blur';
-                input.addEventListener(eventType, (e) => saveParticipacionOnFieldChange(e.target, excursionId));
+                input.addEventListener(eventType, (e) => {
+                    console.log(`[renderTablaParticipaciones] Event '${eventType}' fired on element:`, e.target, 'for excursionId:', excursionId);
+                    saveParticipacionOnFieldChange(e.target, excursionId);
+                });
             });
 
             // Event delegation for delete buttons
@@ -1973,6 +1976,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     async function saveParticipacionOnFieldChange(changedElement, excursionId) {
+        console.log('[saveParticipacionOnFieldChange] Entered. changedElement:', changedElement, 'excursionId:', excursionId);
         const trElement = changedElement.closest('tr');
         const alumnoId = trElement.dataset.alumnoId;
         const statusCell = trElement.querySelector('.status-message-cell');
