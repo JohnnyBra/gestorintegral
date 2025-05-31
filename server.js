@@ -3307,9 +3307,9 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                             tableSummary.insertedRows++;
                         } else if (tableName === 'clases') {
                             const nombre_clase = row.nombre_clase?.trim();
-                            const tutor_id_raw = row.tutor_id?.trim(); // Existing context
-                            console.log(`[IMPORT CLASES DEBUG] Processing class: "${row.nombre_clase}", Raw tutor_id from CSV: "${row.tutor_id}"`); // ADD THIS LOG (using row.tutor_id directly for raw value)
-                            const ciclo_id_raw = row.ciclo_id?.trim(); // Existing context
+                            const tutor_id_raw = row.tutor_id?.trim();
+                            // console.log(`[IMPORT CLASES DEBUG] Processing class: "${row.nombre_clase}", Raw tutor_id from CSV: "${row.tutor_id}"`); // Removed this specific one to avoid redundancy with the new one below
+                            const ciclo_id_raw = row.ciclo_id?.trim();
 
                             if (!nombre_clase) {
                                 tableSummary.errors.push({ rowIdentifier: `Row ${tableSummary.processedRows}`, error: 'Missing required field (nombre_clase).' });
@@ -3325,22 +3325,22 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
 
                             let tutor_id = null;
                             if (tutor_id_raw && tutor_id_raw !== '') {
-                                tutor_id = parseInt(tutor_id_raw); // Existing line
-                                console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Parsed tutor_id: ${tutor_id}`); // ADD THIS LOG
-                                if (isNaN(tutor_id)) { // Existing line
-                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", tutor_id is NaN after parseInt. Raw value was: "${tutor_id_raw}". Skipping.`); // ADD THIS LOG (provide raw value for context)
-                                    tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Invalid tutor_id format.' }); // Existing line
-                                    tableSummary.skippedFK++; // Existing line
-                                    continue; // Existing line
-                                } // Existing line
-                                const tutorExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [tutor_id]); // Existing line
+                                tutor_id = parseInt(tutor_id_raw);
+                                // console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Parsed tutor_id: ${tutor_id}`); // Removed
+                                if (isNaN(tutor_id)) {
+                                    // console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", tutor_id is NaN after parseInt. Raw value was: "${tutor_id_raw}". Skipping.`); // Removed
+                                    tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Invalid tutor_id format.' });
+                                    tableSummary.skippedFK++;
+                                    continue;
+                                }
+                                const tutorExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [tutor_id]);
                                 if (!tutorExists) {
-                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} NOT FOUND in usuarios table. Skipping.`); // ADD THIS LOG
+                                    // console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} NOT FOUND in usuarios table. Skipping.`); // Removed
                                     tableSummary.skippedFK++;
                                     tableSummary.errors.push({ rowIdentifier: nombre_clase, error: `Foreign key violation: tutor_id ${tutor_id} not found.`});
                                     continue;
                                 } else {
-                                    console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} FOUND in usuarios table.`); // ADD THIS LOG
+                                    // console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} FOUND in usuarios table.`); // Removed
                                 }
                             }
                             
@@ -3359,17 +3359,9 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                     continue;
                                 }
                             }
-                            console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", FINAL params for INSERT: nombre_clase="${nombre_clase}", tutor_id=${tutor_id}, ciclo_id=${ciclo_id}`); // MODIFIED LOG to show all params being inserted
+                            console.log(`[CLASES INSERT PREP] For CSV row with raw nombre_clase="${row.nombre_clase}", about to insert/update with: nombre_clase_final="${nombre_clase}", tutor_id_final=${tutor_id}, ciclo_id_final=${ciclo_id}`);
                             const insertSql = "INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)";
                             await dbRunAsync(insertSql, [nombre_clase, tutor_id, ciclo_id]);
-                            if (tutor_id !== null) { // Only check if we attempted to insert a non-null tutor_id
-                                try {
-                                    const insertedClaseRow = await dbGetAsync("SELECT id, nombre_clase, tutor_id, ciclo_id FROM clases WHERE nombre_clase = ?", [nombre_clase]);
-                                    console.log(`[IMPORT CLASES POST-INSERT CHECK] For class "${nombre_clase}" (attempted tutor_id: ${tutor_id}), re-read from DB: ${insertedClaseRow ? `Found - tutor_id: ${insertedClaseRow.tutor_id}, ciclo_id: ${insertedClaseRow.ciclo_id}` : 'NOT FOUND after insert attempt'}`);
-                                } catch (readbackError) {
-                                    console.error(`[IMPORT CLASES POST-INSERT CHECK] Error reading back class "${nombre_clase}": ${readbackError.message}`);
-                                }
-                            }
                             tableSummary.insertedRows++;
                         } else if (tableName === 'alumnos') {
                             const nombre_completo = row.nombre_completo?.trim();
@@ -3641,25 +3633,17 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                 
                 if (fileFailed) {
                     await dbRunAsync('ROLLBACK;');
-                    console.log(`Rolled back ${tableName} due to critical row processing error.`);
+                    console.log(`[DB IMPORT STATUS] Rolled back table: ${tableName} due to critical row processing error during its import.`);
                 } else if (tableSummary.errors.length > 0 && tableSummary.insertedRows < (tableSummary.processedRows - tableSummary.skippedExisting - tableSummary.skippedFK)) {
-                    // This condition implies some non-critical errors might have occurred but we still inserted some rows.
-                    // Depending on strategy, could also rollback. For now, commit what was successful before non-critical errors.
-                    // OR if any error means rollback, then this 'else if' is not needed, and fileFailed would handle it.
-                    // Let's refine: if any error is in tableSummary.errors that is not a skip, we should consider rollback.
-                    // For now, the logic is: critical error (rowError caught) -> rollback. Other errors logged, and we commit.
-                    // This needs to be more robust.
-                    // TEMPORARY: Commit and log. A more robust strategy would be to rollback if any error occurred that wasn't a 'skip'.
                     await dbRunAsync('COMMIT;');
-                    console.log(`Committed ${tableName} with some non-critical errors or skips. Review logs.`);
+                    console.log(`[DB IMPORT STATUS] Committed table: ${tableName} with some non-critical errors or skips. Please review import summary.`);
                 }
-                 else if (tableSummary.processedRows > 0) { // Only commit if there were rows to process
+                 else if (tableSummary.processedRows > 0) {
                     await dbRunAsync('COMMIT;');
-                    console.log(`Successfully processed and committed ${tableName}`);
+                    console.log(`[DB IMPORT STATUS] Successfully processed and committed table: ${tableName}`);
                 } else {
-                    // No rows processed or inserted, no need to commit, but not an error state for the transaction itself
-                    await dbRunAsync('ROLLBACK;'); // Or just do nothing if BEGIN was conditional
-                    console.log(`No data processed for ${tableName}, transaction effectively rolled back or not started.`);
+                    await dbRunAsync('ROLLBACK;');
+                    console.log(`[DB IMPORT STATUS] No data processed for table: ${tableName}, transaction effectively rolled back or not started.`);
                 }
 
 
