@@ -3291,10 +3291,24 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                 continue;
                             }
 
-                            const password_hash = await bcrypt.hash(password_raw, 10);
+                            let final_password_hash_for_insert;
+                            const password_hash_from_csv = row.password_hash?.trim();
+                            const plain_password_from_csv = row.password?.trim();
+
+                            if (password_hash_from_csv) {
+                                console.log(`[IMPORT USUARIOS] Using existing hash from password_hash field for user: ${email}`);
+                                final_password_hash_for_insert = password_hash_from_csv;
+                            } else if (plain_password_from_csv) {
+                                console.log(`[IMPORT USUARIOS] Hashing plain password from password field for user: ${email}`);
+                                final_password_hash_for_insert = await bcrypt.hash(plain_password_from_csv, 10);
+                            } else {
+                                console.log(`[IMPORT USUARIOS] Error for user ${email}: Password data (password_hash or password) missing or empty in CSV. Skipping user.`);
+                                tableSummary.errors.push({ rowIdentifier: email || `Row ${tableSummary.processedRows}`, error: 'Password data missing or empty in CSV for new user.' });
+                                continue; // Skip this user row
+                            }
                             
                             const insertSql = "INSERT INTO usuarios (email, nombre_completo, password_hash, rol) VALUES (?, ?, ?, ?)";
-                            await dbRunAsync(insertSql, [email, nombre_completo, password_hash, rol]);
+                            await dbRunAsync(insertSql, [email, nombre_completo, final_password_hash_for_insert, rol]);
                             tableSummary.insertedRows++;
                         } else if (tableName === 'ciclos') {
                             const nombre_ciclo = row.nombre_ciclo?.trim();
