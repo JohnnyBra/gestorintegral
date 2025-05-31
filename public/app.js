@@ -1999,11 +1999,20 @@ document.addEventListener('DOMContentLoaded', () => {
             notas_participacion: trElement.querySelector('[data-field="notas_participacion"]').value.trim() || null
         };
 
-        // Log preliminary validation checks
-        if (participacionData.autorizacion_firmada === 'Sí' && !participacionData.fecha_autorizacion) {
-            console.log('[saveParticipacionOnFieldChange] Condition: autorizacion_firmada is Sí and fecha_autorizacion is missing. Showing error.');
-            showTemporaryStatusInCell(statusCell, "Fecha autorización requerida.", true); return;
+        const isModalTriggerEvent = (fieldName === 'autorizacion_firmada' && newValue === 'Sí');
+        console.log('[saveParticipacionOnFieldChange] isModalTriggerEvent (changedElement indicates autorizacion_firmada becoming Sí):', isModalTriggerEvent);
+
+        // Preliminary validation checks
+        // This first check is the one that was causing the issue.
+        // It should NOT run if this is the event that's supposed to trigger the modal.
+        if (!isModalTriggerEvent) {
+            if (participacionData.autorizacion_firmada === 'Sí' && !participacionData.fecha_autorizacion) {
+                console.log('[saveParticipacionOnFieldChange] Condition for existing Sí & missing date (non-modal path): autorizacion_firmada is Sí and fecha_autorizacion is missing. Showing error.');
+                showTemporaryStatusInCell(statusCell, "Fecha autorización requerida.", true);
+                return;
+            }
         }
+
         if ((participacionData.pago_realizado === 'Sí' || participacionData.pago_realizado === 'Parcial') && !participacionData.fecha_pago) {
             console.log('[saveParticipacionOnFieldChange] Condition: pago_realizado is Sí/Parcial and fecha_pago is missing. Showing error.');
              showTemporaryStatusInCell(statusCell, "Fecha de pago requerida.", true); return;
@@ -2060,12 +2069,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const isModalTriggerCondition = (fieldName === 'autorizacion_firmada' && newValue === 'Sí');
-    console.log('[saveParticipacionOnFieldChange] isModalTriggerCondition (autorizacion_firmada === "Sí"):', isModalTriggerCondition);
+    // const isModalTriggerCondition = (fieldName === 'autorizacion_firmada' && newValue === 'Sí'); // Already defined as isModalTriggerEvent
+    console.log('[saveParticipacionOnFieldChange] Re-checking isModalTriggerEvent before modal path:', isModalTriggerEvent);
 
-    if (isModalTriggerCondition) {
-        console.log("[saveParticipacionOnFieldChange] Modal path taken. About to fetch cost."); // Log before fetch, confirms modal path
-        // Ensure fecha_autorizacion is set if autorizacion_firmada is 'Sí'
+    if (isModalTriggerEvent) { // Use the already defined isModalTriggerEvent
+        console.log("[saveParticipacionOnFieldChange] Modal path taken. About to fetch cost.");
+        // Ensure fecha_autorizacion is set if autorizacion_firmada is 'Sí' - This is the crucial part for the modal trigger
         if (!participacionData.fecha_autorizacion) {
             participacionData.fecha_autorizacion = new Date().toISOString().split('T')[0];
             // Optionally update the UI for fecha_autorizacion input directly here if needed
