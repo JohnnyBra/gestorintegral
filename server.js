@@ -3267,6 +3267,12 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                 for (const row of parsedData.data) {
                     tableSummary.processedRows++;
                     try {
+                        if (tableName === 'clases') {
+                            console.log(`[CLASES ROW ENTRY] Processing CSV row for class name (raw): "${row.nombre_clase}", Raw tutor_id: "${row.tutor_id}"`);
+                            if (row.nombre_clase === 'PRIMARIA 3B') {
+                                console.log("<<<<< FOUND PRIMARIA 3B ROW IN CSV PARSED DATA >>>>>");
+                            }
+                        }
                         if (tableName === 'usuarios') {
                             const email = row.email?.trim();
                             const nombre_completo = row.nombre_completo?.trim();
@@ -3308,7 +3314,6 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                         } else if (tableName === 'clases') {
                             const nombre_clase = row.nombre_clase?.trim();
                             const tutor_id_raw = row.tutor_id?.trim();
-                            // console.log(`[IMPORT CLASES DEBUG] Processing class: "${row.nombre_clase}", Raw tutor_id from CSV: "${row.tutor_id}"`); // Removed this specific one to avoid redundancy with the new one below
                             const ciclo_id_raw = row.ciclo_id?.trim();
 
                             if (!nombre_clase) {
@@ -3326,21 +3331,16 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                             let tutor_id = null;
                             if (tutor_id_raw && tutor_id_raw !== '') {
                                 tutor_id = parseInt(tutor_id_raw);
-                                // console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Parsed tutor_id: ${tutor_id}`); // Removed
                                 if (isNaN(tutor_id)) {
-                                    // console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", tutor_id is NaN after parseInt. Raw value was: "${tutor_id_raw}". Skipping.`); // Removed
                                     tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Invalid tutor_id format.' });
                                     tableSummary.skippedFK++;
                                     continue;
                                 }
                                 const tutorExists = await dbGetAsync("SELECT id FROM usuarios WHERE id = ?", [tutor_id]);
                                 if (!tutorExists) {
-                                    // console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} NOT FOUND in usuarios table. Skipping.`); // Removed
                                     tableSummary.skippedFK++;
                                     tableSummary.errors.push({ rowIdentifier: nombre_clase, error: `Foreign key violation: tutor_id ${tutor_id} not found.`});
                                     continue;
-                                } else {
-                                    // console.log(`[IMPORT CLASES DEBUG] Class: "${row.nombre_clase}", Tutor ID ${tutor_id} FOUND in usuarios table.`); // Removed
                                 }
                             }
                             
@@ -3359,7 +3359,7 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                     continue;
                                 }
                             }
-                            console.log(`[CLASES INSERT PREP] For CSV row with raw nombre_clase="${row.nombre_clase}", about to insert/update with: nombre_clase_final="${nombre_clase}", tutor_id_final=${tutor_id}, ciclo_id_final=${ciclo_id}`);
+                            // The [CLASES INSERT PREP] log was here and is now removed as per instructions.
                             const insertSql = "INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)";
                             await dbRunAsync(insertSql, [nombre_clase, tutor_id, ciclo_id]);
                             tableSummary.insertedRows++;
