@@ -1,6 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
 /* --- public/style.css --- */
+*, *::before, *::after {
+    box-sizing: border-box; /* Apply border-box to all elements for easier sizing */
+}
+
 body {
     font-family: 'Roboto', Arial, Helvetica, sans-serif;
     line-height: 1.6;
@@ -134,6 +138,7 @@ main.content-area {
     flex-grow: 1;
     padding: 25px;
     overflow-y: auto; /* Scroll si el contenido es muy largo */
+    overflow-x: hidden; /* Prevent horizontal scroll from content within main area */
 }
 
 /* Sección de Login */
@@ -158,8 +163,8 @@ main.content-area {
     border-radius: 8px;
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     z-index: 1000; /* Ensure it's above other content */
-    width: 80%;
-    max-width: 500px;
+    width: 90%; /* Changed from 80% for better small screen layout */
+    max-width: 500px; /* Max width remains the same */
 }
 
 #excursion-detail-modal h4 {
@@ -489,12 +494,12 @@ td input[type="number"].quick-edit { max-width: 70px; }
 
 .simple-modal-content {
     background-color: #fefefe;
-    margin: auto;
+    margin: auto; /* Works with flex centering on parent for vertical/horizontal centering */
     padding: 25px;
     border: 1px solid #888;
     border-radius: 8px;
-    width: 90%;
-    max-width: 450px;
+    width: 90%; /* Responsive width */
+    max-width: 400px; /* Max width constraint for larger small screens, as per subtask */
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
 }
 
@@ -584,6 +589,26 @@ td input[type="number"].quick-edit { max-width: 70px; }
     margin-bottom: 15px; /* Spacing for input groups */
 }
 
+/* Styling for the financial grids within tesoreria-excursion-financial-modal */
+.financial-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 15px;
+}
+.financial-grid div { /* Assuming direct children are the items to stack label/input */
+    display: flex;
+    flex-direction: column;
+}
+
+.financial-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin-bottom: 15px;
+}
+/* End financial grid styling */
+
 #paymentConfirmationModal .simple-modal-content label {
     display: block;
     margin-bottom: 6px;
@@ -605,6 +630,32 @@ td input[type="number"].quick-edit { max-width: 70px; }
     gap: 10px;
     margin-top: 20px; /* More space before buttons */
 }
+/* Payment Confirmation Modal Styles (similar to simple-modal) */
+/* The #paymentConfirmationModal ID selector itself primarily serves to be targeted by JS.
+   Most visual styling (overlay, centering) comes from the .simple-modal class it uses.
+   The .simple-modal-content class styles its content box.
+   Specific overrides if #paymentConfirmationModal needed to be different from other
+   simple-modals would go here, but for now, it relies on .simple-modal and .simple-modal-content.
+*/
+#paymentConfirmationModal .simple-modal-content {
+    /* Base styles are inherited from .simple-modal-content.
+       Specific adjustments for this modal, if different from general .simple-modal-content, would go here.
+       For example, if it needed a slightly different max-width than other simple modals:
+       max-width: 420px; */
+    /* The media query below already handles padding and font size adjustments for small screens. */
+}
+
+/* Input and label styling within paymentConfirmationModal are already covered by general modal styles
+   or specific styles in the media query. If more specific styling were needed: */
+/*
+#paymentConfirmationModal .simple-modal-content label {
+    font-weight: bold;
+}
+#paymentConfirmationModal .simple-modal-content input[type="number"],
+#paymentConfirmationModal .simple-modal-content input[type="date"] {
+    margin-bottom: 10px;
+}
+*/
 /* End Payment Confirmation Modal Styles */
 
 /* Sidebar Toggle Button Styling */
@@ -692,20 +743,42 @@ td input[type="number"].quick-edit { max-width: 70px; }
 
     /* --- Table Responsiveness --- */
     table { /* Ensure this applies to all tables within this media query */
-        display: block; 
+        display: block;
         width: 100%;
-        overflow-x: auto; 
-        white-space: nowrap; 
+        overflow-x: auto;
+        /* white-space: nowrap; /* Removed from table to allow th/td to control wrapping */
     }
-    
+
     table th, table td {
-        white-space: nowrap; /* Ensure cell content doesn't wrap if not desired */
+        white-space: nowrap; /* Default for cells to prevent unwanted wrapping */
+        padding: 8px 10px; /* Adjust padding for smaller screens */
     }
-    /* Ensure action buttons in table cells are visible */
+
+    /* Allow specific cells to wrap if needed, e.g. description cells */
+    table td.wrap-text {
+        white-space: normal;
+    }
+
+    /* Ensure action buttons in table cells are visible and manageable */
     .actions-cell button {
         white-space: normal; /* Allow button text to wrap if needed */
         display: inline-block; /* Ensure buttons are laid out correctly */
         margin-bottom: 5px; /* Add some space if they stack */
+        margin-right: 5px; /* Add some horizontal spacing too */
+    }
+
+    /* Header adjustments for better centering when wrapped */
+    #main-app-title {
+        flex-basis: 100%; /* Ensure it takes full width when wrapping */
+        text-align: center; /* Center title when it wraps */
+        margin-bottom: 10px; /* Add space below title when wrapped */
+        margin-right: 0; /* Reset margin-right for wrapping */
+        order: 1; /* Ensure title comes first */
+    }
+    #auth-status {
+        flex-basis: 100%; /* Ensure it takes full width when wrapping */
+        justify-content: center; /* Center auth status items when wrapped */
+        order: 2; /* Auth status comes after title */
     }
 }
 
@@ -747,20 +820,24 @@ td input[type="number"].quick-edit { max-width: 70px; }
      /* Reset title and auth-status stacking for very small screens if they are already full width from 768px */
     /* No changes needed here for #main-app-title width and #auth-status width as they will behave based on the 768px rules unless overridden */
     /* Text alignment and margins for #main-app-title are already handled in the 768px block for wrapped state */
-    /* And reset here if they are not full width */
-    #main-app-title {
-        text-align: left; /* Reset text-align for title if not full width */
-        margin-bottom: 0; /* Reset margin-bottom for title if not full width */
-        margin-right: auto; /* Re-apply for default behavior if not wrapped */
-    }
+    /* Header elements will retain their centered, full-width style from 768px if they wrap.
+       If there's enough space and they don't wrap, they'll naturally align due to header flex properties.
+       Explicitly resetting here can be complex, so we rely on the 768px wrapped styles. */
     #auth-status {
-        /* width: auto; /* Already auto from default stylesheet if not 100% from 768px rules */
-        justify-content: flex-end; /* Re-apply for default behavior if not wrapped */
         font-size: 0.9em; /* Reduce font size of auth status slightly */
     }
     #auth_button, #signout_button {
         padding: 5px 10px;
         font-size: 0.8em;
+    }
+
+    /* General button font size adjustment for this breakpoint */
+    button {
+        font-size: 0.9rem; /* Adjust base button font size */
+    }
+    /* Adjust specific button paddings if necessary, but general font size is a good start */
+    .form-buttons button, .section-buttons button {
+        padding: 8px 15px; /* Ensure decent tap targets */
     }
 
 
@@ -786,40 +863,97 @@ td input[type="number"].quick-edit { max-width: 70px; }
 
 /* Responsive Adjustments for Very Narrow Screens (e.g., Calendar) */
 @media (max-width: 480px) {
+    /* --- Font size adjustments --- */
+    body {
+        font-size: 90%; /* Further reduce base font size for very small screens */
+    }
+
     /* --- Calendar --- */
     .calendar-day {
         min-height: 50px;
-        padding: 5px;
-        font-size: 0.8em; /* Reduce font size of day numbers/content */
+        padding: 5px 3px; /* Adjust padding for smaller cells */
+        font-size: 0.8em; /* Increased from 0.75em for better readability */
     }
     .calendar-day-header {
-        font-size: 0.75em;
-        padding: 8px 3px;
+        font-size: 0.75em; /* Increased from 0.7em for better readability */
+        padding: 6px 2px; /* Adjust padding */
     }
     .calendar-header h4 {
-        font-size: 1.1em;
+        font-size: 1.0em; /* Reduce calendar title font size */
     }
     .calendar-header button {
-        padding: 6px 10px;
-        font-size: 0.8em;
+        padding: 5px 8px; /* Adjust button padding */
+        font-size: 0.75em; /* Adjust button font size */
     }
 
     /* Adjust main section H2 further if needed */
     .main-section h2 {
-        font-size: 1.3em;
+        font-size: 1.2em; /* Further reduce section title font size */
+        margin-bottom: 15px; /* Adjust margin */
+    }
+     .main-section h3 {
+        font-size: 1.05em;
+    }
+     .main-section h4 {
+        font-size: 0.9em;
     }
     #main-app-title { /* Further reduce title font on very small screens */
-        font-size: 1.2em; 
+        font-size: 1.1em;
     }
 
-    /* Adjust form input/select padding for very small screens */
+    /* Adjust form input/select padding and font size for very small screens */
     input[type="text"], input[type="date"], input[type="number"],
     input[type="file"], input[type="email"], select, textarea {
-        padding: 8px 10px;
+        padding: 8px 10px; /* Keep padding reasonable for tapping */
+        font-size: 0.85em; /* Reduce font size inside inputs */
+    }
+    label {
+        font-size: 0.85em; /* Reduce label font size */
+    }
+
+    button { /* General button padding and font adjustment */
+        padding: 7px 12px; /* Adjust padding */
+        font-size: 0.85em; /* Adjust font size */
+    }
+    #auth_button, #signout_button { /* Specific header buttons */
+        padding: 4px 8px;
+        font-size: 0.75em;
+    }
+
+    /* Modal content adjustments */
+    /* General adjustments for all simple modals and excursion detail modal */
+    .simple-modal-content, #excursion-detail-modal {
+        padding: 15px;
         font-size: 0.9em;
     }
-    button { /* General button padding adjustment */
-        padding: 8px 15px;
-        font-size: 0.9em;
+    .simple-modal-content h4, #excursion-detail-modal h4 {
+        font-size: 1.2em;
+    }
+
+    /* Specific adjustments for paymentConfirmationModal if its content (inputs, labels) needs finer tuning
+       than the general .simple-modal-content adjustments above. */
+    #paymentConfirmationModal .simple-modal-content {
+        /* Padding and font-size are inherited from .simple-modal-content above.
+           If specific overrides are needed for paymentConfirmationModal at this breakpoint: */
+        /* e.g., font-size: 0.85em; */
+    }
+    #paymentConfirmationModal .simple-modal-content label,
+    #paymentConfirmationModal .simple-modal-content input[type="number"],
+    #paymentConfirmationModal .simple-modal-content input[type="date"] {
+        font-size: 1em; /* Relative to the parent's font-size (0.9em) */
+    }
+    #paymentConfirmationModal .simple-modal-content input[type="number"],
+    #paymentConfirmationModal .simple-modal-content input[type="date"] {
+        padding: 8px; /* Ensure inputs are tappable */
+    }
+
+    /* Increase sidebar link padding for better tap targets on very small screens */
+    #main-nav-sidebar li a {
+        padding: 14px 20px; /* Increased vertical padding */
+    }
+
+    /* Table cell padding */
+    table th, table td {
+        padding: 6px 8px; /* Reduce cell padding */
     }
 }
