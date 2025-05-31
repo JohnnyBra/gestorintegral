@@ -3358,12 +3358,7 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                 continue;
                             }
 
-                            const existingClase = await dbGetAsync("SELECT id FROM clases WHERE nombre_clase = ?", [nombre_clase]);
-                            if (existingClase) {
-                                tableSummary.skippedExisting++;
-                                tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Clase with this name already exists.' });
-                                continue;
-                            }
+                            // Removed existingClase check for UPSERT logic.
 
                             let tutor_id = null;
                             if (tutor_id_raw && tutor_id_raw !== '') {
@@ -3396,19 +3391,28 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                     continue;
                                 }
                             }
-                            // The [CLASES INSERT PREP] log was here and is now removed as per instructions.
-                            const insertSql = "INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)";
-                            await dbRunAsync(insertSql, [nombre_clase, tutor_id, ciclo_id]);
+                            // The [CLASES INSERT PREP] log (if any specific one was here) is handled by the [CLASES ROW ENTRY] and PRIMARIA 3B trace logs.
+                            // The main [CLASES ROW ENTRY] log is already present earlier.
+                            // For "PRIMARIA 3B", specific detailed logs are also present earlier.
 
-                            if (nombre_clase === "PRIMARIA 3B") { // Check if this was the class just inserted
+                            const upsertSql = `
+                                INSERT INTO clases (nombre_clase, tutor_id, ciclo_id)
+                                VALUES (?, ?, ?)
+                                ON CONFLICT(nombre_clase) DO UPDATE SET
+                                    tutor_id = excluded.tutor_id,
+                                    ciclo_id = excluded.ciclo_id;
+                            `;
+                            await dbRunAsync(upsertSql, [nombre_clase, tutor_id, ciclo_id]);
+
+                            if (nombre_clase === "PRIMARIA 3B") {
                                 try {
-                                    const insertedClaseRowPrimaria3B = await dbGetAsync("SELECT id, nombre_clase, tutor_id, ciclo_id FROM clases WHERE nombre_clase = ?", ["PRIMARIA 3B"]);
-                                    console.log(`[PRIMARIA 3B POST-INSERT CHECK] Re-read from DB: ${insertedClaseRowPrimaria3B ? `Found - tutor_id: ${insertedClaseRowPrimaria3B.tutor_id}, ciclo_id: ${insertedClaseRowPrimaria3B.ciclo_id}` : 'NOT FOUND after insert attempt'}`);
+                                    const upsertedClaseRowPrimaria3B = await dbGetAsync("SELECT id, nombre_clase, tutor_id, ciclo_id FROM clases WHERE nombre_clase = ?", ["PRIMARIA 3B"]);
+                                    console.log(`[PRIMARIA 3B POST-UPSERT CHECK] Re-read from DB: ${upsertedClaseRowPrimaria3B ? `Found - tutor_id: ${upsertedClaseRowPrimaria3B.tutor_id}, ciclo_id: ${upsertedClaseRowPrimaria3B.ciclo_id}` : 'NOT FOUND after upsert attempt'}`);
                                 } catch (readbackError) {
-                                    console.error(`[PRIMARIA 3B POST-INSERT CHECK] Error reading back class "PRIMARIA 3B": ${readbackError.message}`);
+                                    console.error(`[PRIMARIA 3B POST-UPSERT CHECK] Error reading back class "PRIMARIA 3B": ${readbackError.message}`);
                                 }
                             }
-                            tableSummary.insertedRows++;
+                            tableSummary.insertedRows++; // Counts both inserts and updates for simplicity here
                         } else if (tableName === 'alumnos') {
                             const nombre_completo = row.nombre_completo?.trim();
                             const apellidos_para_ordenar = row.apellidos_para_ordenar?.trim() || nombre_completo?.split(' ').slice(1).join(' ') || ''; // Basic fallback for ordering
