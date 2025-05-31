@@ -1043,7 +1043,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && currentUser.claseId)) {
                 htmlTablaAlumnos += `<button id="btnShowFormNuevoAlumno" class="success" style="margin-bottom:15px;"><i class="fas fa-user-plus"></i> Añadir Alumno</button>`;
             }
-            htmlTablaAlumnos += `<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Clase</th><th>Acciones</th></tr></thead><tbody>`;
+            // Added wrapper div for table horizontal scrolling
+            htmlTablaAlumnos += `<div style="width: 100%; overflow-x: auto;"><table class="tabla-datos"><thead><tr><th>Nombre</th><th>Clase</th><th>Acciones</th></tr></thead><tbody>`;
             if (dataAlumnos.alumnos && dataAlumnos.alumnos.length > 0) {
                 dataAlumnos.alumnos.forEach(a => { 
                     htmlTablaAlumnos += `<tr data-alumno-id="${a.id}"><td>${a.nombre_completo}</td><td>${a.nombre_clase}</td><td class="actions-cell">
@@ -1052,7 +1053,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </td></tr>`; 
                 });
             } else { htmlTablaAlumnos += `<tr><td colspan="3" style="text-align:center;">No hay alumnos.</td></tr>`; }
-            htmlTablaAlumnos += `</tbody></table><div id="formAlumnoWrapper" class="form-wrapper"></div>`;
+            htmlTablaAlumnos += `</tbody></table></div><div id="formAlumnoWrapper" class="form-wrapper"></div>`; // Close wrapper div
             alumnosContentDiv.innerHTML = importCsvHtml + htmlTablaAlumnos;
             poblarSelectorClaseDestinoCSV(); 
             const formImp = document.getElementById('formImportarAlumnosCSV');
@@ -1511,7 +1512,8 @@ document.addEventListener('DOMContentLoaded', () => {
              if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && currentUser.claseId) ){
                 html += `<button id="btnShowFormNuevaExcursion" class="success" style="margin-bottom:15px;"><i class="fas fa-plus"></i> Crear Excursión</button>`;
             }
-            html += `<table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Clase Destino</th><th>Creador</th><th>Acciones</th></tr></thead><tbody>`;
+            // Added wrapper div for table horizontal scrolling
+            html += `<div style="width: 100%; overflow-x: auto;"><table class="tabla-datos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Lugar</th><th>Clase Destino</th><th>Creador</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.excursiones && data.excursiones.length > 0) {
                 data.excursiones.forEach(ex => {
                     let accionesHtml = `<button class="view-participaciones secondary" data-excursionid="${ex.id}" data-excursionnombre="${ex.nombre_excursion}"><i class="fas fa-users"></i> Participaciones</button>`;
@@ -1542,7 +1544,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 });
             } else { html += '<tr><td colspan="6" style="text-align:center;">No hay excursiones.</td></tr>'; }
-            html += '</tbody></table>';
+            html += `</tbody></table></div>`; // Close wrapper div
             excursionesContentDiv.innerHTML = html;
             excursionesContentDiv.insertBefore(formExcursionWrapper, excursionesContentDiv.firstChild);
             
@@ -1909,7 +1911,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            let html = `<h4>Participantes: ${excursionNombre}</h4><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th><th>Acciones</th></tr></thead><tbody>`;
+            // Added wrapper div for table horizontal scrolling
+            let html = `<h4>Participantes: ${excursionNombre}</h4><div style="width: 100%; overflow-x: auto;"><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.alumnosParticipaciones.length > 0) {
                 data.alumnosParticipaciones.forEach(ap => {
                     const esCampoDeshabilitado = ap.autorizacion_firmada === 'Sí' && ap.fecha_autorizacion;
@@ -1930,7 +1933,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td class="actions-cell">${accionesParticipacionHtml}</td></tr>`;
                 });
             } else { html += `<tr><td colspan="10" style="text-align:center;">No hay alumnos con participación registrada o la clase seleccionada no tiene alumnos.</td></tr>`; }
-            html += `</tbody></table>`;
+            html += `</tbody></table></div>`; // Close wrapper div
             container.innerHTML = html;
 
             // Event listener for editing fields
