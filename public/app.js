@@ -2347,44 +2347,51 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         if(modalExcursionNotas) modalExcursionNotas.textContent = excursionData.notas_excursion || 'N/A';
         if(modalExcursionParticipants) modalExcursionParticipants.textContent = excursionData.participating_scope_name || 'N/A';
 
-        // Add the "Download Info for Families" button
+        // Add the "Download Info for Families" and "Ver Participaciones" buttons
         const actionsContainer = excursionDetailModal.querySelector('.modal-actions-container') || excursionDetailModal.querySelector('.modal-content'); // Prefer a specific actions container
-        if (actionsContainer) {
-            const existingButton = actionsContainer.querySelector('#btnGenerarInfoFamiliasPdf');
-            if (existingButton) existingButton.remove(); // Remove if already exists to prevent duplicates
 
+        if (actionsContainer) {
+            // Remove previous buttons if they exist to prevent duplicates
+            const existingParticipacionesBtn = actionsContainer.querySelector('#modalLinkToParticipaciones');
+            if (existingParticipacionesBtn) existingParticipacionesBtn.parentElement.remove(); // Remove wrapper if exists
+            else { // Fallback if not wrapped, remove individually
+                 if(existingParticipacionesBtn) existingParticipacionesBtn.remove();
+                 const existingDownloadBtn = actionsContainer.querySelector('#btnGenerarInfoFamiliasPdf');
+                 if(existingDownloadBtn) existingDownloadBtn.remove();
+            }
+
+
+            const buttonWrapper = document.createElement('div');
+            buttonWrapper.style.textAlign = 'right';
+            buttonWrapper.style.marginTop = '20px';
+
+            // "Ver Participaciones" Button
+            const participacionesButton = document.createElement('button');
+            participacionesButton.id = 'modalLinkToParticipaciones';
+            participacionesButton.className = 'button secondary';
+            participacionesButton.innerHTML = '<i class="fas fa-users"></i> Ver Participaciones';
+            participacionesButton.style.marginRight = '10px';
+
+            participacionesButton.addEventListener('click', () => {
+                if (excursionData && excursionData.id && excursionData.nombre_excursion) {
+                    sessionStorage.setItem('filtroParticipacionesExcursionId', excursionData.id.toString());
+                    sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionData.nombre_excursion);
+                    closeExcursionModal();
+                    navigateTo('participaciones');
+                } else {
+                    console.error('Excursion data for participaciones link is missing in modal.');
+                }
+            });
+            buttonWrapper.appendChild(participacionesButton);
+
+            // "Download Info Familias (PDF)" Button
             const downloadInfoButton = document.createElement('button');
             downloadInfoButton.id = 'btnGenerarInfoFamiliasPdf';
-            downloadInfoButton.className = 'info'; // Use a suitable class, 'info' or 'secondary'
+            downloadInfoButton.className = 'info';
             downloadInfoButton.innerHTML = '<i class="fas fa-file-pdf"></i> Descargar Info Familias (PDF)';
             downloadInfoButton.setAttribute('data-excursion-id', excursionData.id);
             downloadInfoButton.setAttribute('data-excursion-nombre', excursionData.nombre_excursion);
-            
-            // Add some margin to the button
-            downloadInfoButton.style.marginTop = '15px';
-            downloadInfoButton.style.marginRight = '10px';
-
-
-            // Append to a new line or a specific div if available for better layout
-            const buttonWrapper = document.createElement('div');
-            buttonWrapper.style.textAlign = 'right'; // Align button to the right
-            buttonWrapper.style.marginTop = '10px';
-            buttonWrapper.appendChild(downloadInfoButton);
-            
-            // Try to append after existing content in the modal body or before the close button
-            const modalBody = excursionDetailModal.querySelector('.modal-body-content'); // Assuming a class for the main content area
-            if (modalBody) {
-                 modalBody.appendChild(buttonWrapper);
-            } else {
-                // Fallback: append before the close button if no specific body/actions container
-                const modalFooter = excursionDetailModal.querySelector('.modal-footer'); // Or any other logical place
-                if (modalFooter) {
-                    modalFooter.insertBefore(buttonWrapper, modalFooter.firstChild);
-                } else {
-                     actionsContainer.appendChild(buttonWrapper); // General fallback
-                }
-            }
-
+            // No specific marginTop here, as it's on the wrapper
 
             downloadInfoButton.addEventListener('click', async function() {
                 const excursionId = this.dataset.excursionId;
@@ -2416,6 +2423,23 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
                     showGlobalError(`Error de red o conexión al generar PDF de información: ${err.message}`);
                 }
             });
+            buttonWrapper.appendChild(downloadInfoButton);
+
+            // Append the wrapper containing both buttons
+            const modalBody = excursionDetailModal.querySelector('.modal-body-content'); // Standard place
+            const modalFooter = excursionDetailModal.querySelector('.modal-footer'); // Alternative place
+
+            if (modalBody) { // Prefer appending to modal-body-content if it exists
+                modalBody.appendChild(buttonWrapper);
+            } else if (modalFooter) { // Else, try modal-footer
+                modalFooter.insertBefore(buttonWrapper, modalFooter.firstChild); // Insert before other footer items
+            } else if (actionsContainer.contains(modalCloseButton) && modalCloseButton) {
+                // If no specific body/footer, and actionsContainer has the close button, insert before it
+                actionsContainer.insertBefore(buttonWrapper, modalCloseButton);
+            }
+             else { // Absolute fallback
+                actionsContainer.appendChild(buttonWrapper);
+            }
         }
         
         excursionDetailModal.style.display = 'block'; 

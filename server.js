@@ -106,9 +106,15 @@ async function getTutorCicloClaseIds(tutorClaseId) {
 
 async function getExcursionScopeDetails(excursion, dbGetAsync) {
     let participating_scope_type = "Desconocido";
-    let participating_scope_name = "N/A";
+    let participating_scope_name = "N/A"; // Initial default
 
-    if (!excursion || typeof excursion.creada_por_usuario_id === 'undefined') {
+    // If excursion object is problematic or creada_por_usuario_id is missing (null or undefined)
+    if (!excursion) {
+        participating_scope_name = "Alcance Indeterminado (Datos excursión ausentes)";
+        return { participating_scope_type, participating_scope_name };
+    }
+    if (excursion.creada_por_usuario_id === null || typeof excursion.creada_por_usuario_id === 'undefined') {
+        participating_scope_name = "Alcance Indeterminado (ID creador ausente)";
         return { participating_scope_type, participating_scope_name };
     }
 
@@ -131,6 +137,7 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
                 participating_scope_name = "Clase Específica (Detalles no encontrados)";
             }
         } else { 
+            // Global excursion (para_clase_id is null)
             const creator = await dbGetAsync("SELECT rol FROM usuarios WHERE id = ?", [excursion.creada_por_usuario_id]);
             if (creator) {
                 switch (creator.rol) {
@@ -147,18 +154,21 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
                         participating_scope_name = "Global (Coordinación)";
                         break;
                     case 'TUTOR':
-                        participating_scope_type = "cycle";
-                        const tutorClase = await dbGetAsync("SELECT ciclo_id FROM clases WHERE tutor_id = ?", [excursion.creada_por_usuario_id]);
-                        if (tutorClase && tutorClase.ciclo_id) {
-                            const cicloTutor = await dbGetAsync("SELECT nombre_ciclo FROM ciclos WHERE id = ?", [tutorClase.ciclo_id]);
-                            if (cicloTutor && cicloTutor.nombre_ciclo) {
-                                participating_scope_name = `${cicloTutor.nombre_ciclo} (Todas las clases del ciclo)`;
-                            } else {
-                                // Fallback if cycle name is not found but cycle_id exists
-                                participating_scope_name = "Global (Creada por Tutor, ciclo específico)";
-                            }
+                        participating_scope_type = "cycle"; // Default assumption
+                        const tutorCycleInfo = await dbGetAsync(
+                            `SELECT ci.nombre_ciclo
+                             FROM usuarios u
+                             JOIN clases cl ON u.id = cl.tutor_id
+                             JOIN ciclos ci ON cl.ciclo_id = ci.id
+                             WHERE u.id = ?
+                             LIMIT 1`,
+                             [excursion.creada_por_usuario_id]
+                        );
+
+                        if (tutorCycleInfo && tutorCycleInfo.nombre_ciclo) {
+                            participating_scope_name = `${tutorCycleInfo.nombre_ciclo} (Ciclo del Tutor)`;
                         } else {
-                            // Fallback if tutor's class or cycle_id is not found
+                            // If specific cycle name isn't found, but we know it's a Tutor.
                             participating_scope_name = "Global (Creada por Tutor)";
                         }
                         break;
@@ -172,7 +182,18 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
         }
     } catch (error) {
         console.error(`Error en getExcursionScopeDetails para excursion ID ${excursion.id}:`, error.message);
+        // If an error occurs, and participating_scope_name is still "N/A", set a generic error scope.
+        if (participating_scope_name === "N/A") {
+            participating_scope_name = "Error al determinar alcance";
+        }
     }
+
+    // Final safety net: if, after all logic, it's still "N/A", but we had a valid excursion object and creator ID, set a generic default.
+    // This should ideally not be reached if the logic above is comprehensive.
+    if (participating_scope_name === "N/A" && excursion.creada_por_usuario_id) {
+        participating_scope_name = "Alcance General (Error Lógico)";
+    }
+
     return { participating_scope_type, participating_scope_name };
 }
 
