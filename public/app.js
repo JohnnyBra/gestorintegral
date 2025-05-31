@@ -610,7 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </ul>`;
                 if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
                     html += '<h5>Próximas Excursiones (Global):</h5><ul>';
-                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
+                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}" data-excursion-nombre="${ex.nombre_excursion}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
                     html += '</ul>';
                 } else { html += '<p>No hay próximas excursiones generales.</p>';}
             }
@@ -621,7 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </ul>`;
                 if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
                     html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
-                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
+                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}" data-excursion-nombre="${ex.nombre_excursion}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
                     html += '</ul>';
                 } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
     
@@ -646,6 +646,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 html += '</ul>';
             }
             dashboardSummaryContentDiv.innerHTML = html;
+
+            // Add event listeners for new dashboard links behavior
+            dashboardSummaryContentDiv.querySelectorAll('.excursion-detail-link').forEach(link => {
+                link.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    const excursionId = this.dataset.excursionId;
+                    const excursionName = this.dataset.excursionNombre; // Get the name from the new data attribute
+                    if (excursionId && excursionName) {
+                        sessionStorage.setItem('filtroParticipacionesExcursionId', excursionId);
+                        sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionName);
+                        navigateTo('participaciones');
+                    } else {
+                        console.error('Excursion ID or Name not found on link.', this);
+                        // Optionally show an error to the user
+                    }
+                });
+            });
+
         } catch (error) {
             if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar el resumen: ${error.message}</p>`;
         }
@@ -2737,4 +2755,5 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         });
     }
 
+    window.navigateTo = navigateTo; // Expose navigateTo to the global scope
 });

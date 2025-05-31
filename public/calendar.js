@@ -64,15 +64,37 @@ function markExcursionDays(excursions) {
                     try {
                         const ids = JSON.parse(idsString);
                         if (ids && ids.length > 0) {
-                            const excursionId = ids[0]; 
-                            if (typeof window.handleExcursionDayClick === 'function') {
-                                window.handleExcursionDayClick(excursionId);
+                            const excursionId = ids[0]; // Use the first excursion ID if multiple
+
+                            // Find the excursion name from window.dashboardExcursions
+                            let excursionName = 'Excursión'; // Default name
+                            if (window.dashboardExcursions && window.dashboardExcursions.length > 0) {
+                                const foundExcursion = window.dashboardExcursions.find(ex => ex.id === excursionId);
+                                if (foundExcursion) {
+                                    excursionName = foundExcursion.nombre_excursion;
+                                }
+                            }
+
+                            if (typeof window.navigateTo === 'function') {
+                                sessionStorage.setItem('filtroParticipacionesExcursionId', excursionId.toString());
+                                sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionName);
+                                window.navigateTo('participaciones');
                             } else {
-                                console.error('handleExcursionDayClick is not defined on window.');
+                                console.error('navigateTo function is not defined on window. Make sure app.js exposes it.');
+                                // Fallback or alternative error display if navigateTo is missing
+                                if (typeof window.handleExcursionDayClick === 'function') {
+                                    // Fallback to old modal behavior if navigation fails
+                                    window.handleExcursionDayClick(excursionId);
+                                }
                             }
                         }
                     } catch (e) {
-                        console.error('Error parsing excursion IDs from cell:', e);
+                        console.error('Error parsing excursion IDs from cell or navigating:', e);
+                        // Optionally, fallback to modal if there's an error
+                        // const excursionId = cell.dataset.excursionIds ? JSON.parse(cell.dataset.excursionIds)[0] : null;
+                        // if (excursionId && typeof window.handleExcursionDayClick === 'function') {
+                        //    window.handleExcursionDayClick(excursionId);
+                        // }
                     }
                 }
             });

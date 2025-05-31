@@ -154,10 +154,12 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
                             if (cicloTutor && cicloTutor.nombre_ciclo) {
                                 participating_scope_name = `${cicloTutor.nombre_ciclo} (Todas las clases del ciclo)`;
                             } else {
-                                participating_scope_name = "Ciclo del creador (Todas las clases del ciclo)";
+                                // Fallback if cycle name is not found but cycle_id exists
+                                participating_scope_name = "Global (Creada por Tutor, ciclo específico)";
                             }
                         } else {
-                            participating_scope_name = "Ciclo del creador no encontrado (Todas las clases del ciclo)";
+                            // Fallback if tutor's class or cycle_id is not found
+                            participating_scope_name = "Global (Creada por Tutor)";
                         }
                         break;
                     default:
@@ -242,9 +244,10 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
     for (const row of data) { // Changed to for...of for potential async operations within loop if needed
         if (currentY - rowHeight < pageBottomMargin) { 
              page = pdfDoc.addPage(PageSizes.A4);
+             const { width: newPageWidth } = page.getSize(); // Get width from new page
              if (logoDetails && logoDetails.image) {
                 page.drawImage(logoDetails.image, {
-                    x: logoDetails.x,
+                    x: newPageWidth - (pageSetup && pageSetup.xMargin ? pageSetup.xMargin : 40) - logoDetails.dims.width, // Adjusted for new page width
                     y: logoDetails.yTop,
                     width: logoDetails.dims.width,
                     height: logoDetails.dims.height,
@@ -521,7 +524,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         // Draw logo on first page
         if (logoImage) {
             page.drawImage(logoImage, {
-                x: xMargin,
+                x: width - xMargin - logoDims.width,
                 y: height - yPageMargin - logoDims.height,
                 width: logoDims.width,
                 height: logoDims.height,
@@ -546,7 +549,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         const pageBottomMargin = 40;
 
 
-        const logoObject = { image: logoImage, dims: logoDims, x: xMargin, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
+        const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
 
         const ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
             let localCurrentY = currentYVal;
@@ -554,7 +557,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                 page = pdfDocLib.addPage(PageSizes.A4);
                 if (logoObject.image) {
                     page.drawImage(logoObject.image, {
-                        x: logoObject.x,
+                        x: width - xMargin - logoObject.dims.width, // Adjusted x coordinate
                         y: logoObject.yTop,
                         width: logoObject.dims.width,
                         height: logoObject.dims.height,
@@ -1999,7 +2002,7 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
         // Dibujar logo en la primera página (y en nuevas páginas si es necesario)
         if (logoImage) {
             page.drawImage(logoImage, {
-                x: xMargin,
+                x: width - xMargin - logoDims.width,
                 y: height - yPageMargin - logoDims.height,
                 width: logoDims.width,
                 height: logoDims.height,
@@ -2025,7 +2028,7 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
                 currentY = height - yPageMargin; // Reiniciar Y para la nueva página
                 if (logoImage) {
                     page.drawImage(logoImage, {
-                        x: xMargin,
+                        x: width - xMargin - logoDims.width,
                         y: height - yPageMargin - logoDims.height,
                         width: logoDims.width,
                         height: logoDims.height,
@@ -3940,7 +3943,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         // Draw logo on first page
         if (logoImage) {
             page.drawImage(logoImage, {
-                x: xMargin,
+                x: width - xMargin - logoDims.width,
                 y: height - yPageMargin - logoDims.height,
                 width: logoDims.width,
                 height: logoDims.height,
@@ -3959,7 +3962,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             text: { font: robotoFont, size: 10, color: rgb(0,0,0) }
         };
         
-        const logoObject = { image: logoImage, dims: logoDims, x: xMargin, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
+        const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
         const pageSetup = { height, yMargin: yPageMargin, bottomMargin: pageBottomMargin, xMargin: xMargin };
 
 
@@ -3969,7 +3972,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
                 page = pdfDocLib.addPage(PageSizes.A4);
                 if (logoObject.image) {
                     page.drawImage(logoObject.image, {
-                        x: logoObject.x,
+                        x: width - xMargin - logoObject.dims.width,
                         y: logoObject.yTop,
                         width: logoObject.dims.width,
                         height: logoObject.dims.height,
