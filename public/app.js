@@ -77,28 +77,31 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     async function fetchExcursionCost(excursionId) {
-        console.log("Attempting to fetch cost for excursionId:", excursionId);
+        console.log("[fetchExcursionCost] Called with excursionId:", excursionId); // Log at start
         if (!excursionId) {
-            console.error("fetchExcursionCost: excursionId is undefined or null.");
+            console.error("[fetchExcursionCost] excursionId is undefined or null.");
             return 0; // Default cost if ID is invalid
         }
         try {
             const excursion = await apiFetch(`/excursiones/${excursionId}`);
+            console.log("[fetchExcursionCost] API response for excursion details:", excursion); // Log API response
             if (excursion && typeof excursion.coste_excursion_alumno === 'number') {
+                console.log("[fetchExcursionCost] Extracted cost:", excursion.coste_excursion_alumno);
                 return excursion.coste_excursion_alumno;
             } else {
-                console.warn(`fetchExcursionCost: coste_excursion_alumno not found or not a number for excursionId ${excursionId}. Excursion data:`, excursion);
+                console.warn(`[fetchExcursionCost] coste_excursion_alumno not found or not a number for excursionId ${excursionId}. Excursion data:`, excursion);
                 return 0; // Default cost if not found or invalid format
             }
         } catch (error) {
-            console.error(`fetchExcursionCost: Error fetching excursion details for excursionId ${excursionId}:`, error);
+            console.error(`[fetchExcursionCost] Error fetching excursion details for excursionId ${excursionId}:`, error);
             return 0; // Default cost on error
         }
     }
 
     function showPaymentConfirmationModal(excursionCost, currentParticipationData, originalChangedElement, callback) {
+        console.log("[showPaymentConfirmationModal] Called. Cost:", excursionCost, "Data:", currentParticipationData); // Log at start
         if (!paymentConfirmationModal || !paymentAmountInput || !paymentDateInput) {
-            console.error("Payment confirmation modal elements not found.");
+            console.error("[showPaymentConfirmationModal] Payment confirmation modal elements not found.");
             return;
         }
         paymentModalState.currentParticipationData = currentParticipationData;
@@ -107,8 +110,11 @@ document.addEventListener('DOMContentLoaded', () => {
         paymentModalState.excursionCost = excursionCost;
 
         paymentAmountInput.value = excursionCost > 0 ? excursionCost.toFixed(2) : (10).toFixed(2); // Default to 10 if cost is 0 or not set
-        paymentDateInput.value = new Date().toISOString().split('T')[0]; // Today's date
+        const today = new Date().toISOString().split('T')[0];
+        console.log("[showPaymentConfirmationModal] Setting modal payment date to:", today);
+        paymentDateInput.value = today;
 
+        console.log("[showPaymentConfirmationModal] Setting modal display to 'flex'."); // Log before showing
         paymentConfirmationModal.style.display = 'flex';
     }
 
@@ -1998,6 +2004,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Define the core save logic as a function to be used as a callback
     const executeSave = async (dataToSave) => {
         changedElement.style.backgroundColor = "#fff9c4"; // Visual feedback for saving attempt
+
+        // Ensure fecha_autorizacion is set if autorizacion_firmada is 'Sí' before saving
+        // This is a safeguard, primary logic is in saveParticipacionOnFieldChange or confirmPaymentButton listener
+        if (dataToSave.autorizacion_firmada === 'Sí' && !dataToSave.fecha_autorizacion) {
+            dataToSave.fecha_autorizacion = new Date().toISOString().split('T')[0];
+            console.log("[executeSave] Safeguard: Updating fecha_autorizacion to:", dataToSave.fecha_autorizacion);
+        } else if (dataToSave.autorizacion_firmada === 'Sí' && dataToSave.fecha_autorizacion) {
+            console.log("[executeSave] Proceeding with existing fecha_autorizacion:", dataToSave.fecha_autorizacion);
+        }
+
         try {
             const resultado = await apiFetch('/participaciones', 'POST', dataToSave);
             trElement.dataset.participacionId = resultado.id;
@@ -2032,6 +2048,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (fieldName === 'autorizacion_firmada' && newValue === 'Sí') {
+        console.log("[saveParticipacionOnFieldChange] Condition met: autorizacion_firmada is 'Sí'. About to fetch cost."); // Log before fetch
         // Ensure fecha_autorizacion is set if autorizacion_firmada is 'Sí'
         if (!participacionData.fecha_autorizacion) {
             participacionData.fecha_autorizacion = new Date().toISOString().split('T')[0];
@@ -2040,7 +2057,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fechaAutorizacionInput) fechaAutorizacionInput.value = participacionData.fecha_autorizacion;
         }
 
-        const cost = await fetchExcursionCost(excursionId); // Await the placeholder
+        const cost = await fetchExcursionCost(excursionId);
+        console.log("[saveParticipacionOnFieldChange] Fetched cost:", cost); // Log after fetch
+
+        console.log("[saveParticipacionOnFieldChange] About to call showPaymentConfirmationModal."); // Log before showing modal
         showPaymentConfirmationModal(cost, participacionData, changedElement, executeSave);
         // The actual save is now deferred to the modal's confirm action via executeSave callback
     } else {
