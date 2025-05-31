@@ -1977,6 +1977,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     async function saveParticipacionOnFieldChange(changedElement, excursionId) {
         console.log('[saveParticipacionOnFieldChange] Entered. changedElement:', changedElement, 'excursionId:', excursionId);
+        console.log('[saveParticipacionOnFieldChange] changedElement.dataset.field:', changedElement.dataset.field);
+        console.log('[saveParticipacionOnFieldChange] changedElement.value:', changedElement.value);
+
+        const fieldName = changedElement.dataset.field;
+        const newValue = changedElement.value;
+
+        console.log('[saveParticipacionOnFieldChange] fieldName:', fieldName, 'newValue:', newValue);
         const trElement = changedElement.closest('tr');
         const alumnoId = trElement.dataset.alumnoId;
         const statusCell = trElement.querySelector('.status-message-cell');
@@ -1991,19 +1998,21 @@ document.addEventListener('DOMContentLoaded', () => {
             fecha_pago: trElement.querySelector('[data-field="fecha_pago"]').value || null,
             notas_participacion: trElement.querySelector('[data-field="notas_participacion"]').value.trim() || null
         };
+
+        // Log preliminary validation checks
         if (participacionData.autorizacion_firmada === 'Sí' && !participacionData.fecha_autorizacion) {
+            console.log('[saveParticipacionOnFieldChange] Condition: autorizacion_firmada is Sí and fecha_autorizacion is missing. Showing error.');
             showTemporaryStatusInCell(statusCell, "Fecha autorización requerida.", true); return;
         }
         if ((participacionData.pago_realizado === 'Sí' || participacionData.pago_realizado === 'Parcial') && !participacionData.fecha_pago) {
+            console.log('[saveParticipacionOnFieldChange] Condition: pago_realizado is Sí/Parcial and fecha_pago is missing. Showing error.');
              showTemporaryStatusInCell(statusCell, "Fecha de pago requerida.", true); return;
         }
          if (participacionData.pago_realizado === 'Parcial' && participacionData.cantidad_pagada <= 0) {
+            console.log('[saveParticipacionOnFieldChange] Condition: pago_realizado is Parcial and cantidad_pagada is not positive. Showing error.');
             showTemporaryStatusInCell(statusCell, "Pago parcial > 0€.", true); return;
         }
         const originalBackgroundColor = changedElement.style.backgroundColor;
-
-    const fieldName = changedElement.dataset.field;
-    const newValue = changedElement.value;
 
     // Define the core save logic as a function to be used as a callback
     const executeSave = async (dataToSave) => {
@@ -2051,8 +2060,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    if (fieldName === 'autorizacion_firmada' && newValue === 'Sí') {
-        console.log("[saveParticipacionOnFieldChange] Condition met: autorizacion_firmada is 'Sí'. About to fetch cost."); // Log before fetch
+    const isModalTriggerCondition = (fieldName === 'autorizacion_firmada' && newValue === 'Sí');
+    console.log('[saveParticipacionOnFieldChange] isModalTriggerCondition (autorizacion_firmada === "Sí"):', isModalTriggerCondition);
+
+    if (isModalTriggerCondition) {
+        console.log("[saveParticipacionOnFieldChange] Modal path taken. About to fetch cost."); // Log before fetch, confirms modal path
         // Ensure fecha_autorizacion is set if autorizacion_firmada is 'Sí'
         if (!participacionData.fecha_autorizacion) {
             participacionData.fecha_autorizacion = new Date().toISOString().split('T')[0];
