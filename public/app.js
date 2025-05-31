@@ -77,31 +77,27 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     async function fetchExcursionCost(excursionId) {
-        console.log("[fetchExcursionCost] Called with excursionId:", excursionId); // Log at start
         if (!excursionId) {
-            console.error("[fetchExcursionCost] excursionId is undefined or null.");
+            console.error("fetchExcursionCost: excursionId is undefined or null.");
             return 0; // Default cost if ID is invalid
         }
         try {
             const excursion = await apiFetch(`/excursiones/${excursionId}`);
-            console.log("[fetchExcursionCost] API response for excursion details:", excursion); // Log API response
             if (excursion && typeof excursion.coste_excursion_alumno === 'number') {
-                console.log("[fetchExcursionCost] Extracted cost:", excursion.coste_excursion_alumno);
                 return excursion.coste_excursion_alumno;
             } else {
-                console.warn(`[fetchExcursionCost] coste_excursion_alumno not found or not a number for excursionId ${excursionId}. Excursion data:`, excursion);
+                console.warn(`fetchExcursionCost: coste_excursion_alumno not found or not a number for excursionId ${excursionId}. Excursion data:`, excursion);
                 return 0; // Default cost if not found or invalid format
             }
         } catch (error) {
-            console.error(`[fetchExcursionCost] Error fetching excursion details for excursionId ${excursionId}:`, error);
+            console.error(`fetchExcursionCost: Error fetching excursion details for excursionId ${excursionId}:`, error);
             return 0; // Default cost on error
         }
     }
 
     function showPaymentConfirmationModal(excursionCost, currentParticipationData, originalChangedElement, callback) {
-        console.log("[showPaymentConfirmationModal] Called. Cost:", excursionCost, "Data:", currentParticipationData); // Log at start
         if (!paymentConfirmationModal || !paymentAmountInput || !paymentDateInput) {
-            console.error("[showPaymentConfirmationModal] Payment confirmation modal elements not found.");
+            console.error("Payment confirmation modal elements not found.");
             return;
         }
         paymentModalState.currentParticipationData = currentParticipationData;
@@ -111,10 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         paymentAmountInput.value = excursionCost > 0 ? excursionCost.toFixed(2) : (10).toFixed(2); // Default to 10 if cost is 0 or not set
         const today = new Date().toISOString().split('T')[0];
-        console.log("[showPaymentConfirmationModal] Setting modal payment date to:", today);
         paymentDateInput.value = today;
 
-        console.log("[showPaymentConfirmationModal] Setting modal display to 'flex'."); // Log before showing
         paymentConfirmationModal.style.display = 'flex';
     }
 
@@ -1943,7 +1937,6 @@ document.addEventListener('DOMContentLoaded', () => {
             container.querySelectorAll('.participacion-field-edit').forEach(input => {
                 const eventType = (input.tagName === 'SELECT' || input.type === 'date') ? 'change' : 'blur';
                 input.addEventListener(eventType, (e) => {
-                    console.log(`[renderTablaParticipaciones] Event '${eventType}' fired on element:`, e.target, 'for excursionId:', excursionId);
                     saveParticipacionOnFieldChange(e.target, excursionId);
                 });
             });
@@ -1976,14 +1969,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     async function saveParticipacionOnFieldChange(changedElement, excursionId) {
-        console.log('[saveParticipacionOnFieldChange] Entered. changedElement:', changedElement, 'excursionId:', excursionId);
-        console.log('[saveParticipacionOnFieldChange] changedElement.dataset.field:', changedElement.dataset.field);
-        console.log('[saveParticipacionOnFieldChange] changedElement.value:', changedElement.value);
-
         const fieldName = changedElement.dataset.field;
         const newValue = changedElement.value;
 
-        console.log('[saveParticipacionOnFieldChange] fieldName:', fieldName, 'newValue:', newValue);
         const trElement = changedElement.closest('tr');
         const alumnoId = trElement.dataset.alumnoId;
         const statusCell = trElement.querySelector('.status-message-cell');
@@ -2000,25 +1988,21 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const isModalTriggerEvent = (fieldName === 'autorizacion_firmada' && newValue === 'Sí');
-        console.log('[saveParticipacionOnFieldChange] isModalTriggerEvent (changedElement indicates autorizacion_firmada becoming Sí):', isModalTriggerEvent);
 
         // Preliminary validation checks
         // This first check is the one that was causing the issue.
         // It should NOT run if this is the event that's supposed to trigger the modal.
         if (!isModalTriggerEvent) {
             if (participacionData.autorizacion_firmada === 'Sí' && !participacionData.fecha_autorizacion) {
-                console.log('[saveParticipacionOnFieldChange] Condition for existing Sí & missing date (non-modal path): autorizacion_firmada is Sí and fecha_autorizacion is missing. Showing error.');
                 showTemporaryStatusInCell(statusCell, "Fecha autorización requerida.", true);
                 return;
             }
         }
 
         if ((participacionData.pago_realizado === 'Sí' || participacionData.pago_realizado === 'Parcial') && !participacionData.fecha_pago) {
-            console.log('[saveParticipacionOnFieldChange] Condition: pago_realizado is Sí/Parcial and fecha_pago is missing. Showing error.');
              showTemporaryStatusInCell(statusCell, "Fecha de pago requerida.", true); return;
         }
          if (participacionData.pago_realizado === 'Parcial' && participacionData.cantidad_pagada <= 0) {
-            console.log('[saveParticipacionOnFieldChange] Condition: pago_realizado is Parcial and cantidad_pagada is not positive. Showing error.');
             showTemporaryStatusInCell(statusCell, "Pago parcial > 0€.", true); return;
         }
         const originalBackgroundColor = changedElement.style.backgroundColor;
@@ -2031,9 +2015,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // This is a safeguard, primary logic is in saveParticipacionOnFieldChange or confirmPaymentButton listener
         if (dataToSave.autorizacion_firmada === 'Sí' && !dataToSave.fecha_autorizacion) {
             dataToSave.fecha_autorizacion = new Date().toISOString().split('T')[0];
-            console.log("[executeSave] Safeguard: Updating fecha_autorizacion to:", dataToSave.fecha_autorizacion);
-        } else if (dataToSave.autorizacion_firmada === 'Sí' && dataToSave.fecha_autorizacion) {
-            console.log("[executeSave] Proceeding with existing fecha_autorizacion:", dataToSave.fecha_autorizacion);
         }
 
         try {
@@ -2069,11 +2050,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // const isModalTriggerCondition = (fieldName === 'autorizacion_firmada' && newValue === 'Sí'); // Already defined as isModalTriggerEvent
-    console.log('[saveParticipacionOnFieldChange] Re-checking isModalTriggerEvent before modal path:', isModalTriggerEvent);
-
-    if (isModalTriggerEvent) { // Use the already defined isModalTriggerEvent
-        console.log("[saveParticipacionOnFieldChange] Modal path taken. About to fetch cost.");
+    if (isModalTriggerEvent) {
         // Ensure fecha_autorizacion is set if autorizacion_firmada is 'Sí' - This is the crucial part for the modal trigger
         if (!participacionData.fecha_autorizacion) {
             participacionData.fecha_autorizacion = new Date().toISOString().split('T')[0];
@@ -2083,9 +2060,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const cost = await fetchExcursionCost(excursionId);
-        console.log("[saveParticipacionOnFieldChange] Fetched cost:", cost); // Log after fetch
-
-        console.log("[saveParticipacionOnFieldChange] About to call showPaymentConfirmationModal."); // Log before showing modal
         showPaymentConfirmationModal(cost, participacionData, changedElement, executeSave);
         // The actual save is now deferred to the modal's confirm action via executeSave callback
     } else {
