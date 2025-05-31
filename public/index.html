@@ -228,6 +228,25 @@
             </div>
         </div>
 
+        <div id="paymentConfirmationModal" class="simple-modal" style="display:none;">
+            <div class="simple-modal-content">
+                <h4>Confirmar Pago de Excursión</h4>
+                <p>El niño/a ha pagado la excursión?</p>
+                <div>
+                    <label for="paymentAmount">Cantidad Pagada (€):</label>
+                    <input type="number" id="paymentAmount" name="paymentAmount" step="0.01" min="0">
+                </div>
+                <div>
+                    <label for="paymentDate">Fecha de Pago:</label>
+                    <input type="date" id="paymentDate" name="paymentDate">
+                </div>
+                <div class="simple-modal-buttons">
+                    <button id="confirmPaymentButton" class="success">Confirmar</button>
+                    <button id="cancelPaymentButton" class="secondary">Cancelar</button>
+                </div>
+            </div>
+        </div>
+
     </div>
     <script src="app.js"></script>
     <script src="calendar.js"></script>

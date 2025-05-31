@@ -543,6 +543,70 @@ td input[type="number"].quick-edit { max-width: 70px; }
     background-color: #5a6268;
 }
 
+/* Payment Confirmation Modal Styles (similar to simple-modal) */
+#paymentConfirmationModal {
+    display: none; /* Hidden by default */
+    position: fixed;
+    z-index: 1002; /* Ensure it's above other modals if necessary, but below potential global loaders */
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+}
+
+#paymentConfirmationModal .simple-modal-content { /* Re-use class for consistency */
+    background-color: #fefefe;
+    margin: auto;
+    padding: 25px;
+    border: 1px solid #888;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 450px; /* Or adjust as needed */
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+#paymentConfirmationModal .simple-modal-content h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.4em;
+    color: #333;
+}
+
+#paymentConfirmationModal .simple-modal-content p {
+    margin-bottom: 15px;
+}
+
+#paymentConfirmationModal .simple-modal-content div {
+    margin-bottom: 15px; /* Spacing for input groups */
+}
+
+#paymentConfirmationModal .simple-modal-content label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: bold;
+}
+
+#paymentConfirmationModal .simple-modal-content input[type="number"],
+#paymentConfirmationModal .simple-modal-content input[type="date"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+#paymentConfirmationModal .simple-modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px; /* More space before buttons */
+}
+/* End Payment Confirmation Modal Styles */
+
 /* Sidebar Toggle Button Styling */
 /* Old styles for .sidebar-toggle-button that were inside @media (max-width: 768px) are removed. */
 /* New general styles for .sidebar-toggle-button: */

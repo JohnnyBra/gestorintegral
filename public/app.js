@@ -61,6 +61,114 @@ document.addEventListener('DOMContentLoaded', () => {
     const financialModalCloseButton = document.getElementById('financial-modal-close-button');
     let currentExcursionIdForFinancialModal = null;
 
+    // Payment Confirmation Modal Elements
+    const paymentConfirmationModal = document.getElementById('paymentConfirmationModal');
+    const paymentAmountInput = document.getElementById('paymentAmount');
+    const paymentDateInput = document.getElementById('paymentDate');
+    const confirmPaymentButton = document.getElementById('confirmPaymentButton');
+    const cancelPaymentButton = document.getElementById('cancelPaymentButton');
+
+    // State for payment modal
+    let paymentModalState = {
+        currentParticipationData: null,
+        originalChangedElement: null,
+        saveCallback: null,
+        excursionCost: 0
+    };
+
+    async function fetchExcursionCost(excursionId) {
+        console.log("Attempting to fetch cost for excursionId:", excursionId);
+        if (!excursionId) {
+            console.error("fetchExcursionCost: excursionId is undefined or null.");
+            return 0; // Default cost if ID is invalid
+        }
+        try {
+            const excursion = await apiFetch(`/excursiones/${excursionId}`);
+            if (excursion && typeof excursion.coste_excursion_alumno === 'number') {
+                return excursion.coste_excursion_alumno;
+            } else {
+                console.warn(`fetchExcursionCost: coste_excursion_alumno not found or not a number for excursionId ${excursionId}. Excursion data:`, excursion);
+                return 0; // Default cost if not found or invalid format
+            }
+        } catch (error) {
+            console.error(`fetchExcursionCost: Error fetching excursion details for excursionId ${excursionId}:`, error);
+            return 0; // Default cost on error
+        }
+    }
+
+    function showPaymentConfirmationModal(excursionCost, currentParticipationData, originalChangedElement, callback) {
+        if (!paymentConfirmationModal || !paymentAmountInput || !paymentDateInput) {
+            console.error("Payment confirmation modal elements not found.");
+            return;
+        }
+        paymentModalState.currentParticipationData = currentParticipationData;
+        paymentModalState.originalChangedElement = originalChangedElement;
+        paymentModalState.saveCallback = callback;
+        paymentModalState.excursionCost = excursionCost;
+
+        paymentAmountInput.value = excursionCost > 0 ? excursionCost.toFixed(2) : (10).toFixed(2); // Default to 10 if cost is 0 or not set
+        paymentDateInput.value = new Date().toISOString().split('T')[0]; // Today's date
+
+        paymentConfirmationModal.style.display = 'flex';
+    }
+
+    function closePaymentConfirmationModal() {
+        if (paymentConfirmationModal) {
+            paymentConfirmationModal.style.display = 'none';
+        }
+        // Clear stored data
+        paymentModalState.currentParticipationData = null;
+        paymentModalState.originalChangedElement = null;
+        paymentModalState.saveCallback = null;
+        paymentModalState.excursionCost = 0;
+    }
+
+    if (confirmPaymentButton) {
+        confirmPaymentButton.addEventListener('click', async () => {
+            if (!paymentModalState.currentParticipationData || !paymentModalState.saveCallback) {
+                console.error("Missing data in payment modal state for confirm.");
+                closePaymentConfirmationModal();
+                return;
+            }
+
+            const amountPaid = parseFloat(paymentAmountInput.value);
+            const datePaid = paymentDateInput.value;
+
+            if (isNaN(amountPaid) || amountPaid <= 0) {
+                alert("La cantidad pagada debe ser un número positivo.");
+                return;
+            }
+            if (!datePaid) {
+                alert("La fecha de pago es obligatoria.");
+                return;
+            }
+
+            // Update participation data
+            paymentModalState.currentParticipationData.pago_realizado = (amountPaid >= paymentModalState.excursionCost) ? 'Sí' : 'Parcial';
+            paymentModalState.currentParticipationData.cantidad_pagada = amountPaid;
+            paymentModalState.currentParticipationData.fecha_pago = datePaid;
+
+            // Autorizacion is already 'Sí' if we are here, ensure fecha_autorizacion is set
+            if (!paymentModalState.currentParticipationData.fecha_autorizacion) {
+                paymentModalState.currentParticipationData.fecha_autorizacion = new Date().toISOString().split('T')[0];
+            }
+
+            await paymentModalState.saveCallback(paymentModalState.currentParticipationData);
+            closePaymentConfirmationModal();
+        });
+    }
+
+    if (cancelPaymentButton) {
+        cancelPaymentButton.addEventListener('click', () => {
+            if (paymentModalState.originalChangedElement) {
+                paymentModalState.originalChangedElement.value = 'No'; // Revert the select
+                // If there's a visual feedback or state tied to this change elsewhere, it might need updating too.
+                // For now, just reverting the select that triggered the modal.
+            }
+            closePaymentConfirmationModal();
+        });
+    }
+
     async function apiFetch(endpoint, method = 'GET', body = null, token = currentToken) {
         const url = `${API_BASE_URL}${endpoint}`;
         const headers = { 'Content-Type': 'application/json' };
@@ -1883,12 +1991,19 @@ document.addEventListener('DOMContentLoaded', () => {
             showTemporaryStatusInCell(statusCell, "Pago parcial > 0€.", true); return;
         }
         const originalBackgroundColor = changedElement.style.backgroundColor;
-        changedElement.style.backgroundColor = "#fff9c4"; 
+
+    const fieldName = changedElement.dataset.field;
+    const newValue = changedElement.value;
+
+    // Define the core save logic as a function to be used as a callback
+    const executeSave = async (dataToSave) => {
+        changedElement.style.backgroundColor = "#fff9c4"; // Visual feedback for saving attempt
         try {
-            const resultado = await apiFetch('/participaciones', 'POST', participacionData);
-            trElement.dataset.participacionId = resultado.id; 
+            const resultado = await apiFetch('/participaciones', 'POST', dataToSave);
+            trElement.dataset.participacionId = resultado.id;
             const autorizacionSelect = trElement.querySelector('[data-field="autorizacion_firmada"]');
             const fechaAutorizacionInput = trElement.querySelector('[data-field="fecha_autorizacion"]');
+
             if (resultado.autorizacion_firmada === 'Sí' && resultado.fecha_autorizacion) {
                 if(autorizacionSelect) autorizacionSelect.disabled = true;
                 if(fechaAutorizacionInput) fechaAutorizacionInput.disabled = true;
@@ -1896,20 +2011,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(autorizacionSelect) autorizacionSelect.disabled = false;
                 if(fechaAutorizacionInput) fechaAutorizacionInput.disabled = false;
             }
-            changedElement.style.backgroundColor = "#c8e6c9"; 
+            changedElement.style.backgroundColor = "#c8e6c9";
             showTemporaryStatusInCell(statusCell, "Guardado!", false, 2000);
             setTimeout(() => { changedElement.style.backgroundColor = originalBackgroundColor; }, 2000);
+
             const currentExcursionId = sessionStorage.getItem('filtroParticipacionesExcursionId');
             const currentExcursionNombre = sessionStorage.getItem('filtroParticipacionesNombreExcursion');
-            if (currentExcursionId && currentExcursionNombre) updateParticipacionesSummary(currentExcursionId, currentExcursionNombre);
+            if (currentExcursionId && currentExcursionNombre) {
+                updateParticipacionesSummary(currentExcursionId, currentExcursionNombre);
+            }
         } catch (error) {
-            changedElement.style.backgroundColor = "#ffcdd2"; 
+            changedElement.style.backgroundColor = "#ffcdd2";
             showTemporaryStatusInCell(statusCell, error.message || "Error", true, 5000);
             setTimeout(() => { changedElement.style.backgroundColor = originalBackgroundColor; }, 3000);
+            // If save failed after modal confirmation, originalChangedElement might need to be reverted.
+            if (fieldName === 'autorizacion_firmada' && newValue === 'Sí' && paymentModalState.originalChangedElement) {
+                 paymentModalState.originalChangedElement.value = 'No'; // Revert UI
+            }
         }
+    };
+
+    if (fieldName === 'autorizacion_firmada' && newValue === 'Sí') {
+        // Ensure fecha_autorizacion is set if autorizacion_firmada is 'Sí'
+        if (!participacionData.fecha_autorizacion) {
+            participacionData.fecha_autorizacion = new Date().toISOString().split('T')[0];
+            // Optionally update the UI for fecha_autorizacion input directly here if needed
+            const fechaAutorizacionInput = trElement.querySelector('[data-field="fecha_autorizacion"]');
+            if (fechaAutorizacionInput) fechaAutorizacionInput.value = participacionData.fecha_autorizacion;
+        }
+
+        const cost = await fetchExcursionCost(excursionId); // Await the placeholder
+        showPaymentConfirmationModal(cost, participacionData, changedElement, executeSave);
+        // The actual save is now deferred to the modal's confirm action via executeSave callback
+    } else {
+        // If not "autorizacion_firmada" or its value is not "Sí", proceed with direct save.
+        changedElement.style.backgroundColor = "#fff9c4";
+        await executeSave(participacionData);
     }
-    async function updateParticipacionesSummary(excursionId, excursionNombre) {
-        const resumenContainer = document.getElementById('resumenParticipacionesContainer');
+}
+async function updateParticipacionesSummary(excursionId, excursionNombre) {
+    const resumenContainer = document.getElementById('resumenParticipacionesContainer');
         if (!resumenContainer) return;
         let endpoint = `/excursiones/${excursionId}/participaciones`;
         const filtroClaseSelect = document.getElementById('selectFiltroClaseParticipaciones');
