@@ -3198,7 +3198,7 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
             if (error.response) {
                 // The request was made and the server responded with a status code
                 // that falls out of the range of 2xx
-                return res.status(error.response.status).json({ 
+                return res.status(error.response.status).json({
                     error: `HTTP error downloading file: ${error.response.status} ${error.response.statusText}`,
                     url: fileUrl
                 });
@@ -3267,6 +3267,35 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                 for (const row of parsedData.data) {
                     tableSummary.processedRows++;
                     try {
+                        if (tableName === 'clases') {
+                            console.log(`[CLASES ROW ENTRY] Processing CSV row for class name (raw): "${row.nombre_clase}", Raw tutor_id: "${row.tutor_id}"`);
+                            if (row.nombre_clase === 'PRIMARIA 3B') {
+                                console.log("<<<<< FOUND PRIMARIA 3B ROW IN CSV PARSED DATA >>>>>");
+                                // --- Start of new detailed logging for PRIMARIA 3B ---
+                                const tutor_id_raw_primaria3b = row.tutor_id?.trim();
+                                console.log(`[PRIMARIA 3B TRACE] tutor_id_raw_primaria3b: "${tutor_id_raw_primaria3b}"`);
+
+                                if (tutor_id_raw_primaria3b && tutor_id_raw_primaria3b !== '') {
+                                    const parsed_tutor_id_primaria3b = parseInt(tutor_id_raw_primaria3b);
+                                    console.log(`[PRIMARIA 3B TRACE] parsed_tutor_id_primaria3b: ${parsed_tutor_id_primaria3b}`);
+
+                                    const is_nan_check_primaria3b = isNaN(parsed_tutor_id_primaria3b);
+                                    console.log(`[PRIMARIA 3B TRACE] isNaN(parsed_tutor_id_primaria3b): ${is_nan_check_primaria3b}`);
+
+                                    if (!is_nan_check_primaria3b) {
+                                        try {
+                                            const tutor_exists_primaria3b = await dbGetAsync("SELECT id, email, rol FROM usuarios WHERE id = ?", [parsed_tutor_id_primaria3b]);
+                                            console.log(`[PRIMARIA 3B TRACE] tutor_exists_primaria3b check result: ${tutor_exists_primaria3b ? JSON.stringify(tutor_exists_primaria3b) : 'NOT FOUND'}`);
+                                        } catch (dbError) {
+                                            console.error(`[PRIMARIA 3B TRACE] Error during dbGetAsync for tutorExists: ${dbError.message}`);
+                                        }
+                                    }
+                                } else {
+                                    console.log(`[PRIMARIA 3B TRACE] tutor_id_raw_primaria3b is empty or null. Will result in tutor_id = null.`);
+                                }
+                                // --- End of new detailed logging for PRIMARIA 3B ---
+                            }
+                        }
                         if (tableName === 'usuarios') {
                             const email = row.email?.trim();
                             const nombre_completo = row.nombre_completo?.trim();
@@ -3285,10 +3314,24 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                 continue;
                             }
 
-                            const password_hash = await bcrypt.hash(password_raw, 10);
+                            let final_password_hash_for_insert;
+                            const password_hash_from_csv = row.password_hash?.trim();
+                            const plain_password_from_csv = row.password?.trim();
+
+                            if (password_hash_from_csv) {
+                                console.log(`[IMPORT USUARIOS] Using existing hash from password_hash field for user: ${email}`);
+                                final_password_hash_for_insert = password_hash_from_csv;
+                            } else if (plain_password_from_csv) {
+                                console.log(`[IMPORT USUARIOS] Hashing plain password from password field for user: ${email}`);
+                                final_password_hash_for_insert = await bcrypt.hash(plain_password_from_csv, 10);
+                            } else {
+                                console.log(`[IMPORT USUARIOS] Error for user ${email}: Password data (password_hash or password) missing or empty in CSV. Skipping user.`);
+                                tableSummary.errors.push({ rowIdentifier: email || `Row ${tableSummary.processedRows}`, error: 'Password data missing or empty in CSV for new user.' });
+                                continue; // Skip this user row
+                            }
                             
                             const insertSql = "INSERT INTO usuarios (email, nombre_completo, password_hash, rol) VALUES (?, ?, ?, ?)";
-                            await dbRunAsync(insertSql, [email, nombre_completo, password_hash, rol]);
+                            await dbRunAsync(insertSql, [email, nombre_completo, final_password_hash_for_insert, rol]);
                             tableSummary.insertedRows++;
                         } else if (tableName === 'ciclos') {
                             const nombre_ciclo = row.nombre_ciclo?.trim();
@@ -3315,12 +3358,7 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                 continue;
                             }
 
-                            const existingClase = await dbGetAsync("SELECT id FROM clases WHERE nombre_clase = ?", [nombre_clase]);
-                            if (existingClase) {
-                                tableSummary.skippedExisting++;
-                                tableSummary.errors.push({ rowIdentifier: nombre_clase, error: 'Clase with this name already exists.' });
-                                continue;
-                            }
+                            // Removed existingClase check for UPSERT logic.
 
                             let tutor_id = null;
                             if (tutor_id_raw && tutor_id_raw !== '') {
@@ -3353,10 +3391,28 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                                     continue;
                                 }
                             }
+                            // The [CLASES INSERT PREP] log (if any specific one was here) is handled by the [CLASES ROW ENTRY] and PRIMARIA 3B trace logs.
+                            // The main [CLASES ROW ENTRY] log is already present earlier.
+                            // For "PRIMARIA 3B", specific detailed logs are also present earlier.
 
-                            const insertSql = "INSERT INTO clases (nombre_clase, tutor_id, ciclo_id) VALUES (?, ?, ?)";
-                            await dbRunAsync(insertSql, [nombre_clase, tutor_id, ciclo_id]);
-                            tableSummary.insertedRows++;
+                            const upsertSql = `
+                                INSERT INTO clases (nombre_clase, tutor_id, ciclo_id)
+                                VALUES (?, ?, ?)
+                                ON CONFLICT(nombre_clase) DO UPDATE SET
+                                    tutor_id = excluded.tutor_id,
+                                    ciclo_id = excluded.ciclo_id;
+                            `;
+                            await dbRunAsync(upsertSql, [nombre_clase, tutor_id, ciclo_id]);
+
+                            if (nombre_clase === "PRIMARIA 3B") {
+                                try {
+                                    const upsertedClaseRowPrimaria3B = await dbGetAsync("SELECT id, nombre_clase, tutor_id, ciclo_id FROM clases WHERE nombre_clase = ?", ["PRIMARIA 3B"]);
+                                    console.log(`[PRIMARIA 3B POST-UPSERT CHECK] Re-read from DB: ${upsertedClaseRowPrimaria3B ? `Found - tutor_id: ${upsertedClaseRowPrimaria3B.tutor_id}, ciclo_id: ${upsertedClaseRowPrimaria3B.ciclo_id}` : 'NOT FOUND after upsert attempt'}`);
+                                } catch (readbackError) {
+                                    console.error(`[PRIMARIA 3B POST-UPSERT CHECK] Error reading back class "PRIMARIA 3B": ${readbackError.message}`);
+                                }
+                            }
+                            tableSummary.insertedRows++; // Counts both inserts and updates for simplicity here
                         } else if (tableName === 'alumnos') {
                             const nombre_completo = row.nombre_completo?.trim();
                             const apellidos_para_ordenar = row.apellidos_para_ordenar?.trim() || nombre_completo?.split(' ').slice(1).join(' ') || ''; // Basic fallback for ordering
@@ -3627,25 +3683,17 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
                 
                 if (fileFailed) {
                     await dbRunAsync('ROLLBACK;');
-                    console.log(`Rolled back ${tableName} due to critical row processing error.`);
+                    console.log(`[DB IMPORT STATUS] Rolled back table: ${tableName} due to critical row processing error during its import.`);
                 } else if (tableSummary.errors.length > 0 && tableSummary.insertedRows < (tableSummary.processedRows - tableSummary.skippedExisting - tableSummary.skippedFK)) {
-                    // This condition implies some non-critical errors might have occurred but we still inserted some rows.
-                    // Depending on strategy, could also rollback. For now, commit what was successful before non-critical errors.
-                    // OR if any error means rollback, then this 'else if' is not needed, and fileFailed would handle it.
-                    // Let's refine: if any error is in tableSummary.errors that is not a skip, we should consider rollback.
-                    // For now, the logic is: critical error (rowError caught) -> rollback. Other errors logged, and we commit.
-                    // This needs to be more robust.
-                    // TEMPORARY: Commit and log. A more robust strategy would be to rollback if any error occurred that wasn't a 'skip'.
                     await dbRunAsync('COMMIT;');
-                    console.log(`Committed ${tableName} with some non-critical errors or skips. Review logs.`);
+                    console.log(`[DB IMPORT STATUS] Committed table: ${tableName} with some non-critical errors or skips. Please review import summary.`);
                 }
-                 else if (tableSummary.processedRows > 0) { // Only commit if there were rows to process
+                 else if (tableSummary.processedRows > 0) {
                     await dbRunAsync('COMMIT;');
-                    console.log(`Successfully processed and committed ${tableName}`);
+                    console.log(`[DB IMPORT STATUS] Successfully processed and committed table: ${tableName}`);
                 } else {
-                    // No rows processed or inserted, no need to commit, but not an error state for the transaction itself
-                    await dbRunAsync('ROLLBACK;'); // Or just do nothing if BEGIN was conditional
-                    console.log(`No data processed for ${tableName}, transaction effectively rolled back or not started.`);
+                    await dbRunAsync('ROLLBACK;');
+                    console.log(`[DB IMPORT STATUS] No data processed for table: ${tableName}, transaction effectively rolled back or not started.`);
                 }
 
 

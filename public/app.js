@@ -329,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             alert('Importación completada. Por favor, recargue la página o navegue a las secciones relevantes para ver los cambios.');
                             // Consider which sections to reload or prompt user
                         } else {
-                            throw result; 
+                            throw result;
                         }
                     } catch (error) {
                         console.error('Error en la importación desde archivo:', error);
@@ -344,8 +344,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         importDataStatus.textContent = detailedMsg;
                     } finally {
-                        importDataFile.value = ''; 
-                        importDataUrl.value = ''; 
+                        importDataFile.value = '';
+                        importDataUrl.value = '';
                     }
                 } else if (url) {
                     importDataStatus.textContent = 'Importando desde URL...';
@@ -370,7 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             importDataStatus.textContent = 'Importación desde URL completada con éxito.';
                             alert('Importación completada. Por favor, recargue la página o navegue a las secciones relevantes para ver los cambios.');
                         } else {
-                            throw result; 
+                            throw result;
                         }
                     } catch (error) {
                         console.error('Error en la importación desde URL:', error);
@@ -385,8 +385,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         importDataStatus.textContent = detailedMsg;
                     } finally {
-                        importDataFile.value = ''; 
-                        importDataUrl.value = ''; 
+                        importDataFile.value = '';
+                        importDataUrl.value = '';
                     }
                 } else {
                     importDataStatus.style.color = 'red';
@@ -398,13 +398,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- BEGIN: Logic for "Exportar Todos los Datos" button ---
         // Note: The button ID is 'exportAllDataBtn' as it was in the dashboard backup section
-        const exportButton = document.getElementById('exportAllDataBtn'); 
+        const exportButton = document.getElementById('exportAllDataBtn');
 
         if (currentUser && currentUser.rol === 'DIRECCION' && exportButton) {
             // Clone and replace to ensure no old listeners if this function is called multiple times
             const newExportButton = exportButton.cloneNode(true);
             exportButton.parentNode.replaceChild(newExportButton, exportButton);
-            
+
             newExportButton.addEventListener('click', async () => {
                 const token = localStorage.getItem('authToken'); // currentToken should also be available
                 if (!token) {
@@ -431,16 +431,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         } catch (e) { /* Ignore parsing error */ }
                         throw new Error(errorMsg);
                     }
-                    
+
                     const contentDisposition = response.headers.get('content-disposition');
-                    let filename = 'export_gestion_escolar.zip'; 
+                    let filename = 'export_gestion_escolar.zip';
                     if (contentDisposition) {
                         const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
                         if (filenameMatch && filenameMatch.length > 1) {
                             filename = filenameMatch[1];
                         }
                     }
-                    
+
                     const blob = await response.blob();
                     const fileUrl = window.URL.createObjectURL(blob); // Renamed to avoid conflict with outer scope `url`
                     const a = document.createElement('a');
