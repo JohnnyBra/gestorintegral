@@ -370,6 +370,33 @@ function drawFieldWithWrapping(page, x, y, label, value, fonts, styles, maxWidth
     return y - 10; 
 }
 
+// Helper function to draw footer elements on a page
+function drawPageFooterElements(page, currentPageNumber, totalPagesString, font, fontSize, pageWidth, pageHeight, dateTimeString) {
+    const footerMargin = 30;
+    const color = rgb(0.5, 0.5, 0.5); // Light gray
+
+    // Date/Time (Center Footer)
+    const dateTextWidth = font.widthOfTextAtSize(dateTimeString, fontSize);
+    page.drawText(dateTimeString, {
+        x: (pageWidth - dateTextWidth) / 2,
+        y: footerMargin,
+        font: font, // Ensure this is the passed 'font' object
+        size: fontSize,
+        color: color,
+    });
+
+    // Page Number (Right Footer)
+    const pageNumStr = `Página ${currentPageNumber}/${totalPagesString}`;
+    const pageNumTextWidth = font.widthOfTextAtSize(pageNumStr, fontSize);
+    page.drawText(pageNumStr, {
+        x: pageWidth - pageNumTextWidth - footerMargin,
+        y: footerMargin,
+        font: font, // Ensure this is the passed 'font' object
+        size: fontSize,
+        color: color,
+    });
+}
+
 app.get('/api', (req, res) => {
     res.json({ message: "API del Gestor Escolar v5 - ¡Funcionando!" });
 });
@@ -410,6 +437,11 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenticateToken, async (req, res) => {
     const excursionId = parseInt(req.params.excursion_id);
     const viewClaseId = req.query.view_clase_id ? parseInt(req.query.view_clase_id) : null;
+
+    // Generate Date/Time string once for all footers in this PDF
+    const nowGlobal = new Date();
+    const globalDateTimeStr = `${String(nowGlobal.getDate()).padStart(2, '0')}/${String(nowGlobal.getMonth() + 1).padStart(2, '0')}/${nowGlobal.getFullYear()} ${String(nowGlobal.getHours()).padStart(2, '0')}:${String(nowGlobal.getMinutes()).padStart(2, '0')}:${String(nowGlobal.getSeconds()).padStart(2, '0')}`;
+
     const userRol = req.user.rol;
     const userId = req.user.id; // userId no se usa directamente para la lógica principal aquí, pero es bueno tenerlo
     const userClaseId = req.user.claseId; // ID de la clase del tutor
@@ -709,52 +741,30 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         currentY -= 15;
         page.drawText(`Total General Ausentes: ${totalGeneralAusentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
         
-        const pdfBytes = await pdfDocLib.save();
+        // START NEW FOOTER LOGIC (SINGLE FINAL LOOP)
+        const totalPagesFinal = pdfDocLib.getPageCount(); // Get total pages *before* saving
+        const pagesFinal = pdfDocLib.getPages();
+        const footerFontSizeFinal = 8;
+        // robotoFont is already defined in this endpoint's scope
 
-        // START FOOTER ADDITION
-        const pages = pdfDocLib.getPages();
-        const totalPages = pdfDocLib.getPageCount();
-        const footerFontSize = 8;
-        const footerMargin = 30; // Points from the bottom
-
-        for (let i = 0; i < totalPages; i++) {
-            const page = pages[i];
-            const { width, height } = page.getSize();
-            const pageNumber = i + 1;
-
-            // Date/Time (Center Footer)
-            const now = new Date();
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
-            const year = now.getFullYear();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const dateTimeString = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-
-            const dateTimeTextWidth = robotoFont.widthOfTextAtSize(dateTimeString, footerFontSize);
-            page.drawText(dateTimeString, {
-                x: (width - dateTimeTextWidth) / 2,
-                y: footerMargin,
-                font: robotoFont,
-                size: footerFontSize,
-                color: rgb(0.5, 0.5, 0.5), // Light gray color for footer
-            });
-
-            // Page Number (Right Footer)
-            const pageNumString = `Página ${pageNumber}/${totalPages}`;
-            const pageNumTextWidth = robotoFont.widthOfTextAtSize(pageNumString, footerFontSize);
-            page.drawText(pageNumString, {
-                x: width - pageNumTextWidth - footerMargin, // footerMargin also used as right margin
-                y: footerMargin,
-                font: robotoFont,
-                size: footerFontSize,
-                color: rgb(0.5, 0.5, 0.5), // Light gray color for footer
-            });
+        for (let i = 0; i < totalPagesFinal; i++) {
+            const currentPageInstance = pagesFinal[i];
+            const { width: pageWidth, height: pageHeight } = currentPageInstance.getSize();
+            const currentPageNumber = i + 1;
+            drawPageFooterElements(
+                currentPageInstance,
+                currentPageNumber,
+                totalPagesFinal.toString(),
+                robotoFont, // Pass the existing robotoFont
+                footerFontSizeFinal,
+                pageWidth,
+                pageHeight,
+                globalDateTimeStr // Use the globally generated date/time string
+            );
         }
-        // END FOOTER ADDITION
+        // END NEW FOOTER LOGIC
 
-        const finalPdfBytes = await pdfDocLib.save(); // Save again after adding footers
+        const finalPdfBytes = await pdfDocLib.save(); // Single save call after all drawing ops
         res.contentType('application/pdf');
         res.send(Buffer.from(finalPdfBytes));
 
@@ -2163,6 +2173,10 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
     const excursionId = parseInt(req.params.excursion_id);
     const { id: userId, rol: userRol, claseId: userClaseId } = req.user;
 
+    // Generate Date/Time string once for all footers in this PDF
+    const nowGlobalInfoPdf = new Date();
+    const globalDateTimeStrInfoPdf = `${String(nowGlobalInfoPdf.getDate()).padStart(2, '0')}/${String(nowGlobalInfoPdf.getMonth() + 1).padStart(2, '0')}/${nowGlobalInfoPdf.getFullYear()} ${String(nowGlobalInfoPdf.getHours()).padStart(2, '0')}:${String(nowGlobalInfoPdf.getMinutes()).padStart(2, '0')}:${String(nowGlobalInfoPdf.getSeconds()).padStart(2, '0')}`;
+
     if (isNaN(excursionId)) {
         return res.status(400).json({ error: "ID de excursión inválido." });
     }
@@ -2362,54 +2376,30 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
             currentY = await drawFieldWithWrappingInternal('Notas Adicionales:', excursion.notas_excursion, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
         }
         
-        // Initial save to finalize content and allow page counting
-        await pdfDocLib.save();
+        // START NEW FOOTER LOGIC (SINGLE FINAL LOOP)
+        const totalPagesFinalInfoPdf = pdfDocLib.getPageCount();
+        const pagesFinalInfoPdf = pdfDocLib.getPages();
+        const footerFontSizeFinalInfoPdf = 8;
+        // robotoFont is already defined in this endpoint's scope
 
-        // START FOOTER ADDITION
-        const pages = pdfDocLib.getPages();
-        const totalPages = pdfDocLib.getPageCount();
-        const footerFontSize = 8;
-        const footerMargin = 30; // Points from the bottom
-        const footerColor = rgb(0.5, 0.5, 0.5);
-
-        for (let i = 0; i < totalPages; i++) {
-            const pageInstance = pages[i]; // Renamed to avoid conflict with 'page' from outer scope
-            const { width: pageWidth, height: pageHeight } = pageInstance.getSize(); // Renamed for clarity
-            const pageNumber = i + 1;
-
-            // Date/Time (Center Footer)
-            const now = new Date();
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const year = now.getFullYear();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const dateTimeString = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-
-            const dateTimeTextWidth = robotoFont.widthOfTextAtSize(dateTimeString, footerFontSize);
-            pageInstance.drawText(dateTimeString, {
-                x: (pageWidth - dateTimeTextWidth) / 2,
-                y: footerMargin,
-                font: robotoFont,
-                size: footerFontSize,
-                color: footerColor,
-            });
-
-            // Page Number (Right Footer)
-            const pageNumString = `Página ${pageNumber}/${totalPages}`;
-            const pageNumTextWidth = robotoFont.widthOfTextAtSize(pageNumString, footerFontSize);
-            pageInstance.drawText(pageNumString, {
-                x: pageWidth - pageNumTextWidth - footerMargin,
-                y: footerMargin,
-                font: robotoFont,
-                size: footerFontSize,
-                color: footerColor,
-            });
+        for (let i = 0; i < totalPagesFinalInfoPdf; i++) {
+            const currentPageInstance = pagesFinalInfoPdf[i];
+            const { width: pageWidth, height: pageHeight } = currentPageInstance.getSize();
+            const currentPageNumber = i + 1;
+            drawPageFooterElements(
+                currentPageInstance,
+                currentPageNumber,
+                totalPagesFinalInfoPdf.toString(),
+                robotoFont, // Pass the existing robotoFont
+                footerFontSizeFinalInfoPdf,
+                pageWidth,
+                pageHeight,
+                globalDateTimeStrInfoPdf // Use the globally generated date/time string
+            );
         }
-        // END FOOTER ADDITION
+        // END NEW FOOTER LOGIC
 
-        const finalPdfBytes = await pdfDocLib.save(); // Save again after adding footers
+        const finalPdfBytes = await pdfDocLib.save(); // Single save call after all drawing ops
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Info_Excursion_${excursion.nombre_excursion.replace(/\s+/g, '_')}.pdf`);
         res.send(Buffer.from(finalPdfBytes));
@@ -4070,6 +4060,10 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
     try {
         const excursion_id = parseInt(req.params.excursion_id);
 
+        // Generate Date/Time string once for all footers in this PDF
+        const nowGlobalTesoreriaPdf = new Date();
+        const globalDateTimeStrTesoreriaPdf = `${String(nowGlobalTesoreriaPdf.getDate()).padStart(2, '0')}/${String(nowGlobalTesoreriaPdf.getMonth() + 1).padStart(2, '0')}/${nowGlobalTesoreriaPdf.getFullYear()} ${String(nowGlobalTesoreriaPdf.getHours()).padStart(2, '0')}:${String(nowGlobalTesoreriaPdf.getMinutes()).padStart(2, '0')}:${String(nowGlobalTesoreriaPdf.getSeconds()).padStart(2, '0')}`;
+
         if (isNaN(excursion_id)) {
             return res.status(400).json({ error: "ID de excursión inválido." });
         }
@@ -4275,52 +4269,30 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
             currentY -= 20; // Space before next class
         }
 
-        // Initial save to finalize content and allow page counting
-        await pdfDocLib.save();
+        // START NEW FOOTER LOGIC (SINGLE FINAL LOOP)
+        const totalPagesFinalTesoreria = pdfDocLib.getPageCount();
+        const pagesFinalTesoreria = pdfDocLib.getPages();
+        const footerFontSizeFinalTesoreria = 8;
+        // robotoFont is already defined in this endpoint's scope
 
-        // START FOOTER ADDITION
-        const pagesTesoreria = pdfDocLib.getPages(); // Use a different variable name for pages array
-        const totalPagesTesoreria = pdfDocLib.getPageCount();
-        const footerFontSizeTesoreria = 8;
-        const footerMarginTesoreria = 30;
-        const footerColorTesoreria = rgb(0.5, 0.5, 0.5);
-
-        for (let i = 0; i < totalPagesTesoreria; i++) {
-            const pageInstance = pagesTesoreria[i]; // Use a different variable name for page object
-            const { width: pageWidth, height: pageHeight } = pageInstance.getSize();
-            const pageNumber = i + 1;
-
-            const now = new Date();
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const year = now.getFullYear();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const dateTimeString = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-
-            const dateTimeTextWidth = robotoFont.widthOfTextAtSize(dateTimeString, footerFontSizeTesoreria);
-            pageInstance.drawText(dateTimeString, {
-                x: (pageWidth - dateTimeTextWidth) / 2,
-                y: footerMarginTesoreria,
-                font: robotoFont,
-                size: footerFontSizeTesoreria,
-                color: footerColorTesoreria,
-            });
-
-            const pageNumString = `Página ${pageNumber}/${totalPagesTesoreria}`;
-            const pageNumTextWidth = robotoFont.widthOfTextAtSize(pageNumString, footerFontSizeTesoreria);
-            pageInstance.drawText(pageNumString, {
-                x: pageWidth - pageNumTextWidth - footerMarginTesoreria,
-                y: footerMarginTesoreria,
-                font: robotoFont,
-                size: footerFontSizeTesoreria,
-                color: footerColorTesoreria,
-            });
+        for (let i = 0; i < totalPagesFinalTesoreria; i++) {
+            const currentPageInstance = pagesFinalTesoreria[i];
+            const { width: pageWidth, height: pageHeight } = currentPageInstance.getSize();
+            const currentPageNumber = i + 1;
+            drawPageFooterElements(
+                currentPageInstance,
+                currentPageNumber,
+                totalPagesFinalTesoreria.toString(),
+                robotoFont, // Pass the existing robotoFont
+                footerFontSizeFinalTesoreria,
+                pageWidth,
+                pageHeight,
+                globalDateTimeStrTesoreriaPdf // Use the globally generated date/time string
+            );
         }
-        // END FOOTER ADDITION
+        // END NEW FOOTER LOGIC
 
-        const finalPdfBytes = await pdfDocLib.save(); // Save again after adding footers
+        const finalPdfBytes = await pdfDocLib.save(); // Single save call after all drawing ops
         res.contentType('application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Reporte_Tesoreria_Excursion_${excursion_id}.pdf`);
         res.send(Buffer.from(finalPdfBytes));
@@ -4523,6 +4495,10 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
     if (req.user.rol !== 'DIRECCION' && req.user.rol !== 'TESORERIA') {
         return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol DIRECCION o TESORERIA.' });
     }
+
+    // Generate Date/Time string once for all footers in this PDF
+    const nowGlobalSecretariaPdf = new Date();
+    const globalDateTimeStrSecretariaPdf = `${String(nowGlobalSecretariaPdf.getDate()).padStart(2, '0')}/${String(nowGlobalSecretariaPdf.getMonth() + 1).padStart(2, '0')}/${nowGlobalSecretariaPdf.getFullYear()} ${String(nowGlobalSecretariaPdf.getHours()).padStart(2, '0')}:${String(nowGlobalSecretariaPdf.getMinutes()).padStart(2, '0')}:${String(nowGlobalSecretariaPdf.getSeconds()).padStart(2, '0')}`;
 
     try {
         const pdfDocLib = await PDFDocument.create();
@@ -4807,52 +4783,30 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             currentY -= rowHeight;
         }
 
-        // Initial save to finalize content and allow page counting
-        await pdfDocLib.save();
+        // START NEW FOOTER LOGIC (SINGLE FINAL LOOP)
+        const totalPagesFinalSecretaria = pdfDocLib.getPageCount();
+        const pagesFinalSecretaria = pdfDocLib.getPages();
+        const footerFontSizeFinalSecretaria = 8;
+        // robotoFont is already defined in this endpoint's scope
 
-        // START FOOTER ADDITION
-        const pagesSecretaria = pdfDocLib.getPages(); // Use a different variable name for pages array
-        const totalPagesSecretaria = pdfDocLib.getPageCount();
-        const footerFontSizeSecretaria = 8;
-        const footerMarginSecretaria = 30;
-        const footerColorSecretaria = rgb(0.5, 0.5, 0.5);
-
-        for (let i = 0; i < totalPagesSecretaria; i++) {
-            const pageInstance = pagesSecretaria[i]; // Use a different variable name for page object
-            const { width: pageWidth, height: pageHeight } = pageInstance.getSize();
-            const pageNumber = i + 1;
-
-            const now = new Date();
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const year = now.getFullYear();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const dateTimeString = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-
-            const dateTimeTextWidth = robotoFont.widthOfTextAtSize(dateTimeString, footerFontSizeSecretaria);
-            pageInstance.drawText(dateTimeString, {
-                x: (pageWidth - dateTimeTextWidth) / 2,
-                y: footerMarginSecretaria,
-                font: robotoFont,
-                size: footerFontSizeSecretaria,
-                color: footerColorSecretaria,
-            });
-
-            const pageNumString = `Página ${pageNumber}/${totalPagesSecretaria}`;
-            const pageNumTextWidth = robotoFont.widthOfTextAtSize(pageNumString, footerFontSizeSecretaria);
-            pageInstance.drawText(pageNumString, {
-                x: pageWidth - pageNumTextWidth - footerMarginSecretaria,
-                y: footerMarginSecretaria,
-                font: robotoFont,
-                size: footerFontSizeSecretaria,
-                color: footerColorSecretaria,
-            });
+        for (let i = 0; i < totalPagesFinalSecretaria; i++) {
+            const currentPageInstance = pagesFinalSecretaria[i];
+            const { width: pageWidth, height: pageHeight } = currentPageInstance.getSize();
+            const currentPageNumber = i + 1;
+            drawPageFooterElements(
+                currentPageInstance,
+                currentPageNumber,
+                totalPagesFinalSecretaria.toString(),
+                robotoFont, // Pass the existing robotoFont
+                footerFontSizeFinalSecretaria,
+                pageWidth,
+                pageHeight,
+                globalDateTimeStrSecretariaPdf // Use the globally generated date/time string
+            );
         }
-        // END FOOTER ADDITION
+        // END NEW FOOTER LOGIC
 
-        const finalPdfBytes = await pdfDocLib.save(); // Save again after adding footers
+        const finalPdfBytes = await pdfDocLib.save(); // Single save call after all drawing ops
         res.contentType('application/pdf');
         res.send(Buffer.from(finalPdfBytes));
 
