@@ -370,6 +370,33 @@ function drawFieldWithWrapping(page, x, y, label, value, fonts, styles, maxWidth
     return y - 10; 
 }
 
+// Helper function to draw footer elements on a page
+function drawPageFooterElements(page, currentPageNumber, totalPagesString, font, fontSize, pageWidth, pageHeight, dateTimeString) {
+    const footerMargin = 30;
+    const color = rgb(0.5, 0.5, 0.5); // Light gray
+
+    // Date/Time (Center Footer)
+    const dateTextWidth = font.widthOfTextAtSize(dateTimeString, fontSize);
+    page.drawText(dateTimeString, {
+        x: (pageWidth - dateTextWidth) / 2,
+        y: footerMargin,
+        font: font, // Ensure this is the passed 'font' object
+        size: fontSize,
+        color: color,
+    });
+
+    // Page Number (Right Footer)
+    const pageNumStr = `Página ${currentPageNumber}/${totalPagesString}`;
+    const pageNumTextWidth = font.widthOfTextAtSize(pageNumStr, fontSize);
+    page.drawText(pageNumStr, {
+        x: pageWidth - pageNumTextWidth - footerMargin,
+        y: footerMargin,
+        font: font, // Ensure this is the passed 'font' object
+        size: fontSize,
+        color: color,
+    });
+}
+
 app.get('/api', (req, res) => {
     res.json({ message: "API del Gestor Escolar v5 - ¡Funcionando!" });
 });
@@ -410,6 +437,11 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenticateToken, async (req, res) => {
     const excursionId = parseInt(req.params.excursion_id);
     const viewClaseId = req.query.view_clase_id ? parseInt(req.query.view_clase_id) : null;
+
+    // Generate Date/Time string once for all footers in this PDF
+    const nowGlobal = new Date();
+    const globalDateTimeStr = `${String(nowGlobal.getDate()).padStart(2, '0')}/${String(nowGlobal.getMonth() + 1).padStart(2, '0')}/${nowGlobal.getFullYear()} ${String(nowGlobal.getHours()).padStart(2, '0')}:${String(nowGlobal.getMinutes()).padStart(2, '0')}:${String(nowGlobal.getSeconds()).padStart(2, '0')}`;
+
     const userRol = req.user.rol;
     const userId = req.user.id; // userId no se usa directamente para la lógica principal aquí, pero es bueno tenerlo
     const userClaseId = req.user.claseId; // ID de la clase del tutor
@@ -709,9 +741,32 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         currentY -= 15;
         page.drawText(`Total General Ausentes: ${totalGeneralAusentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
         
-        const pdfBytes = await pdfDocLib.save();
+        // START NEW FOOTER LOGIC (SINGLE FINAL LOOP)
+        const totalPagesFinal = pdfDocLib.getPageCount(); // Get total pages *before* saving
+        const pagesFinal = pdfDocLib.getPages();
+        const footerFontSizeFinal = 8;
+        // robotoFont is already defined in this endpoint's scope
+
+        for (let i = 0; i < totalPagesFinal; i++) {
+            const currentPageInstance = pagesFinal[i];
+            const { width: pageWidth, height: pageHeight } = currentPageInstance.getSize();
+            const currentPageNumber = i + 1;
+            drawPageFooterElements(
+                currentPageInstance,
+                currentPageNumber,
+                totalPagesFinal.toString(),
+                robotoFont, // Pass the existing robotoFont
+                footerFontSizeFinal,
+                pageWidth,
+                pageHeight,
+                globalDateTimeStr // Use the globally generated date/time string
+            );
+        }
+        // END NEW FOOTER LOGIC
+
+        const finalPdfBytes = await pdfDocLib.save(); // Single save call after all drawing ops
         res.contentType('application/pdf');
-        res.send(Buffer.from(pdfBytes));
+        res.send(Buffer.from(finalPdfBytes));
 
     } catch (error) {
         console.error(`Error en GET /api/excursiones/${excursionId}/participaciones/reporte_pagos (nuevo reporte asistencia):`, error.message, error.stack);
@@ -2118,6 +2173,10 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
     const excursionId = parseInt(req.params.excursion_id);
     const { id: userId, rol: userRol, claseId: userClaseId } = req.user;
 
+    // Generate Date/Time string once for all footers in this PDF
+    const nowGlobalInfoPdf = new Date();
+    const globalDateTimeStrInfoPdf = `${String(nowGlobalInfoPdf.getDate()).padStart(2, '0')}/${String(nowGlobalInfoPdf.getMonth() + 1).padStart(2, '0')}/${nowGlobalInfoPdf.getFullYear()} ${String(nowGlobalInfoPdf.getHours()).padStart(2, '0')}:${String(nowGlobalInfoPdf.getMinutes()).padStart(2, '0')}:${String(nowGlobalInfoPdf.getSeconds()).padStart(2, '0')}`;
+
     if (isNaN(excursionId)) {
         return res.status(400).json({ error: "ID de excursión inválido." });
     }
@@ -2317,10 +2376,33 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
             currentY = await drawFieldWithWrappingInternal('Notas Adicionales:', excursion.notas_excursion, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
         }
         
-        const pdfBytes = await pdfDocLib.save();
+        // START NEW FOOTER LOGIC (SINGLE FINAL LOOP)
+        const totalPagesFinalInfoPdf = pdfDocLib.getPageCount();
+        const pagesFinalInfoPdf = pdfDocLib.getPages();
+        const footerFontSizeFinalInfoPdf = 8;
+        // robotoFont is already defined in this endpoint's scope
+
+        for (let i = 0; i < totalPagesFinalInfoPdf; i++) {
+            const currentPageInstance = pagesFinalInfoPdf[i];
+            const { width: pageWidth, height: pageHeight } = currentPageInstance.getSize();
+            const currentPageNumber = i + 1;
+            drawPageFooterElements(
+                currentPageInstance,
+                currentPageNumber,
+                totalPagesFinalInfoPdf.toString(),
+                robotoFont, // Pass the existing robotoFont
+                footerFontSizeFinalInfoPdf,
+                pageWidth,
+                pageHeight,
+                globalDateTimeStrInfoPdf // Use the globally generated date/time string
+            );
+        }
+        // END NEW FOOTER LOGIC
+
+        const finalPdfBytes = await pdfDocLib.save(); // Single save call after all drawing ops
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Info_Excursion_${excursion.nombre_excursion.replace(/\s+/g, '_')}.pdf`);
-        res.send(Buffer.from(pdfBytes));
+        res.send(Buffer.from(finalPdfBytes));
 
     } catch (error) {
         console.error(`Error en GET /api/excursiones/${excursionId}/info_pdf:`, error.message, error.stack);
@@ -3978,6 +4060,10 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
     try {
         const excursion_id = parseInt(req.params.excursion_id);
 
+        // Generate Date/Time string once for all footers in this PDF
+        const nowGlobalTesoreriaPdf = new Date();
+        const globalDateTimeStrTesoreriaPdf = `${String(nowGlobalTesoreriaPdf.getDate()).padStart(2, '0')}/${String(nowGlobalTesoreriaPdf.getMonth() + 1).padStart(2, '0')}/${nowGlobalTesoreriaPdf.getFullYear()} ${String(nowGlobalTesoreriaPdf.getHours()).padStart(2, '0')}:${String(nowGlobalTesoreriaPdf.getMinutes()).padStart(2, '0')}:${String(nowGlobalTesoreriaPdf.getSeconds()).padStart(2, '0')}`;
+
         if (isNaN(excursion_id)) {
             return res.status(400).json({ error: "ID de excursión inválido." });
         }
@@ -4183,10 +4269,33 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
             currentY -= 20; // Space before next class
         }
 
-        const pdfBytes = await pdfDocLib.save();
+        // START NEW FOOTER LOGIC (SINGLE FINAL LOOP)
+        const totalPagesFinalTesoreria = pdfDocLib.getPageCount();
+        const pagesFinalTesoreria = pdfDocLib.getPages();
+        const footerFontSizeFinalTesoreria = 8;
+        // robotoFont is already defined in this endpoint's scope
+
+        for (let i = 0; i < totalPagesFinalTesoreria; i++) {
+            const currentPageInstance = pagesFinalTesoreria[i];
+            const { width: pageWidth, height: pageHeight } = currentPageInstance.getSize();
+            const currentPageNumber = i + 1;
+            drawPageFooterElements(
+                currentPageInstance,
+                currentPageNumber,
+                totalPagesFinalTesoreria.toString(),
+                robotoFont, // Pass the existing robotoFont
+                footerFontSizeFinalTesoreria,
+                pageWidth,
+                pageHeight,
+                globalDateTimeStrTesoreriaPdf // Use the globally generated date/time string
+            );
+        }
+        // END NEW FOOTER LOGIC
+
+        const finalPdfBytes = await pdfDocLib.save(); // Single save call after all drawing ops
         res.contentType('application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Reporte_Tesoreria_Excursion_${excursion_id}.pdf`);
-        res.send(Buffer.from(pdfBytes));
+        res.send(Buffer.from(finalPdfBytes));
 
     } catch (error) {
         console.error(`Error en GET /api/tesoreria/excursiones/${req.params.excursion_id}/reporte_detallado_pdf:`, error.message, error.stack);
@@ -4386,6 +4495,10 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
     if (req.user.rol !== 'DIRECCION' && req.user.rol !== 'TESORERIA') {
         return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol DIRECCION o TESORERIA.' });
     }
+
+    // Generate Date/Time string once for all footers in this PDF
+    const nowGlobalSecretariaPdf = new Date();
+    const globalDateTimeStrSecretariaPdf = `${String(nowGlobalSecretariaPdf.getDate()).padStart(2, '0')}/${String(nowGlobalSecretariaPdf.getMonth() + 1).padStart(2, '0')}/${nowGlobalSecretariaPdf.getFullYear()} ${String(nowGlobalSecretariaPdf.getHours()).padStart(2, '0')}:${String(nowGlobalSecretariaPdf.getMinutes()).padStart(2, '0')}:${String(nowGlobalSecretariaPdf.getSeconds()).padStart(2, '0')}`;
 
     try {
         const pdfDocLib = await PDFDocument.create();
@@ -4670,9 +4783,32 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             currentY -= rowHeight;
         }
 
-        const pdfBytes = await pdfDocLib.save();
+        // START NEW FOOTER LOGIC (SINGLE FINAL LOOP)
+        const totalPagesFinalSecretaria = pdfDocLib.getPageCount();
+        const pagesFinalSecretaria = pdfDocLib.getPages();
+        const footerFontSizeFinalSecretaria = 8;
+        // robotoFont is already defined in this endpoint's scope
+
+        for (let i = 0; i < totalPagesFinalSecretaria; i++) {
+            const currentPageInstance = pagesFinalSecretaria[i];
+            const { width: pageWidth, height: pageHeight } = currentPageInstance.getSize();
+            const currentPageNumber = i + 1;
+            drawPageFooterElements(
+                currentPageInstance,
+                currentPageNumber,
+                totalPagesFinalSecretaria.toString(),
+                robotoFont, // Pass the existing robotoFont
+                footerFontSizeFinalSecretaria,
+                pageWidth,
+                pageHeight,
+                globalDateTimeStrSecretariaPdf // Use the globally generated date/time string
+            );
+        }
+        // END NEW FOOTER LOGIC
+
+        const finalPdfBytes = await pdfDocLib.save(); // Single save call after all drawing ops
         res.contentType('application/pdf');
-        res.send(Buffer.from(pdfBytes));
+        res.send(Buffer.from(finalPdfBytes));
 
     } catch (error) {
         console.error("Error en GET /api/secretaria/informe_general_pdf:", error.message, error.stack);
