@@ -10,6 +10,8 @@ const JSZip = require('jszip');
 const multer = require('multer');
 const Papa = require('papaparse');
 const axios = require('axios'); // Added axios
+const chardet = require('chardet');
+const iconvLite = require('iconv-lite');
 
 const fs = require('fs'); 
 const { PDFDocument, StandardFonts, rgb, PageSizes } = require('pdf-lib');
@@ -1226,11 +1228,14 @@ app.get('/api/alumnos', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
-    const { clase_id, csv_data } = req.body;
+app.post('/api/alumnos/importar_csv', authenticateToken, upload.single('csvFile'), async (req, res) => {
+    const { clase_id } = req.body; // clase_id from FormData
     
-    if (!clase_id || !csv_data) {
-        return res.status(400).json({ error: "Se requiere clase_id y csv_data." });
+    if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ error: "No se ha subido ningún archivo CSV (csvFile)." });
+    }
+    if (!clase_id) {
+        return res.status(400).json({ error: "Se requiere clase_id." });
     }
 
     const idClaseNum = parseInt(clase_id);
@@ -1238,6 +1243,7 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: "clase_id inválido." });
     }
 
+    // Authorization checks
     if (req.user.rol === 'TUTOR') {
         if (!req.user.claseId || req.user.claseId !== idClaseNum) {
             return res.status(403).json({ error: "Tutor solo puede importar alumnos a su clase asignada." });
@@ -1261,7 +1267,27 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
         return res.status(500).json({ error: "Error verificando la clase: " + e.message });
     }
 
-    const lineas = csv_data.split(/\r\n|\n/);
+    let csvString;
+    const fileBuffer = req.file.buffer;
+    try {
+        const detectedEncoding = chardet.detect(fileBuffer);
+        console.log(`[CSV Import] Detected encoding: ${detectedEncoding}`);
+        if (detectedEncoding && !detectedEncoding.toLowerCase().startsWith('utf-8') && iconvLite.encodingExists(detectedEncoding)) {
+            csvString = iconvLite.decode(fileBuffer, detectedEncoding);
+            console.log(`[CSV Import] Decoded from ${detectedEncoding} to UTF-8 string.`);
+        } else {
+            csvString = fileBuffer.toString('utf8'); // Fallback to UTF-8
+             if (!detectedEncoding || detectedEncoding.toLowerCase().startsWith('utf-8')) {
+                console.log("[CSV Import] Decoded as UTF-8 (either detected or fallback).");
+            } else {
+                console.warn(`[CSV Import] Fallback to UTF-8 decoding, but chardet detected ${detectedEncoding} which iconv-lite might not support or was deemed unreliable.`);
+            }
+        }
+    } catch (encError) {
+        console.error("[CSV Import] Error during encoding detection/conversion:", encError);
+        return res.status(400).json({ error: "Error al procesar la codificación del archivo CSV. Asegúrese de que sea UTF-8 o un formato ANSI común." });
+    }
+
     let alumnosImportados = 0;
     let alumnosOmitidos = 0;
     let erroresEnLineas = [];
@@ -1269,63 +1295,80 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
 
     function limpiarComillasEnvolventes(textoStr) {
         let texto = String(textoStr).trim();
+        // PapaParse should handle this, but keeping it as per original instruction for now.
         if (texto.length >= 2 && texto.startsWith('"') && texto.endsWith('"')) {
             texto = texto.substring(1, texto.length - 1).replace(/""/g, '"');
         }
         return texto;
     }
 
-    for (let i = 0; i < lineas.length; i++) {
-        const lineaOriginal = lineas[i];
-        let lineaParaProcesar = lineaOriginal.trim();
-        if (lineaParaProcesar === '') continue;
-
-        let contenidoCampo = limpiarComillasEnvolventes(lineaParaProcesar);
-
-        if (i === 0 && (contenidoCampo.toLowerCase().includes('alumno') || contenidoCampo.toLowerCase().includes('apellido'))) {
-            continue; 
-        }
-
-        let apellidos = "";
-        let nombre = "";
-        const indiceUltimaComa = contenidoCampo.lastIndexOf(',');
-        
-        if (indiceUltimaComa > 0 && indiceUltimaComa < contenidoCampo.length - 1) {
-            apellidos = contenidoCampo.substring(0, indiceUltimaComa).trim();
-            nombre = contenidoCampo.substring(indiceUltimaComa + 1).trim();
-        } else {
-            if (contenidoCampo) {
-                erroresEnLineas.push({ linea: i + 1, dato: contenidoCampo, error: "Formato incorrecto (se esperaba 'Apellidos, Nombre')" });
-            }
-            continue; 
-        }
-
-        if (nombre && apellidos) {
-            const nombreCompletoFinal = `${nombre} ${apellidos}`; 
-            const apellidosOrden = apellidos; 
-            promesasDeInsercion.push(
-                dbGetAsync("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombreCompletoFinal.toLowerCase(), idClaseNum])
-                .then(alumnoExistente => {
-                    if (alumnoExistente) {
-                        alumnosOmitidos++;
-                    } else {
-                        return dbRunAsync("INSERT INTO alumnos (nombre_completo, apellidos_para_ordenar, clase_id) VALUES (?, ?, ?)", [nombreCompletoFinal, apellidosOrden, idClaseNum])
-                            .then(() => {
-                                alumnosImportados++;
-                            });
-                    }
-                })
-                .catch(errIns => {
-                    console.error(`Error procesando alumno ${nombreCompletoFinal} en importación CSV: ${errIns.message}`);
-                    erroresEnLineas.push({ linea: i + 1, dato: contenidoCampo, error: errIns.message });
-                })
-            );
-        } else {
-            erroresEnLineas.push({ linea: i + 1, dato: contenidoCampo, error: "Nombre o apellidos vacíos tras procesar." });
-        }
-    }
-
     try {
+        const parseResult = Papa.parse(csvString, { skipEmptyLines: true });
+        const lineas = parseResult.data;
+
+        for (let i = 0; i < lineas.length; i++) {
+            const rowArray = lineas[i];
+            if (rowArray.length === 0 || (rowArray.length === 1 && String(rowArray[0]).trim() === '')) {
+                continue; // Skip truly empty or effectively empty lines
+            }
+
+            // Header check
+            if (i === 0 && rowArray.length > 0 &&
+                (String(rowArray[0]).toLowerCase().includes('alumno') ||
+                 String(rowArray[0]).toLowerCase().includes('apellido') ||
+                 String(rowArray[0]).toLowerCase().includes('apellidos')
+                )
+            ) {
+                console.log("[CSV Import] Header row detected and skipped:", rowArray.join(','));
+                continue; // Skip header row
+            }
+
+            let apellidos = "";
+            let nombre = "";
+
+            if (rowArray.length === 1) { // Single column format: "Apellidos, Nombre"
+                const singleField = String(rowArray[0]).trim();
+                const indiceUltimaComa = singleField.lastIndexOf(',');
+                if (indiceUltimaComa > 0 && indiceUltimaComa < singleField.length - 1) {
+                    apellidos = limpiarComillasEnvolventes(singleField.substring(0, indiceUltimaComa));
+                    nombre = limpiarComillasEnvolventes(singleField.substring(indiceUltimaComa + 1));
+                } else {
+                    erroresEnLineas.push({ linea: i + 1, dato: singleField, error: "Formato incorrecto (se esperaba 'Apellidos, Nombre' en una columna)" });
+                    continue;
+                }
+            } else if (rowArray.length >= 2) { // Two column format: Apellidos, Nombre
+                apellidos = limpiarComillasEnvolventes(rowArray[0]);
+                nombre = limpiarComillasEnvolventes(rowArray[1]);
+            } else {
+                erroresEnLineas.push({ linea: i + 1, dato: rowArray.join(','), error: "Formato de línea no reconocido (ni una ni dos columnas con datos)" });
+                continue;
+            }
+
+            if (nombre && apellidos) {
+                const nombreCompletoFinal = `${nombre} ${apellidos}`;
+                const apellidosOrden = apellidos;
+                promesasDeInsercion.push(
+                    dbGetAsync("SELECT id FROM alumnos WHERE lower(nombre_completo) = lower(?) AND clase_id = ?", [nombreCompletoFinal.toLowerCase(), idClaseNum])
+                    .then(alumnoExistente => {
+                        if (alumnoExistente) {
+                            alumnosOmitidos++;
+                        } else {
+                            return dbRunAsync("INSERT INTO alumnos (nombre_completo, apellidos_para_ordenar, clase_id) VALUES (?, ?, ?)", [nombreCompletoFinal, apellidosOrden, idClaseNum])
+                                .then(() => {
+                                    alumnosImportados++;
+                                });
+                        }
+                    })
+                    .catch(errIns => {
+                        console.error(`Error procesando alumno ${nombreCompletoFinal} en importación CSV: ${errIns.message}`);
+                        erroresEnLineas.push({ linea: i + 1, dato: rowArray.join(','), error: errIns.message });
+                    })
+                );
+            } else {
+                erroresEnLineas.push({ linea: i + 1, dato: rowArray.join(','), error: "Nombre o apellidos vacíos tras procesar." });
+            }
+        }
+
         await Promise.all(promesasDeInsercion);
         res.json({
             message: "Proceso de importación CSV completado.",
@@ -1334,9 +1377,10 @@ app.post('/api/alumnos/importar_csv', authenticateToken, async (req, res) => {
             lineas_con_error: erroresEnLineas.length,
             detalles_errores: erroresEnLineas
         });
-    } catch (errorGeneral) {
-        console.error("Error general durante el proceso de importación CSV:", errorGeneral);
-        res.status(500).json({ error: "Error interno durante la importación masiva." });
+
+    } catch (parseError) {
+        console.error("[CSV Import] Error parsing CSV string with PapaParse:", parseError);
+        res.status(400).json({ error: "Error al parsear el contenido del archivo CSV.", detalles: parseError.message });
     }
 });
 

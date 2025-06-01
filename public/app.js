@@ -190,14 +190,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function apiFetch(endpoint, method = 'GET', body = null, token = currentToken) {
         const url = `${API_BASE_URL}${endpoint}`;
-        const headers = { 'Content-Type': 'application/json' };
+    const headers = {}; // Initialize headers object
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
         const options = { method, headers };
         if (body && (method === 'POST' || method === 'PUT')) {
-            options.body = JSON.stringify(body);
+            if (body instanceof FormData) {
+                options.body = body;
+                // 'Content-Type' for FormData is set automatically by the browser
+            } else {
+                options.body = JSON.stringify(body);
+                headers['Content-Type'] = 'application/json'; // Set Content-Type for JSON
+            }
         }
         
         try {
@@ -1007,9 +1013,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const file = fileInput.files[0];
         const reader = new FileReader();
         reader.onload = async function(e) {
-            const csv_data = e.target.result;
+            // e.target.result will be an ArrayBuffer
+            const arrayBuffer = e.target.result;
+
+            const formData = new FormData();
+            formData.append('clase_id', clase_id_para_api);
+            // Append the file itself (which contains the ArrayBuffer).
+            // The backend (e.g., using multer) will handle reading the ArrayBuffer from the file.
+            formData.append('csvFile', file);
+
             try {
-                const resultado = await apiFetch('/alumnos/importar_csv', 'POST', { clase_id: clase_id_para_api, csv_data });
+                // Send FormData directly. apiFetch will handle not setting Content-Type.
+                const resultado = await apiFetch('/alumnos/importar_csv', 'POST', formData);
                 let mensaje = `<p><strong>Resultado:</strong> ${resultado.message || 'Completado.'}</p><ul>`;
                 if (resultado.importados !== undefined) mensaje += `<li>Importados: ${resultado.importados}</li>`;
                 if (resultado.omitidos_duplicados !== undefined) mensaje += `<li>Omitidos (duplicados): ${resultado.omitidos_duplicados}</li>`;
@@ -1029,7 +1044,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         reader.onerror = () => { statusDiv.innerHTML = '<p class="error-message">Error leyendo archivo.</p>'; };
-        reader.readAsText(file, "UTF-8");
+        reader.readAsArrayBuffer(file); // Changed from readAsText
     }
     async function loadAlumnos(claseIdFiltroExterno = null, nombreClaseFiltroExterno = null) {
         if (!alumnosContentDiv || !currentToken) return;
