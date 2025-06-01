@@ -277,6 +277,10 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
         });
         currentX += columnWidths[index];
     });
+    // ADD LOGS START
+    console.log(`[PDF Gen Debug - drawTable Post-Header] currentY before decrement: ${currentY}, rowHeight: ${rowHeight}`);
+    if (isNaN(currentY)) { console.error('[PDF Gen Debug - drawTable Post-Header] CRITICAL: currentY IS NaN before decrementing after headers!'); }
+    // ADD LOGS END
     currentY -= rowHeight;
     page.drawLine({
         start: { x: xStart, y: currentY },
@@ -286,6 +290,10 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
     });
 
     for (const row of data) { // Changed to for...of for potential async operations within loop if needed
+        // ADD LOGS START
+        console.log(`[PDF Gen Debug - drawTable Row Loop Start] Processing row. currentY: ${currentY}`);
+        if (isNaN(currentY)) { console.error('[PDF Gen Debug - drawTable Row Loop Start] CRITICAL: currentY IS NaN at start of row processing!'); }
+        // ADD LOGS END
         if (currentY - rowHeight < pageBottomMargin) { 
              page = pdfDoc.addPage(PageSizes.A4);
              const { width: newPageWidth } = page.getSize(); // Get width from new page
@@ -324,6 +332,10 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
 
         currentX = xStart;
         columns.forEach((col, index) => {
+            // ADD LOGS START
+            console.log(`[PDF Gen Debug - drawTable Cell Loop Start] Processing cell for column "${col.key}". currentY: ${currentY}`);
+            if (isNaN(currentY)) { console.error(`[PDF Gen Debug - drawTable Cell Loop Start] CRITICAL: currentY IS NaN at start of cell processing for column "${col.key}"!`); }
+            // ADD LOGS END
             let text = String(row[col.key] !== null && row[col.key] !== undefined ? row[col.key] : '');
             if (col.key === 'cantidad_pagada' && typeof row[col.key] === 'number') {
                 text = row[col.key].toFixed(2);
@@ -352,6 +364,10 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
             });
             currentX += columnWidths[index];
         });
+        // ADD LOGS START
+        console.log(`[PDF Gen Debug - drawTable Post-Row] currentY before decrement: ${currentY}, rowHeight: ${rowHeight}`);
+        if (isNaN(currentY)) { console.error('[PDF Gen Debug - drawTable Post-Row] CRITICAL: currentY IS NaN before decrementing after a row!'); }
+        // ADD LOGS END
         currentY -= rowHeight;
         page.drawLine({
             start: { x: xStart, y: currentY },
