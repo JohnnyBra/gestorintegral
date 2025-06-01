@@ -3995,6 +3995,10 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
         // Fetch Overall Financial Summary
         const financialSummary = await getFinancialDetailsForExcursion(excursion_id, excursionDetails);
 
+        const asistentesQuery = "SELECT COUNT(DISTINCT alumno_id) as count FROM participaciones_excursion WHERE excursion_id = ? AND asistencia = 'Sí'";
+        const asistentesResult = await dbGetAsync(asistentesQuery, [excursion_id]);
+        const numeroAlumnosAsistentes = asistentesResult ? asistentesResult.count : 0;
+
         // Fetch Student Participation Data
         const participacionesSql = `
             SELECT
@@ -4007,7 +4011,7 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
             FROM participaciones_excursion pe
             JOIN alumnos a ON pe.alumno_id = a.id
             JOIN clases c ON a.clase_id = c.id
-            WHERE pe.excursion_id = ?
+            WHERE pe.excursion_id = ? AND (pe.cantidad_pagada > 0 OR pe.pago_realizado != 'No')
             ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo;
         `;
         const participacionesData = await dbAllAsync(participacionesSql, [excursion_id]);
@@ -4072,6 +4076,14 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
         const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
         const pageSetup = { width, height, xMargin, yMargin: yPageMargin, bottomMargin: pageBottomMargin };
 
+        if (logoObject.image && logoObject.dims.width > 0 && logoObject.dims.height > 0) {
+            page.drawImage(logoObject.image, {
+                x: logoObject.x,
+                y: logoObject.yTop,
+                width: logoObject.dims.width,
+                height: logoObject.dims.height,
+            });
+        }
         let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0);
 
         const _ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
@@ -4105,12 +4117,15 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
         currentY -= (pdfStyles.sectionTitle.size + 20);
 
         // Overall Financial Summary Section
-        currentY = _ensurePageSpace(currentY, (pdfStyles.fieldLabel.size + 5) * 6, true);
+        currentY = _ensurePageSpace(currentY, (pdfStyles.fieldLabel.size + 5) * 7, true); // Adjusted multiplier for one new line
         page.drawText(`Total Dinero Recaudado: ${financialSummary.total_dinero_recaudado.toFixed(2)}€`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
         currentY -= (pdfStyles.fieldValue.size + 5);
 
         const totalAlumnosQueHanPagado = participacionesData.filter(p => p.pago_realizado === 'Sí' || p.pago_realizado === 'Parcial').length;
         page.drawText(`Total Alumnos que Han Pagado: ${totalAlumnosQueHanPagado}`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+        currentY -= (pdfStyles.fieldValue.size + 5);
+
+        page.drawText(`Total Niños Participantes (Asistencia 'Sí'): ${numeroAlumnosAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
         currentY -= (pdfStyles.fieldValue.size + 5);
 
         page.drawText(`Coste Total Autobuses: ${financialSummary.coste_total_autobuses.toFixed(2)}€`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
