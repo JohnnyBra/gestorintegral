@@ -4070,7 +4070,7 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
         };
 
         const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
-        const pageSetup = { width, height, xMargin, yMargin, bottomMargin: pageBottomMargin };
+        const pageSetup = { width, height, xMargin, yMargin: yPageMargin, bottomMargin: pageBottomMargin };
 
         let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0);
 
