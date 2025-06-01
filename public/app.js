@@ -364,13 +364,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 navigateTo('login');
             }
 
-            if (sidebarToggle && sidebar) {
-                const isMobileView = getComputedStyle(sidebarToggle).display !== 'none';
-                if (isMobileView && sidebar.classList.contains('open')) {
-                    sidebar.classList.remove('open');
-                    document.body.classList.remove('body-sidebar-open');
-                }
+            // Existing mobile sidebar closing logic
+            const isMobileView = window.innerWidth <= 768;
+            if (isMobileView && sidebar && sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+                document.body.classList.remove('body-sidebar-open');
             }
+            // No need to explicitly close desktop sidebar on nav link click,
+            // as it's not an overlay. If desired, similar logic could be added.
         });
     });
 
@@ -2777,11 +2778,22 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
 
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebar = document.querySelector('.sidebar');
+    const mainPanel = document.querySelector('.main-panel'); // Added mainPanel
 
     if (sidebarToggle && sidebar) {
         sidebarToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('open');
-            document.body.classList.toggle('body-sidebar-open');
+            const isMobileView = window.innerWidth <= 768;
+
+            if (isMobileView) {
+                sidebar.classList.toggle('open'); // Mobile uses 'open' for transform
+                document.body.classList.toggle('body-sidebar-open'); // Mobile uses this to prevent body scroll
+            } else {
+                // Desktop toggles classes for sidebar and main-panel
+                sidebar.classList.toggle('sidebar-desktop-collapsed');
+                if (mainPanel) { // Check if mainPanel exists
+                    mainPanel.classList.toggle('main-panel-sidebar-collapsed');
+                }
+            }
         });
     }
 
