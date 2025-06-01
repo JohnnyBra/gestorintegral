@@ -234,19 +234,6 @@ async function recordsToCsv(records, columns) {
 
 // Helper function to draw tables with pdf-lib (re-adding)
 async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50, logoDetails = null, pageSetup = null) {
-    // ADD LOGS START
-    console.log(`[PDF Gen Debug - drawTable] Entered drawTable. startY: ${startY}`);
-    if (pageSetup) {
-        console.log(`[PDF Gen Debug - drawTable] pageSetup: height=${pageSetup.height}, yMargin=${pageSetup.yMargin}, bottomMargin=${pageSetup.bottomMargin}`);
-    } else {
-        console.log('[PDF Gen Debug - drawTable] pageSetup is null/undefined.');
-    }
-    if (logoDetails) {
-        console.log(`[PDF Gen Debug - drawTable] logoDetails: image exists=${!!logoDetails.image}, dims.height=${logoDetails.dims?.height}, paddingBelow=${logoDetails.paddingBelow}`);
-    } else {
-        console.log('[PDF Gen Debug - drawTable] logoDetails is null/undefined.');
-    }
-    // ADD LOGS END
     let currentY = startY;
     // const { width, height } = page.getSize(); // Use pageSetup.height if available
     const pageHeight = pageSetup ? pageSetup.height : page.getSize().height;
@@ -264,23 +251,15 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
 
     let currentX = xStart;
     columns.forEach((col, index) => {
-        // ADD LOGS START
-        const headerY = currentY - (rowHeight / 2) - (sizes.header / 3.5);
-        console.log(`[PDF Gen Debug - drawTable Header] Drawing header "${col.header}". currentY: ${currentY}, calculated headerY: ${headerY}`);
-        // ADD LOGS END
         page.drawText(col.header, {
             x: currentX + 2,
-            y: headerY, // Use logged variable
+            y: currentY - (rowHeight / 2) - (sizes.header / 3.5),
             font: headerStyle.font,
             size: headerStyle.size,
             color: headerStyle.color
         });
         currentX += columnWidths[index];
     });
-    // ADD LOGS START
-    console.log(`[PDF Gen Debug - drawTable Post-Header] currentY before decrement: ${currentY}, rowHeight: ${rowHeight}`);
-    if (isNaN(currentY)) { console.error('[PDF Gen Debug - drawTable Post-Header] CRITICAL: currentY IS NaN before decrementing after headers!'); }
-    // ADD LOGS END
     currentY -= rowHeight;
     page.drawLine({
         start: { x: xStart, y: currentY },
@@ -290,23 +269,12 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
     });
 
     for (const row of data) { // Changed to for...of for potential async operations within loop if needed
-        // ADD LOGS START
-        console.log(`[PDF Gen Debug - drawTable Row Loop Start] Processing row. currentY: ${currentY}`);
-        if (isNaN(currentY)) { console.error('[PDF Gen Debug - drawTable Row Loop Start] CRITICAL: currentY IS NaN at start of row processing!'); }
-        // ADD LOGS END
         if (currentY - rowHeight < pageBottomMargin) { 
              page = pdfDoc.addPage(PageSizes.A4);
              const { width: newPageWidth } = page.getSize(); // Get width from new page
              const pageHeight = pageSetup ? pageSetup.height : page.getSize().height; // Already here
              const yPageMargin = pageSetup ? pageSetup.yMargin : 40; // Already here
 
-             // ADD LOGS START
-             console.log('[PDF Gen Debug - drawTable New Page] Creating new page inside drawTable.');
-             console.log(`[PDF Gen Debug - drawTable New Page] pageHeight: ${pageHeight}, yPageMargin: ${yPageMargin}`);
-             if (logoDetails && logoDetails.image) {
-                 console.log(`[PDF Gen Debug - drawTable New Page] logoDetails.dims.height: ${logoDetails.dims.height}, logoDetails.paddingBelow: ${logoDetails.paddingBelow}`);
-             }
-             // ADD LOGS END
              if (logoDetails && logoDetails.image) {
                 page.drawImage(logoDetails.image, {
                     x: newPageWidth - (pageSetup && pageSetup.xMargin ? pageSetup.xMargin : 40) - logoDetails.dims.width, // Adjusted for new page width
@@ -318,7 +286,6 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
              } else {
                 currentY = pageHeight - yPageMargin; 
              }
-             console.log(`[PDF Gen Debug - drawTable New Page] Recalculated currentY: ${currentY}`); // Log after calculation
              // Re-draw headers on new page
              let newPageX = xStart;
              page.drawLine({ start: { x: xStart, y: currentY }, end: { x: tableEndX, y: currentY }, thickness: 0.7, color: headerStyle.color || rgb(0,0,0) });
@@ -332,10 +299,6 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
 
         currentX = xStart;
         columns.forEach((col, index) => {
-            // ADD LOGS START
-            console.log(`[PDF Gen Debug - drawTable Cell Loop Start] Processing cell for column "${col.key}". currentY: ${currentY}`);
-            if (isNaN(currentY)) { console.error(`[PDF Gen Debug - drawTable Cell Loop Start] CRITICAL: currentY IS NaN at start of cell processing for column "${col.key}"!`); }
-            // ADD LOGS END
             let text = String(row[col.key] !== null && row[col.key] !== undefined ? row[col.key] : '');
             if (col.key === 'cantidad_pagada' && typeof row[col.key] === 'number') {
                 text = row[col.key].toFixed(2);
@@ -351,23 +314,15 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
                  textX = currentX + cellPadding;
             }
 
-            // ADD LOGS START
-            const cellY = currentY - (rowHeight / 2) - (sizes.cell / 3.5);
-            console.log(`[PDF Gen Debug - drawTable Cell] Drawing cell text "${text}" for column "${col.key}". currentY: ${currentY}, calculated cellY: ${cellY}`);
-            // ADD LOGS END
             page.drawText(text, {
                 x: textX,
-                y: cellY, // Use logged variable
+                y: currentY - (rowHeight / 2) - (sizes.cell / 3.5),
                 font: cellStyle.font,
                 size: cellStyle.size,
                 color: cellStyle.color
             });
             currentX += columnWidths[index];
         });
-        // ADD LOGS START
-        console.log(`[PDF Gen Debug - drawTable Post-Row] currentY before decrement: ${currentY}, rowHeight: ${rowHeight}`);
-        if (isNaN(currentY)) { console.error('[PDF Gen Debug - drawTable Post-Row] CRITICAL: currentY IS NaN before decrementing after a row!'); }
-        // ADD LOGS END
         currentY -= rowHeight;
         page.drawLine({
             start: { x: xStart, y: currentY },
@@ -4257,10 +4212,6 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
 
         let page = pdfDocLib.addPage(PageSizes.A4);
         const { width, height } = page.getSize();
-        // ADD LOGS START
-        console.log('[PDF Gen Debug] Initial PageSize A4:', JSON.stringify(PageSizes.A4));
-        console.log(`[PDF Gen Debug] Initial page dimensions: width = ${width}, height = ${height}`);
-        // ADD LOGS END
         const yPageMargin = 40; 
         const xMargin = 40;
         const pageBottomMargin = 40;
@@ -4295,12 +4246,6 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             let localCurrentY = currentYVal;
             if (localCurrentY - neededSpace < pageSetup.bottomMargin || (isNewSection && localCurrentY - neededSpace < (pageSetup.bottomMargin + 40))) {
                 page = pdfDocLib.addPage(PageSizes.A4);
-                // ADD LOGS START
-                console.log(`[PDF Gen Debug - ensurePageSpace] Recalculating currentY. Initial currentYVal: ${currentYVal}`);
-                console.log(`[PDF Gen Debug - ensurePageSpace] pageSetup.height: ${pageSetup.height}, pageSetup.yMargin: ${pageSetup.yMargin}`);
-                console.log(`[PDF Gen Debug - ensurePageSpace] logoObject.image exists: ${!!logoObject.image}`);
-                console.log(`[PDF Gen Debug - ensurePageSpace] logoObject.dims.height: ${logoObject.dims.height}, logoObject.paddingBelow: ${logoObject.paddingBelow}`);
-                // ADD LOGS END
                 if (logoObject.image) {
                     page.drawImage(logoObject.image, {
                         x: width - xMargin - logoObject.dims.width,
@@ -4310,7 +4255,6 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
                     });
                 }
                 localCurrentY = pageSetup.height - pageSetup.yMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
-                console.log(`[PDF Gen Debug - ensurePageSpace] Recalculated localCurrentY: ${localCurrentY}`); // Log after calculation
             }
             return localCurrentY;
         };
@@ -4353,10 +4297,24 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
 
         if (excursionFinancialData.length > 0) {
             currentY = ensurePageSpace(currentY, rowHeight * (excursionFinancialData.length +1));
-            currentY = await drawTable(pdfDocLib, page, currentY, excursionFinancialData, columnsExcursiones, 
-                                       { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, 
-                                       columnWidthsExcursiones, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin,
-                                       logoObject, pageSetup);
+            const tableResultExcursiones = await drawTable(
+                pdfDocLib,
+                page,
+                currentY,
+                excursionFinancialData,
+                columnsExcursiones,
+                { normal: robotoFont, bold: robotoBoldFont }, // Ensure robotoFont is used, not pdfStyles.tableCell.font etc directly here
+                { header: 10, cell: 9 },
+                columnWidthsExcursiones,
+                rowHeight,
+                pdfStyles.tableHeader,
+                pdfStyles.tableCell,
+                xMargin,
+                logoObject,
+                pageSetup
+            );
+            currentY = tableResultExcursiones.currentY;
+            page = tableResultExcursiones.page;
         } else {
             currentY = ensurePageSpace(currentY, rowHeight);
             page.drawText('No hay datos financieros de excursiones disponibles.', { x: xMargin, y: currentY, ...pdfStyles.text });
@@ -4365,29 +4323,8 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         currentY -= 20; // Space after section
 
         // Section 2: Listado de Tutores
-        // MODIFICATION START for hyper-focused logging
-        const currentYBeforeEnsureSpaceForListadoTutores = currentY;
-        let yValueForListadoTutoresTitle = ensurePageSpace(currentYBeforeEnsureSpaceForListadoTutores, pdfStyles.sectionTitle.size + rowHeight * 2, true);
-
-        console.log(`[PDF Gen Debug - Pre-ListadoTutoresTitle] currentY passed to ensurePageSpace: ${currentYBeforeEnsureSpaceForListadoTutores}`);
-        console.log(`[PDF Gen Debug - Pre-ListadoTutoresTitle] yValue returned from ensurePageSpace: ${yValueForListadoTutoresTitle}`);
-
-        if (isNaN(yValueForListadoTutoresTitle)) {
-            console.error(`[PDF Gen Debug - Pre-ListadoTutoresTitle] CRITICAL: yValueForListadoTutoresTitle IS NaN HERE!`);
-            // Forcing a crash with more context if it's NaN, to ensure it's noticed if logs are truncated
-            if (isNaN(currentYBeforeEnsureSpaceForListadoTutores)) {
-              console.error('[PDF Gen Debug - Pre-ListadoTutoresTitle] Input currentY to ensurePageSpace was ALSO NaN!');
-            }
-            // Re-log components of ensurePageSpace's internal calculation if it might have made a new page
-            // Note: pageSetup and logoObject are in scope from the outer function
-            console.log(`[PDF Gen Debug - Pre-ListadoTutoresTitle] For context - pageSetup.height: ${typeof pageSetup !== 'undefined' ? pageSetup.height : 'pageSetup undefined'}, pageSetup.yMargin: ${typeof pageSetup !== 'undefined' ? pageSetup.yMargin : 'pageSetup undefined'}`);
-            console.log(`[PDF Gen Debug - Pre-ListadoTutoresTitle] For context - logoObject.dims.height: ${typeof logoObject !== 'undefined' ? logoObject.dims.height : 'logoObject undefined'}, logoObject.paddingBelow: ${typeof logoObject !== 'undefined' ? logoObject.paddingBelow : 'logoObject undefined'}`);
-        }
-
-        currentY = yValueForListadoTutoresTitle;
-        // The failing line, as identified by user:
+        currentY = ensurePageSpace(currentY, pdfStyles.sectionTitle.size + rowHeight * 2, true);
         page.drawText('Listado de Tutores', { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
-        // MODIFICATION END
         currentY -= (pdfStyles.sectionTitle.size + 10);
         
         const tutoresDb = await dbAllAsync("SELECT id, nombre_completo, email FROM usuarios WHERE rol = 'TUTOR' ORDER BY nombre_completo ASC");
@@ -4412,10 +4349,24 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
 
         if (tutorListData.length > 0) {
             currentY = ensurePageSpace(currentY, rowHeight * (tutorListData.length +1));
-            currentY = await drawTable(pdfDocLib, page, currentY, tutorListData, columnsTutores,
-                                   { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 },
-                                   columnWidthsTutores, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin,
-                                   logoObject, pageSetup);
+            const tableResultTutores = await drawTable(
+                pdfDocLib,
+                page,
+                currentY,
+                tutorListData,
+                columnsTutores,
+                { normal: robotoFont, bold: robotoBoldFont }, // Ensure robotoFont is used
+                { header: 10, cell: 9 },
+                columnWidthsTutores,
+                rowHeight,
+                pdfStyles.tableHeader,
+                pdfStyles.tableCell,
+                xMargin,
+                logoObject,
+                pageSetup
+            );
+            currentY = tableResultTutores.currentY;
+            page = tableResultTutores.page;
         } else {
             currentY = ensurePageSpace(currentY, rowHeight);
             page.drawText('No hay tutores registrados.', { x: xMargin, y: currentY, ...pdfStyles.text });
