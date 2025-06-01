@@ -322,7 +322,7 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
             color: rgb(0.7, 0.7, 0.7)
         });
     }
-    return currentY;
+    return { currentY, page }; // Return both updated Y and potentially updated page object
 }
 
 // Helper function to draw label and value with basic wrapping for value (re-adding)
@@ -588,13 +588,15 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
 
         const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
 
-        const ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
+        const ensurePageSpace = (currentYVal, currentPage, neededSpace, isNewSection = false) => { // Added currentPage
             let localCurrentY = currentYVal;
+            let pageToUse = currentPage; // Use passed page
+
             if (localCurrentY - neededSpace < pageBottomMargin || (isNewSection && localCurrentY - neededSpace < (pageBottomMargin + 40))) { // More space for new section headers
-                page = pdfDocLib.addPage(PageSizes.A4);
-                const { width: newPageWidthEnsure } = page.getSize(); // Get width of the new page for ensurePageSpace
+                pageToUse = pdfDocLib.addPage(PageSizes.A4); // Assign to new variable
+                const { width: newPageWidthEnsure } = pageToUse.getSize(); // Get width of the new page for ensurePageSpace
                 if (logoObject.image) {
-                    page.drawImage(logoObject.image, {
+                    pageToUse.drawImage(logoObject.image, {
                         x: newPageWidthEnsure - xMargin - logoObject.dims.width, // Use new page's width and xMargin
                         y: logoObject.yTop,
                         width: logoObject.dims.width,
@@ -602,13 +604,13 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                     });
                 }
                 localCurrentY = height - yPageMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
-                // Caller might need to redraw section headers if isNewSection was true and new page created.
-                // This simple version just resets Y. A more complex one might return a flag.
             }
-            return localCurrentY;
+            return { newY: localCurrentY, newPage: pageToUse }; // Return new state
         };
         
-        currentY = ensurePageSpace(currentY, pdfStyles.mainTitle.size + pdfStyles.header.size * 2 + 40); // Estimate space for titles
+        let pageState = ensurePageSpace(currentY, page, pdfStyles.mainTitle.size + pdfStyles.header.size * 2 + 40); // Estimate space for titles
+        currentY = pageState.newY;
+        page = pageState.newPage;
 
         // Overall Title
         page.drawText('Listado de Asistencia y Justificantes', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
@@ -618,7 +620,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         page.drawText(`Fecha: ${new Date(excursion.fecha_excursion).toLocaleDateString('es-ES')}`, { x: xMargin, y: currentY, ...pdfStyles.header });
         currentY -= 25;
 
-        // Columns for the table of attending students
+        // Columns for the table
         const columnsParticipacion = [
             { header: 'Nombre Alumno', key: 'nombre_completo', alignment: 'left'},
             { header: 'Autorización', key: 'autorizacion_firmada', alignment: 'left'},
@@ -626,52 +628,68 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         ];
         const columnWidthsParticipacion = [contentWidth * 0.6, contentWidth * 0.2, contentWidth * 0.2];
 
-
         // Loop by Class
-        for (const nombreClase of Object.keys(alumnosPorClase).sort()) {
+        const sortedNombresClase = Object.keys(alumnosPorClase).sort();
+        for (const nombreClase of sortedNombresClase) {
             const claseData = alumnosPorClase[nombreClase];
-            // const alumnosAsistentesEnClase = claseData.alumnos.filter(a => a.autorizacion_firmada === 'Sí'); // No longer filtering here
-            const noAutorizadosEnClase = claseData.totalEnClase - claseData.autorizadosEnClase; // Renamed
-            const ausentesEnClase = claseData.totalEnClase - claseData.presentesEnClase; // Added
-
-            ensurePageSpace(rowHeight * 3, true); // Space for class header and summary
             
-            // Class Header
-            page.drawText(`Clase: ${claseData.nombre_clase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
-            currentY -= 20;
+            pageState = ensurePageSpace(currentY, page, pdfStyles.classHeader.size + 25, true);
+            currentY = pageState.newY;
+            page = pageState.newPage;
 
-            // Table of All Students in Class
+            page.drawText(`Clase: ${claseData.nombre_clase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
+            currentY -= (pdfStyles.classHeader.size + 10);
+
             if (claseData.alumnos.length > 0) {
-                ensurePageSpace(rowHeight * (claseData.alumnos.length + 1));
-                 currentY = await drawTable(pdfDocLib, page, currentY, claseData.alumnos, columnsParticipacion,
-                                           { normal: robotoFont, bold: robotoBoldFont }, // Fonts object
-                                           { header: 10, cell: 9 }, // Sizes object
-                                           columnWidthsParticipacion, rowHeight,
-                                           pdfStyles.tableHeader, pdfStyles.tableCell, xMargin,
-                                           logoObject, // logoDetails argument
-                                           pageSetup   // pageSetup argument
-                                           );
+                const tableDrawResult = await drawTable(
+                    pdfDocLib,
+                    page,
+                    currentY,
+                    claseData.alumnos,
+                    columnsParticipacion,
+                    { normal: robotoFont, bold: robotoBoldFont },
+                    { header: 10, cell: 9 },
+                    columnWidthsParticipacion,
+                    rowHeight,
+                    pdfStyles.tableHeader,
+                    pdfStyles.tableCell,
+                    xMargin,
+                    logoObject,
+                    pageSetup
+                );
+                currentY = tableDrawResult.currentY;
+                page = tableDrawResult.page;
             } else {
-                ensurePageSpace(rowHeight);
-                page.drawText('No hay alumnos en esta clase para la excursión.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+                pageState = ensurePageSpace(currentY, page, rowHeight);
+                currentY = pageState.newY;
+                page = pageState.newPage;
+                page.drawText('No hay alumnos registrados para esta excursión en esta clase.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });
                 currentY -= rowHeight;
             }
-            currentY -= 15;
+            currentY -= 10;
 
-            // Class Summary
-            ensurePageSpace(rowHeight * 4); // Adjusted for new line
-            page.drawText(`Total Alumnos en Clase: ${claseData.totalEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            // Per-Class Summary
+            pageState = ensurePageSpace(currentY, page, pdfStyles.subheader.size + (rowHeight * 4) + 10 );
+            currentY = pageState.newY;
+            page = pageState.newPage;
+            page.drawText(`Resumen para Clase ${claseData.nombre_clase}:`, { x: xMargin, y: currentY, ...pdfStyles.subheader });
+            currentY -= 18;
+            page.drawText(`- Total Alumnos en Clase: ${claseData.totalEnClase}`, { x: xMargin + 10, y: currentY, ...pdfStyles.summaryText });
             currentY -= 15;
-            page.drawText(`Total Autorizados (justificante 'Sí'): ${claseData.autorizadosEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            page.drawText(`- Total Autorizados (justificante 'Sí'): ${claseData.autorizadosEnClase}`, { x: xMargin + 10, y: currentY, ...pdfStyles.summaryText });
             currentY -= 15;
-            page.drawText(`Total Presentes (asistencia 'Sí'): ${claseData.presentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            page.drawText(`- Total Presentes (Asistencia 'Sí'): ${claseData.presentesEnClase}`, { x: xMargin + 10, y: currentY, ...pdfStyles.summaryText });
             currentY -= 15;
-            page.drawText(`Total Ausentes (asistencia 'No' o 'Pendiente'): ${ausentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
-            currentY -= 25; // Space before next class or overall summary
+            const ausentesEnClase = claseData.totalEnClase - claseData.presentesEnClase;
+            page.drawText(`- Total Ausentes (Asistencia 'No' o 'Pendiente'): ${ausentesEnClase}`, { x: xMargin + 10, y: currentY, ...pdfStyles.summaryText });
+            currentY -= 25;
         }
 
-        // Overall Summary
-        ensurePageSpace(rowHeight * 5, true); // Adjusted for new line
+        // Overall Summary (after loop)
+        pageState = ensurePageSpace(currentY, page, pdfStyles.header.size + (rowHeight * 4) + 20, true);
+        currentY = pageState.newY;
+        page = pageState.newPage;
+
         page.drawText('Resumen General de la Excursión', { x: xMargin, y: currentY, ...pdfStyles.header });
         currentY -= 20;
         page.drawText(`Total General Alumnos: ${totalGeneralAlumnos}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
