@@ -2778,23 +2778,21 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
 
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebar = document.querySelector('.sidebar');
+    const mainPanel = document.querySelector('.main-panel'); // Added mainPanel
 
     if (sidebarToggle && sidebar) {
         sidebarToggle.addEventListener('click', () => {
-            const isMobileView = window.innerWidth <= 768; // More direct check for mobile view
+            const isMobileView = window.innerWidth <= 768;
 
             if (isMobileView) {
                 sidebar.classList.toggle('open'); // Mobile uses 'open' for transform
                 document.body.classList.toggle('body-sidebar-open'); // Mobile uses this to prevent body scroll
             } else {
-                // Desktop toggles the new class for margin-left adjustment
+                // Desktop toggles classes for sidebar and main-panel
                 sidebar.classList.toggle('sidebar-desktop-collapsed');
-                // Optionally, if mainPanel needs direct style adjustment:
-                // if (sidebar.classList.contains('sidebar-desktop-collapsed')) {
-                //    mainPanel.style.marginLeft = '0';
-                // } else {
-                //    mainPanel.style.marginLeft = '230px'; // Assuming sidebar width is 230px
-                // }
+                if (mainPanel) { // Check if mainPanel exists
+                    mainPanel.classList.toggle('main-panel-sidebar-collapsed');
+                }
             }
         });
     }

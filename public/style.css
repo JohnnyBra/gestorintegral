@@ -26,13 +26,21 @@ body {
 .sidebar {
     width: 230px; /* Ancho del menú lateral */
     background-color: #36454F; /* Lighter and more modern dark slate gray */
-    transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out; /* Add transition */
     color: #ecf0f1; /* Texto claro para el sidebar */
     padding: 20px 0; /* Padding vertical, sin padding horizontal para que los links ocupen todo */
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     /* El sidebar (<aside>) siempre está presente, JS mostrará/ocultará el <nav> interno */
+
+    /* Desktop fixed positioning */
+    position: fixed;
+    height: 100vh;
+    top: 0;
+    left: 0;
+    overflow-y: auto; /* Scroll for sidebar content if taller than viewport */
+    z-index: 1000; /* Ensure it's above main-panel content, but below mobile overlay potentially */
+    transition: left 0.3s ease-in-out, width 0.3s ease-in-out; /* Transition for left property */
 }
 
 .sidebar .logo-container {
@@ -93,10 +101,16 @@ body {
 .main-panel {
     flex-grow: 1;
     display: flex;
-    transition: margin-left 0.3s ease-in-out; /* Add transition */
     flex-direction: column;
     background-color: #ecf0f1; /* Fondo claro para el contenido */
     overflow-x: hidden; /* Prevent main panel itself from overflowing if children misbehave */
+    margin-left: 230px; /* Default margin for when sidebar is visible on desktop */
+    transition: margin-left 0.3s ease-in-out; /* Add transition */
+}
+
+/* This class will be toggled by JS on .main-panel when sidebar is collapsed on desktop */
+.main-panel-sidebar-collapsed {
+    margin-left: 0;
 }
 
 header.main-header {
@@ -695,7 +709,7 @@ td input[type="number"].quick-edit { max-width: 70px; }
 
 /* New class for desktop collapsed state */
 .sidebar-desktop-collapsed {
-    margin-left: -230px !important; /* To slide it off-screen, !important to override fixed position issues if any */
+    left: -230px; /* To slide it off-screen using left property */
     /* Or alternatively:
     width: 0;
     padding-left: 0;
@@ -708,24 +722,31 @@ td input[type="number"].quick-edit { max-width: 70px; }
 @media (max-width: 768px) {
     /* Reset desktop collapse styles if they could interfere */
     .sidebar.sidebar-desktop-collapsed { /* Target sidebar if it has both classes */
-        margin-left: 0 !important; /* Ensure desktop margin doesn't interfere with transform */
+        /* For mobile, transform is used, ensure 'left' from desktop fixed doesn't break mobile's -100% transform start */
+        /* The existing margin-left: 0 !important was for when margin-left was used for desktop collapse.
+           With 'left' for desktop collapse, we need to ensure 'left' is reset for mobile if necessary.
+           However, mobile primarily uses 'transform'. Let's ensure 'left' is not -230px.
+        */
+        left: 0 !important; /* Override desktop collapsed 'left: -230px' for mobile view if class is present */
+        margin-left: 0 !important; /* Keep this as a safeguard */
+
     }
     /* .sidebar-toggle-button specific styles removed from here as it's globally styled now */
 
     .sidebar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        height: 100%;
-        z-index: 1000; /* Ensure sidebar is above other content */
+        /* Mobile specific overrides for .sidebar if desktop fixed styles interfere */
+        /* position: fixed; top: 0; height: 100%; z-index: 1000; are fine from desktop or already set for mobile */
+        left: 0; /* Explicitly set left to 0 for mobile initial state before transform */
         transform: translateX(-100%);
-        transition: transform 0.3s ease-in-out;
-        /* width: 230px; is already set and should be fine */
+        transition: transform 0.3s ease-in-out; /* Mobile uses transform for transitions */
+        overflow-y: auto; /* Or hidden, depending on original mobile design. 'auto' is likely fine. */
+        /* width: 230px; is already set */
         /* background-color: #36454F; is already set */
     }
 
     .sidebar.open {
         transform: translateX(0);
+        /* left: 0; is implied or can be set explicitly if needed */
     }
 
     /* Optional: Prevent body scroll when sidebar is open */
@@ -737,6 +758,14 @@ td input[type="number"].quick-edit { max-width: 70px; }
     body.body-sidebar-open .sidebar-toggle-button {
         color: #FFFFFF; /* White color for good contrast */
     }
+
+    .main-panel {
+        margin-left: 0 !important; /* Main panel should take full width on mobile */
+    }
+    .main-panel-sidebar-collapsed { /* Ensure this class also results in full width on mobile */
+        margin-left: 0 !important;
+    }
+
 
     /* Adjust header padding if toggle button takes space on the left */
     header.main-header {
