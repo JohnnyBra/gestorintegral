@@ -576,8 +576,15 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0); // 15 padding below logo
         const contentWidth = width - (2 * xMargin);
         const rowHeight = 18;
-        const pageBottomMargin = 40;
+        const pageBottomMargin = 40; // Already defined, ensure it's used in pageSetup
 
+        const pageSetup = { // Define pageSetup here
+            width: width,
+            height: height,
+            xMargin: xMargin,
+            yMargin: yPageMargin,
+            bottomMargin: pageBottomMargin
+        };
 
         const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
 
@@ -636,7 +643,14 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
             // Table of All Students in Class
             if (claseData.alumnos.length > 0) {
                 ensurePageSpace(rowHeight * (claseData.alumnos.length + 1));
-                 currentY = await drawTable(pdfDocLib, page, currentY, claseData.alumnos, columnsParticipacion, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsParticipacion, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin, logoObject, pageSetup);
+                 currentY = await drawTable(pdfDocLib, page, currentY, claseData.alumnos, columnsParticipacion,
+                                           { normal: robotoFont, bold: robotoBoldFont }, // Fonts object
+                                           { header: 10, cell: 9 }, // Sizes object
+                                           columnWidthsParticipacion, rowHeight,
+                                           pdfStyles.tableHeader, pdfStyles.tableCell, xMargin,
+                                           logoObject, // logoDetails argument
+                                           pageSetup   // pageSetup argument
+                                           );
             } else {
                 ensurePageSpace(rowHeight);
                 page.drawText('No hay alumnos en esta clase para la excursión.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });

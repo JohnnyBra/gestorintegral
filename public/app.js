@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentCalendarYear = new Date().getFullYear();
     let currentCalendarMonth = new Date().getMonth(); 
     let currentUser = null;
+    let currentParticipacionesDataArray = []; // Added global variable
     let currentToken = null;
 
     const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:3000/api`;
@@ -1859,6 +1860,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await apiFetch(endpoint);
+            currentParticipacionesDataArray = data.alumnosParticipaciones || []; // Populate global variable
             if (!data || !data.alumnosParticipaciones) {
                 container.innerHTML = `<tr><td colspan="11">Error cargando participaciones.</td></tr>`;
                 return;
@@ -1932,7 +1934,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Added wrapper div for table horizontal scrolling
-            let html = `<h4>Participantes: ${excursionNombre}</h4><div style="width: 100%; overflow-x: auto;"><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Asistencia</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th><th>Acciones</th></tr></thead><tbody>`;
+            let html = `<h4>Participantes: ${excursionNombre}</h4><div style="width: 100%; overflow-x: auto;"><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.alumnosParticipaciones.length > 0) {
                 data.alumnosParticipaciones.forEach(ap => {
                     const esCampoDeshabilitado = ap.autorizacion_firmada === 'Sí' && ap.fecha_autorizacion;
@@ -1943,24 +1945,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const excursionDate = new Date(excursionDetails.fecha_excursion);
                     const currentDate = new Date();
-                    currentDate.setHours(0,0,0,0); // Compare dates only
+                    currentDate.setHours(0,0,0,0);
                     excursionDate.setHours(0,0,0,0);
 
-                    let asistenciaHtml = '';
-                    const puedeModificarAsistencia = currentUser.rol === 'TUTOR' && currentDate >= excursionDate;
+                    const puedeModificarAsistenciaDirectamente = currentUser.rol === 'TUTOR' && currentDate >= excursionDate && ap.autorizacion_firmada === 'Sí';
 
-                    if (puedeModificarAsistencia) {
-                        asistenciaHtml = `<select class="participacion-field-edit" data-field="asistencia">
-                            <option value="Pendiente" ${ap.asistencia === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
-                            <option value="Sí" ${ap.asistencia === 'Sí' ? 'selected' : ''}>Sí</option>
-                            <option value="No" ${ap.asistencia === 'No' ? 'selected' : ''}>No</option>
-                        </select>`;
+                    let studentNameDisplayHtml = '';
+                    const iconHtml = ap.asistencia === 'Sí'
+                        ? `<i class="fas fa-check-circle" style="color: green; margin-right: 5px;"></i>`
+                        : `<i class="far fa-circle" style="color: #ccc; margin-right: 5px;"></i>`;
+
+                    if (puedeModificarAsistenciaDirectamente) {
+                        studentNameDisplayHtml = `<span class="attendance-toggle" data-alumno-id="${ap.alumno_id}" data-excursion-id="${excursionId}" style="cursor: pointer;" title="Clic para cambiar asistencia">${iconHtml}${ap.nombre_completo}</span>`;
                     } else {
-                        asistenciaHtml = ap.asistencia || 'Pendiente';
+                        studentNameDisplayHtml = `${iconHtml}${ap.nombre_completo}`;
                     }
 
-                    html += `<tr data-participacion-id="${ap.participacion_id || ''}" data-alumno-id="${ap.alumno_id}">
-                        <td>${ap.nombre_completo}</td><td>${ap.nombre_clase}</td><td>${asistenciaHtml}</td>
+                    html += `<tr data-participacion-id="${ap.participacion_id || ''}" data-alumno-id="${ap.alumno_id}" data-current-asistencia="${ap.asistencia || 'Pendiente'}">
+                        <td>${studentNameDisplayHtml}</td><td>${ap.nombre_clase}</td>
                         <td><select class="participacion-field-edit" data-field="autorizacion_firmada" ${esCampoDeshabilitado?'disabled':''}><option value="No" ${ap.autorizacion_firmada==='No'?'selected':''}>No</option><option value="Sí" ${ap.autorizacion_firmada==='Sí'?'selected':''}>Sí</option></select></td>
                         <td><input type="date" class="participacion-field-edit" data-field="fecha_autorizacion" value="${ap.fecha_autorizacion||''}" ${esCampoDeshabilitado?'disabled':''}></td>
                         <td><select class="participacion-field-edit" data-field="pago_realizado"><option value="No" ${ap.pago_realizado==='No'?'selected':''}>No</option><option value="Parcial" ${ap.pago_realizado==='Parcial'?'selected':''}>Parcial</option><option value="Sí" ${ap.pago_realizado==='Sí'?'selected':''}>Sí</option></select></td>
@@ -1975,40 +1977,132 @@ document.addEventListener('DOMContentLoaded', () => {
             container.innerHTML = html;
 
             // Event listener for editing fields
-            container.querySelectorAll('.participacion-field-edit').forEach(input => {
+            // Event listener for editing fields (excluding attendance-toggle handled by delegatedTableClickHandler)
+            container.querySelectorAll('.participacion-field-edit:not([data-field="asistencia"])').forEach(input => {
                 const eventType = (input.tagName === 'SELECT' || input.type === 'date') ? 'change' : 'blur';
                 input.addEventListener(eventType, (e) => {
-                    saveParticipacionOnFieldChange(e.target, excursionId);
+                     saveParticipacionOnFieldChange(e.target, excursionId);
                 });
             });
 
-            // Event delegation for delete buttons
-            container.addEventListener('click', async function(event) {
-                if (event.target.classList.contains('btn-eliminar-participacion') || event.target.closest('.btn-eliminar-participacion')) {
-                    const button = event.target.closest('.btn-eliminar-participacion');
+            // Event delegation for delete buttons AND attendance toggle
+            // Remove any old listener before adding a new one to prevent multiple executions
+            // Store the handler reference on the container to be able to remove it
+            if (container._delegatedClickHandler) {
+                container.removeEventListener('click', container._delegatedClickHandler);
+            }
+
+            container._delegatedClickHandler = async function(event) {
+                // `this` refers to `container`
+                const currentExcursionId = excursionId; // Capture excursionId from outer scope for this handler instance
+
+                // Handle attendance toggle
+                const attendanceToggleTarget = event.target.closest('.attendance-toggle');
+                if (attendanceToggleTarget) {
+                    await handleAttendanceToggleClick(event, currentExcursionId);
+                    return;
+                }
+
+                // Handle delete participation
+                const deleteButtonTarget = event.target.closest('.btn-eliminar-participacion');
+                if (deleteButtonTarget) {
+                    const button = deleteButtonTarget;
                     const participacionId = button.dataset.participacionId;
                     const alumnoNombre = button.dataset.alumnoNombre;
-                    const statusCell = button.closest('tr').querySelector('.status-message-cell');
+                    const trElement = button.closest('tr');
+                    const statusCell = trElement ? trElement.querySelector('.status-message-cell') : null;
 
                     if (confirm(`¿Está seguro de que desea eliminar la participación de ${alumnoNombre}? Esta acción no se puede deshacer.`)) {
-                        if(statusCell) showTemporaryStatusInCell(statusCell, "Eliminando...", false);
+                        if(statusCell) showTemporaryStatusInCell(statusCell, "Eliminando...", false, null);
                         try {
                             await apiFetch(`/participaciones/${participacionId}`, 'DELETE');
-                            showGlobalError(`Participación de ${alumnoNombre} eliminada exitosamente.`, document.getElementById('resumenParticipacionesContainer')); // Show global for better visibility
-                            renderTablaParticipaciones(excursionId, excursionNombre); // Refresh the table
+                            showGlobalError(`Participación de ${alumnoNombre} eliminada exitosamente.`, document.getElementById('resumenParticipacionesContainer'));
+
+                            const currentExcursionNombreElement = document.getElementById('selectExcursionParticipaciones').selectedOptions[0];
+                            const currentExcursionNombre = currentExcursionNombreElement ? currentExcursionNombreElement.text : "Excursión";
+                            // Ensure renderTablaParticipaciones uses the correct excursionId that was in scope for this handler
+                            renderTablaParticipaciones(currentExcursionId, currentExcursionNombre);
                         } catch (error) {
                             if(statusCell) showTemporaryStatusInCell(statusCell, `Error: ${error.message}`, true, 5000);
                             else showGlobalError(`Error al eliminar participación: ${error.message}`, document.getElementById('resumenParticipacionesContainer'));
                         }
                     }
                 }
-            });
+            };
+            container.addEventListener('click', container._delegatedClickHandler);
 
         } catch (error) {
             container.innerHTML = `<p class="error-message">Error cargando participaciones: ${error.message}</p>`;
             resumenContainer.innerHTML = '';
         }
     }
+
+    async function handleAttendanceToggleClick(event, excursionId) { // Added excursionId as parameter
+        const target = event.target.closest('.attendance-toggle');
+        // No need to check target again, already done by caller: delegatedTableClickHandler
+        // if (!target) return;
+
+        const alumnoId = target.dataset.alumnoId;
+        // excursionId is now passed as a parameter
+        const trElement = target.closest('tr');
+        const statusCell = trElement.querySelector('.status-message-cell');
+
+        const currentFullParticipation = currentParticipacionesDataArray.find(p => p.alumno_id.toString() === alumnoId);
+        if (!currentFullParticipation) {
+            if(statusCell) showTemporaryStatusInCell(statusCell, "Error: Datos del alumno no encontrados.", true);
+            return;
+        }
+
+        let newAsistenciaValue;
+        // Toggle logic: Sí -> No, No -> Pendiente, Pendiente -> Sí
+        if (currentFullParticipation.asistencia === 'Sí') {
+            newAsistenciaValue = 'No';
+        } else if (currentFullParticipation.asistencia === 'No') {
+            newAsistenciaValue = 'Pendiente';
+        } else { // Covers 'Pendiente' and any undefined/null cases
+            newAsistenciaValue = 'Sí';
+        }
+
+        const dataToSave = {
+            excursion_id: parseInt(excursionId), // Ensure excursionId is number
+            alumno_id: parseInt(alumnoId),       // Ensure alumnoId is number
+            autorizacion_firmada: currentFullParticipation.autorizacion_firmada,
+            fecha_autorizacion: currentFullParticipation.fecha_autorizacion,
+            pago_realizado: currentFullParticipation.pago_realizado,
+            cantidad_pagada: currentFullParticipation.cantidad_pagada,
+            fecha_pago: currentFullParticipation.fecha_pago,
+            notas_participacion: currentFullParticipation.notas_participacion,
+            asistencia: newAsistenciaValue
+        };
+
+        if(statusCell) showTemporaryStatusInCell(statusCell, "Guardando asistencia...", false, null);
+
+        try {
+            await apiFetch('/participaciones', 'POST', dataToSave);
+            if(statusCell) showTemporaryStatusInCell(statusCell, "Asistencia guardada.", false, 2000);
+
+            // Refresh table and summary
+            const currentExcursionIdFromSelect = document.getElementById('selectExcursionParticipaciones').value;
+            const currentExcursionNombreElement = document.getElementById('selectExcursionParticipaciones').selectedOptions[0];
+            const currentExcursionNombre = currentExcursionNombreElement ? currentExcursionNombreElement.text : "Excursión";
+
+            if (currentExcursionIdFromSelect && currentExcursionIdFromSelect === excursionId.toString()) { // Make sure we're refreshing the correct excursion
+                await renderTablaParticipaciones(currentExcursionIdFromSelect, currentExcursionNombre);
+                await updateParticipacionesSummary(currentExcursionIdFromSelect, currentExcursionNombre);
+            }
+
+        } catch (error) {
+            if(statusCell) showTemporaryStatusInCell(statusCell, `Error: ${error.message}`, true, 5000);
+        }
+    }
+
+    // Define a single handler for clicks on the table container
+    // This function will be attached once when renderTablaParticipaciones is called.
+    // It needs access to excursionId to pass to handleAttendanceToggleClick.
+    // We'll store excursionId on the container itself or pass it through.
+    // For simplicity, the event listener will be added in renderTablaParticipaciones,
+    // where excursionId is available.
+
     async function saveParticipacionOnFieldChange(changedElement, excursionId) {
         const fieldName = changedElement.dataset.field;
         const newValue = changedElement.value;
@@ -2017,6 +2111,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const alumnoId = trElement.dataset.alumnoId;
         const statusCell = trElement.querySelector('.status-message-cell');
         if(statusCell) statusCell.textContent = '';
+
+        // Fetch current asistencia from the globally available array or trElement's data attribute
+        const currentFullDataForStudent = currentParticipacionesDataArray.find(p => p.alumno_id.toString() === alumnoId.toString());
+        const currentAsistenciaValue = currentFullDataForStudent ? currentFullDataForStudent.asistencia : (trElement.dataset.currentAsistencia || 'Pendiente');
+
         const participacionData = {
             excursion_id: parseInt(excursionId),
             alumno_id: parseInt(alumnoId),
@@ -2026,8 +2125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cantidad_pagada: parseFloat(trElement.querySelector('[data-field="cantidad_pagada"]').value) || 0,
             fecha_pago: trElement.querySelector('[data-field="fecha_pago"]').value || null,
             notas_participacion: trElement.querySelector('[data-field="notas_participacion"]').value.trim() || null,
-            // Add asistencia here
-            asistencia: trElement.querySelector('[data-field="asistencia"]') ? trElement.querySelector('[data-field="asistencia"]').value : 'Pendiente'
+            asistencia: currentAsistenciaValue // Preserve existing asistencia
         };
 
         const isModalTriggerEvent = (fieldName === 'autorizacion_firmada' && newValue === 'Sí');
