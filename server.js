@@ -234,6 +234,19 @@ async function recordsToCsv(records, columns) {
 
 // Helper function to draw tables with pdf-lib (re-adding)
 async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, columnWidths, rowHeight, headerStyle, cellStyle, xStart = 50, logoDetails = null, pageSetup = null) {
+    // ADD LOGS START
+    console.log(`[PDF Gen Debug - drawTable] Entered drawTable. startY: ${startY}`);
+    if (pageSetup) {
+        console.log(`[PDF Gen Debug - drawTable] pageSetup: height=${pageSetup.height}, yMargin=${pageSetup.yMargin}, bottomMargin=${pageSetup.bottomMargin}`);
+    } else {
+        console.log('[PDF Gen Debug - drawTable] pageSetup is null/undefined.');
+    }
+    if (logoDetails) {
+        console.log(`[PDF Gen Debug - drawTable] logoDetails: image exists=${!!logoDetails.image}, dims.height=${logoDetails.dims?.height}, paddingBelow=${logoDetails.paddingBelow}`);
+    } else {
+        console.log('[PDF Gen Debug - drawTable] logoDetails is null/undefined.');
+    }
+    // ADD LOGS END
     let currentY = startY;
     // const { width, height } = page.getSize(); // Use pageSetup.height if available
     const pageHeight = pageSetup ? pageSetup.height : page.getSize().height;
@@ -251,9 +264,13 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
 
     let currentX = xStart;
     columns.forEach((col, index) => {
+        // ADD LOGS START
+        const headerY = currentY - (rowHeight / 2) - (sizes.header / 3.5);
+        console.log(`[PDF Gen Debug - drawTable Header] Drawing header "${col.header}". currentY: ${currentY}, calculated headerY: ${headerY}`);
+        // ADD LOGS END
         page.drawText(col.header, {
             x: currentX + 2,
-            y: currentY - (rowHeight / 2) - (sizes.header / 3.5),
+            y: headerY, // Use logged variable
             font: headerStyle.font,
             size: headerStyle.size,
             color: headerStyle.color
@@ -272,6 +289,16 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
         if (currentY - rowHeight < pageBottomMargin) { 
              page = pdfDoc.addPage(PageSizes.A4);
              const { width: newPageWidth } = page.getSize(); // Get width from new page
+             const pageHeight = pageSetup ? pageSetup.height : page.getSize().height; // Already here
+             const yPageMargin = pageSetup ? pageSetup.yMargin : 40; // Already here
+
+             // ADD LOGS START
+             console.log('[PDF Gen Debug - drawTable New Page] Creating new page inside drawTable.');
+             console.log(`[PDF Gen Debug - drawTable New Page] pageHeight: ${pageHeight}, yPageMargin: ${yPageMargin}`);
+             if (logoDetails && logoDetails.image) {
+                 console.log(`[PDF Gen Debug - drawTable New Page] logoDetails.dims.height: ${logoDetails.dims.height}, logoDetails.paddingBelow: ${logoDetails.paddingBelow}`);
+             }
+             // ADD LOGS END
              if (logoDetails && logoDetails.image) {
                 page.drawImage(logoDetails.image, {
                     x: newPageWidth - (pageSetup && pageSetup.xMargin ? pageSetup.xMargin : 40) - logoDetails.dims.width, // Adjusted for new page width
@@ -283,6 +310,7 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
              } else {
                 currentY = pageHeight - yPageMargin; 
              }
+             console.log(`[PDF Gen Debug - drawTable New Page] Recalculated currentY: ${currentY}`); // Log after calculation
              // Re-draw headers on new page
              let newPageX = xStart;
              page.drawLine({ start: { x: xStart, y: currentY }, end: { x: tableEndX, y: currentY }, thickness: 0.7, color: headerStyle.color || rgb(0,0,0) });
@@ -311,9 +339,13 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
                  textX = currentX + cellPadding;
             }
 
+            // ADD LOGS START
+            const cellY = currentY - (rowHeight / 2) - (sizes.cell / 3.5);
+            console.log(`[PDF Gen Debug - drawTable Cell] Drawing cell text "${text}" for column "${col.key}". currentY: ${currentY}, calculated cellY: ${cellY}`);
+            // ADD LOGS END
             page.drawText(text, {
                 x: textX,
-                y: currentY - (rowHeight / 2) - (sizes.cell / 3.5),
+                y: cellY, // Use logged variable
                 font: cellStyle.font,
                 size: cellStyle.size,
                 color: cellStyle.color
@@ -4209,6 +4241,10 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
 
         let page = pdfDocLib.addPage(PageSizes.A4);
         const { width, height } = page.getSize();
+        // ADD LOGS START
+        console.log('[PDF Gen Debug] Initial PageSize A4:', JSON.stringify(PageSizes.A4));
+        console.log(`[PDF Gen Debug] Initial page dimensions: width = ${width}, height = ${height}`);
+        // ADD LOGS END
         const yPageMargin = 40; 
         const xMargin = 40;
         const pageBottomMargin = 40;
@@ -4243,6 +4279,12 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             let localCurrentY = currentYVal;
             if (localCurrentY - neededSpace < pageSetup.bottomMargin || (isNewSection && localCurrentY - neededSpace < (pageSetup.bottomMargin + 40))) {
                 page = pdfDocLib.addPage(PageSizes.A4);
+                // ADD LOGS START
+                console.log(`[PDF Gen Debug - ensurePageSpace] Recalculating currentY. Initial currentYVal: ${currentYVal}`);
+                console.log(`[PDF Gen Debug - ensurePageSpace] pageSetup.height: ${pageSetup.height}, pageSetup.yMargin: ${pageSetup.yMargin}`);
+                console.log(`[PDF Gen Debug - ensurePageSpace] logoObject.image exists: ${!!logoObject.image}`);
+                console.log(`[PDF Gen Debug - ensurePageSpace] logoObject.dims.height: ${logoObject.dims.height}, logoObject.paddingBelow: ${logoObject.paddingBelow}`);
+                // ADD LOGS END
                 if (logoObject.image) {
                     page.drawImage(logoObject.image, {
                         x: width - xMargin - logoObject.dims.width,
@@ -4252,6 +4294,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
                     });
                 }
                 localCurrentY = pageSetup.height - pageSetup.yMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
+                console.log(`[PDF Gen Debug - ensurePageSpace] Recalculated localCurrentY: ${localCurrentY}`); // Log after calculation
             }
             return localCurrentY;
         };
