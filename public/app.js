@@ -1737,10 +1737,12 @@ document.addEventListener('DOMContentLoaded', () => {
         participacionesContentDiv.innerHTML = "<p>Cargando participaciones...</p>";
         
         let selectExcursionesHtml = '<option value="">-- Selecciona excursión --</option>';
-        let dataExcursiones;
+        let allExcursionsData = []; // To store fetched excursions data for validation
+
         try {
-            const dataExcursiones = await apiFetch('/excursiones');
-            (dataExcursiones.excursiones || []).forEach(ex => {
+            const dataExcursionesFetched = await apiFetch('/excursiones'); // Fetch excursions first
+            allExcursionsData = dataExcursionesFetched.excursiones || [];
+            allExcursionsData.forEach(ex => {
                 selectExcursionesHtml += `<option value="${ex.id}">${ex.nombre_excursion} (${new Date(ex.fecha_excursion).toLocaleDateString()})</option>`;
             });
         } catch (error) { 
@@ -1772,29 +1774,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectExcursion = document.getElementById('selectExcursionParticipaciones');
         const tablaContainer = document.getElementById('tablaParticipacionesContainer');
         const resumenContainer = document.getElementById('resumenParticipacionesContainer');
+        const filtroClaseSelectElement = document.getElementById('selectFiltroClaseParticipaciones');
 
         if (selectExcursion) {
             selectExcursion.onchange = (e) => {
                 const selectedExId = e.target.value;
                 if (selectedExId) {
                     const selectedExNombre = e.target.options[e.target.selectedIndex].text;
-                    sessionStorage.setItem('filtroParticipacionesExcursionId', selectedExId);
-                    sessionStorage.setItem('filtroParticipacionesNombreExcursion', selectedExNombre);
-                    sessionStorage.removeItem('viewParticipacionesForClaseId'); 
+                    // Store for persistence if user navigates away and back via menu (optional, can be removed if not desired)
+                    // sessionStorage.setItem('lastSelectedExcursionIdParticipaciones', selectedExId);
+                    // sessionStorage.setItem('lastSelectedExcursionNameParticipaciones', selectedExNombre);
                     renderTablaParticipaciones(selectedExId, selectedExNombre);
                 } else {
-                    sessionStorage.removeItem('filtroParticipacionesExcursionId');
-                    sessionStorage.removeItem('filtroParticipacionesNombreExcursion');
-                    sessionStorage.removeItem('viewParticipacionesForClaseId');
+                    // sessionStorage.removeItem('lastSelectedExcursionIdParticipaciones');
+                    // sessionStorage.removeItem('lastSelectedExcursionNameParticipaciones');
                     if(tablaContainer) tablaContainer.innerHTML = '<p>Selecciona una excursión para ver las participaciones.</p>';
                     if(resumenContainer) resumenContainer.innerHTML = '';
                 }
             };
         }
         
-        const filtroClaseSelect = document.getElementById('selectFiltroClaseParticipaciones');
-        if (filtroClaseSelect) {
-            filtroClaseSelect.onchange = () => {
+        if (filtroClaseSelectElement) {
+            filtroClaseSelectElement.onchange = () => {
                 const currentSelectedExcursionId = selectExcursion ? selectExcursion.value : null;
                 if (currentSelectedExcursionId) { 
                     const currentSelectedExcursionName = selectExcursion.options[selectExcursion.selectedIndex].text;
@@ -1804,27 +1805,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const excursionIdFromSession = sessionStorage.getItem('filtroParticipacionesExcursionId');
-        let isValidSessionId = false;
+        const nombreExcursionFromSession = sessionStorage.getItem('filtroParticipacionesNombreExcursion');
 
-        if (excursionIdFromSession && dataExcursiones && dataExcursiones.excursiones) {
-            const numericExcursionId = parseInt(excursionIdFromSession);
-            const foundExcursion = dataExcursiones.excursiones.find(ex => ex.id === numericExcursionId);
-            if (foundExcursion) {
-                isValidSessionId = true;
-                if(selectExcursion) selectExcursion.value = numericExcursionId; 
-                const nombreExcursionFromSession = sessionStorage.getItem('filtroParticipacionesNombreExcursion') || foundExcursion.nombre_excursion; 
-                renderTablaParticipaciones(numericExcursionId, nombreExcursionFromSession);
-            } else {
+        if (excursionIdFromSession && selectExcursion) {
+            const isValidSessionId = Array.from(selectExcursion.options).some(opt => opt.value === excursionIdFromSession);
+            if (isValidSessionId) {
+                selectExcursion.value = excursionIdFromSession;
+                const nombreToUse = nombreExcursionFromSession || (selectExcursion.options[selectExcursion.selectedIndex] ? selectExcursion.options[selectExcursion.selectedIndex].text : 'Excursión');
+                renderTablaParticipaciones(excursionIdFromSession, nombreToUse);
+
                 sessionStorage.removeItem('filtroParticipacionesExcursionId');
                 sessionStorage.removeItem('filtroParticipacionesNombreExcursion');
-                sessionStorage.removeItem('viewParticipacionesForClaseId');
+            } else {
+                 console.warn('Excursion ID from session not found in dropdown, clearing session items.');
+                 sessionStorage.removeItem('filtroParticipacionesExcursionId');
+                 sessionStorage.removeItem('filtroParticipacionesNombreExcursion');
+                 if(tablaContainer) tablaContainer.innerHTML = '<p>Por favor, seleccione una excursión de la lista.</p>';
+                 if(resumenContainer) resumenContainer.innerHTML = '';
             }
-        }
-
-        if (!isValidSessionId) {
+        } else {
             if(tablaContainer) tablaContainer.innerHTML = '<p>Por favor, seleccione una excursión de la lista para ver las participaciones.</p>';
             if(resumenContainer) resumenContainer.innerHTML = '';
-            if(selectExcursion) selectExcursion.value = ""; 
         }
     }
 
@@ -2346,6 +2347,11 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         if(modalExcursionJustificacion) modalExcursionJustificacion.textContent = excursionData.justificacion_texto || 'N/A';
         if(modalExcursionNotas) modalExcursionNotas.textContent = excursionData.notas_excursion || 'N/A';
         if(modalExcursionParticipants) modalExcursionParticipants.textContent = excursionData.participating_scope_name || 'N/A';
+
+        const modalAuthCountSpan = document.getElementById('modal-excursion-auth-count');
+        if (modalAuthCountSpan) {
+            modalAuthCountSpan.textContent = excursionData.count_autorizados !== undefined ? excursionData.count_autorizados.toString() : 'N/D';
+        }
 
         // Add the "Download Info for Families" and "Ver Participaciones" buttons
         const actionsContainer = excursionDetailModal.querySelector('.modal-actions-container') || excursionDetailModal.querySelector('.modal-content'); // Prefer a specific actions container

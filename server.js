@@ -576,9 +576,10 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
             let localCurrentY = currentYVal;
             if (localCurrentY - neededSpace < pageBottomMargin || (isNewSection && localCurrentY - neededSpace < (pageBottomMargin + 40))) { // More space for new section headers
                 page = pdfDocLib.addPage(PageSizes.A4);
+                const { width: newPageWidthEnsure } = page.getSize(); // Get width of the new page for ensurePageSpace
                 if (logoObject.image) {
                     page.drawImage(logoObject.image, {
-                        x: width - xMargin - logoObject.dims.width, // Adjusted x coordinate
+                        x: newPageWidthEnsure - xMargin - logoObject.dims.width, // Use new page's width and xMargin
                         y: logoObject.yTop,
                         width: logoObject.dims.width,
                         height: logoObject.dims.height,
@@ -1693,6 +1694,11 @@ app.get('/api/excursiones/:id', authenticateToken, async (req, res) => {
         if (!excursion) {
             return res.status(404).json({ error: "Excursión no encontrada." });
         }
+
+        // Contar participantes con autorización firmada
+        const authCountSql = "SELECT COUNT(*) as count_autorizados FROM participaciones_excursion WHERE excursion_id = ? AND autorizacion_firmada = 'Sí'";
+        const authCountResult = await dbGetAsync(authCountSql, [excursionId]);
+        excursion.count_autorizados = authCountResult ? authCountResult.count_autorizados : 0;
 
         let canAccess = false;
         if (req.user.rol === 'DIRECCION' || req.user.rol === 'TESORERIA') { 
