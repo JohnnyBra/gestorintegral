@@ -3972,6 +3972,207 @@ app.post('/api/direccion/import/all-data', authenticateToken, upload.single('imp
 });
 
 // Rutas de Tesorería
+
+// Nuevo endpoint para generar PDF de reporte detallado de excursión (Tesorería)
+app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authenticateToken, async (req, res) => {
+    try {
+        const excursion_id = parseInt(req.params.excursion_id);
+
+        if (isNaN(excursion_id)) {
+            return res.status(400).json({ error: "ID de excursión inválido." });
+        }
+
+        if (req.user.rol !== 'TESORERIA' && req.user.rol !== 'DIRECCION') {
+            return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol TESORERIA o DIRECCION.' });
+        }
+
+        // Fetch Excursion Details
+        const excursionDetails = await dbGetAsync("SELECT * FROM excursiones WHERE id = ?", [excursion_id]);
+        if (!excursionDetails) {
+            return res.status(404).json({ error: "Excursión no encontrada." });
+        }
+
+        // Fetch Overall Financial Summary
+        const financialSummary = await getFinancialDetailsForExcursion(excursion_id, excursionDetails);
+
+        // Fetch Student Participation Data
+        const participacionesSql = `
+            SELECT
+                a.nombre_completo AS alumno_nombre,
+                c.nombre_clase,
+                pe.cantidad_pagada,
+                pe.pago_realizado,
+                pe.autorizacion_firmada,
+                pe.asistencia
+            FROM participaciones_excursion pe
+            JOIN alumnos a ON pe.alumno_id = a.id
+            JOIN clases c ON a.clase_id = c.id
+            WHERE pe.excursion_id = ?
+            ORDER BY c.nombre_clase, a.apellidos_para_ordenar, a.nombre_completo;
+        `;
+        const participacionesData = await dbAllAsync(participacionesSql, [excursion_id]);
+
+        // Group participation data by class
+        const participacionesAgrupadasPorClase = participacionesData.reduce((acc, participacion) => {
+            const claseNombre = participacion.nombre_clase;
+            if (!acc[claseNombre]) {
+                acc[claseNombre] = [];
+            }
+            acc[claseNombre].push(participacion);
+            return acc;
+        }, {});
+
+        const pdfDocLib = await PDFDocument.create();
+        pdfDocLib.registerFontkit(fontkit);
+
+        const robotoRegularBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Regular.ttf'));
+        const robotoBoldBuffer = fs.readFileSync(path.join(__dirname, 'public/assets/fonts/Roboto-Bold.ttf'));
+
+        const robotoFont = await pdfDocLib.embedFont(robotoRegularBuffer);
+        const robotoBoldFont = await pdfDocLib.embedFont(robotoBoldBuffer);
+
+        const logoPath = path.join(__dirname, 'public', 'folder', 'logo.jpg');
+        let logoImage, logoDims;
+        try {
+            const logoBuffer = fs.readFileSync(logoPath);
+            logoImage = await pdfDocLib.embedJpg(logoBuffer);
+            if (!logoImage || logoImage.width === 0) {
+                logoDims = { width: 0, height: 0 };
+            } else {
+                const logoScale = 50 / logoImage.width;
+                logoDims = { width: logoImage.width * logoScale, height: logoImage.height * logoScale };
+                if (isNaN(logoDims.width)) logoDims.width = 0;
+                if (isNaN(logoDims.height)) logoDims.height = 0;
+            }
+        } catch (logoError) {
+            console.error("Error cargando logo para Reporte Detallado Tesorería:", logoError.message);
+            logoImage = null;
+            logoDims = { width: 0, height: 0 };
+        }
+
+        let page = pdfDocLib.addPage(PageSizes.A4);
+        const { width, height } = page.getSize();
+        const yPageMargin = 40;
+        const xMargin = 40;
+        const pageBottomMargin = 40;
+        const contentWidth = width - (2 * xMargin);
+        const rowHeight = 18; // Consistent row height
+
+        const pdfStyles = {
+            mainTitle: { font: robotoBoldFont, size: 18, color: rgb(0,0,0) },
+            sectionTitle: { font: robotoBoldFont, size: 14, color: rgb(0.1, 0.1, 0.1) },
+            fieldLabel: { font: robotoBoldFont, size: 10, color: rgb(0.2, 0.2, 0.2) },
+            fieldValue: { font: robotoFont, size: 10, color: rgb(0.33, 0.33, 0.33) },
+            tableHeader: { font: robotoBoldFont, size: 10, color: rgb(0,0,0) },
+            tableCell: { font: robotoFont, size: 9, color: rgb(0.1, 0.1, 0.1) },
+            text: { font: robotoFont, size: 10, color: rgb(0,0,0) }
+        };
+
+        const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
+        const pageSetup = { width, height, xMargin, yMargin, bottomMargin: pageBottomMargin };
+
+        let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0);
+
+        const _ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
+            let localCurrentY = currentYVal;
+            if (localCurrentY - neededSpace < pageSetup.bottomMargin || (isNewSection && localCurrentY - neededSpace < (pageSetup.bottomMargin + 40))) {
+                page = pdfDocLib.addPage(PageSizes.A4);
+                if (logoObject.image) {
+                    page.drawImage(logoObject.image, {
+                        x: logoObject.x,
+                        y: logoObject.yTop,
+                        width: logoObject.dims.width,
+                        height: logoObject.dims.height,
+                    });
+                }
+                localCurrentY = pageSetup.height - pageSetup.yMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
+            }
+            return localCurrentY;
+        };
+
+        currentY = _ensurePageSpace(currentY, pdfStyles.mainTitle.size + pdfStyles.sectionTitle.size + 20, true);
+
+        page.drawText('Informe Detallado de Excursión (Tesorería)', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
+        currentY -= (pdfStyles.mainTitle.size + 10);
+        page.drawText(`Excursión: ${excursionDetails.nombre_excursion}`, { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
+        currentY -= (pdfStyles.sectionTitle.size + 5);
+        page.drawText(`Fecha: ${new Date(excursionDetails.fecha_excursion).toLocaleDateString('es-ES')}`, { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
+        currentY -= (pdfStyles.sectionTitle.size + 20);
+
+        // Overall Financial Summary Section
+        currentY = _ensurePageSpace(currentY, (pdfStyles.fieldLabel.size + 5) * 6, true);
+        page.drawText(`Total Dinero Recaudado: ${financialSummary.total_dinero_recaudado.toFixed(2)}€`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+        currentY -= (pdfStyles.fieldValue.size + 5);
+
+        const totalAlumnosQueHanPagado = participacionesData.filter(p => p.pago_realizado === 'Sí' || p.pago_realizado === 'Parcial').length;
+        page.drawText(`Total Alumnos que Han Pagado: ${totalAlumnosQueHanPagado}`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+        currentY -= (pdfStyles.fieldValue.size + 5);
+
+        page.drawText(`Coste Total Autobuses: ${financialSummary.coste_total_autobuses.toFixed(2)}€`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+        currentY -= (pdfStyles.fieldValue.size + 5);
+        page.drawText(`Coste Total Entradas (asistentes): ${financialSummary.coste_total_participacion_entradas.toFixed(2)}€`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+        currentY -= (pdfStyles.fieldValue.size + 5);
+        page.drawText(`Coste Actividad Global: ${financialSummary.coste_total_actividad_global.toFixed(2)}€`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+        currentY -= (pdfStyles.fieldValue.size + 5);
+        page.drawText(`Balance Final Excursión: ${financialSummary.balance_excursion.toFixed(2)}€`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+        currentY -= (pdfStyles.fieldValue.size + 20);
+
+        // Details per Class
+        for (const nombreClase of Object.keys(participacionesAgrupadasPorClase).sort()) {
+            const alumnosEnClase = participacionesAgrupadasPorClase[nombreClase];
+            currentY = _ensurePageSpace(currentY, pdfStyles.sectionTitle.size + (pdfStyles.fieldValue.size + 5) * 2 + rowHeight, true);
+
+            page.drawText(`Clase: ${nombreClase}`, { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
+            currentY -= (pdfStyles.sectionTitle.size + 10);
+
+            const dineroTotalClase = alumnosEnClase.reduce((sum, p) => sum + p.cantidad_pagada, 0);
+            page.drawText(`Dinero total aportado por esta clase: ${dineroTotalClase.toFixed(2)}€`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+            currentY -= (pdfStyles.fieldValue.size + 5);
+
+            const ninosPagadoClase = alumnosEnClase.filter(p => p.pago_realizado === 'Sí' || p.pago_realizado === 'Parcial').length;
+            page.drawText(`Número de niños de esta clase que han pagado: ${ninosPagadoClase}`, { x: xMargin, y: currentY, ...pdfStyles.fieldValue });
+            currentY -= (pdfStyles.fieldValue.size + 10);
+
+            const columnsAlumnosClase = [
+                { header: 'Nombre Alumno', key: 'alumno_nombre', alignment: 'left' },
+                { header: 'Pagado (€)', key: 'cantidad_pagada_str', alignment: 'right' },
+                { header: 'Estado Pago', key: 'pago_realizado', alignment: 'left' }
+            ];
+            const columnWidthsAlumnosClase = [contentWidth * 0.5, contentWidth * 0.25, contentWidth * 0.25];
+
+            const alumnosDataParaTabla = alumnosEnClase.map(p => ({
+                ...p,
+                cantidad_pagada_str: p.cantidad_pagada.toFixed(2)
+            }));
+
+            if (alumnosDataParaTabla.length > 0) {
+                currentY = _ensurePageSpace(currentY, rowHeight * (alumnosDataParaTabla.length + 1));
+                const tableResult = await drawTable(
+                    pdfDocLib, page, currentY, alumnosDataParaTabla, columnsAlumnosClase,
+                    { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 },
+                    columnWidthsAlumnosClase, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell,
+                    xMargin, logoObject, pageSetup
+                );
+                currentY = tableResult.currentY;
+                page = tableResult.page;
+            } else {
+                page.drawText('No hay datos de participación para esta clase.', { x: xMargin, y: currentY, ...pdfStyles.text });
+                currentY -= rowHeight;
+            }
+            currentY -= 20; // Space before next class
+        }
+
+        const pdfBytes = await pdfDocLib.save();
+        res.contentType('application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=Reporte_Tesoreria_Excursion_${excursion_id}.pdf`);
+        res.send(Buffer.from(pdfBytes));
+
+    } catch (error) {
+        console.error(`Error en GET /api/tesoreria/excursiones/${req.params.excursion_id}/reporte_detallado_pdf:`, error.message, error.stack);
+        res.status(500).json({ error: "Error interno del servidor al intentar generar el reporte detallado.", detalles: error.message });
+    }
+});
+
 app.get('/api/tesoreria/ingresos-por-clase', authenticateToken, async (req, res) => {
     if (req.user.rol !== 'TESORERIA' && req.user.rol !== 'DIRECCION') {
         return res.status(403).json({ error: 'Acceso no autorizado. Se requiere rol TESORERIA o DIRECCION.' });
@@ -4277,12 +4478,47 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             const totalCostes = financialDetails.coste_total_autobuses + 
                                 financialDetails.coste_total_participacion_entradas + 
                                 financialDetails.coste_total_actividad_global;
+
+            // Get money contributed by each class
+            const aportesPorClaseSql = `
+                SELECT
+                    c.nombre_clase,
+                    SUM(pe.cantidad_pagada) as total_aportado_clase
+                FROM participaciones_excursion pe
+                JOIN alumnos a ON pe.alumno_id = a.id
+                JOIN clases c ON a.clase_id = c.id
+                WHERE pe.excursion_id = ?
+                GROUP BY c.id, c.nombre_clase
+                ORDER BY c.nombre_clase;
+            `;
+            const aportesData = await dbAllAsync(aportesPorClaseSql, [excursion.id]);
+            excursion.aportes_por_clase = aportesData;
+
+            // Get number of children who paid
+            const ninosPagadoSql = `
+                SELECT
+                    COUNT(DISTINCT pe.alumno_id) as total_ninos_pagado
+                FROM participaciones_excursion pe
+                WHERE pe.excursion_id = ? AND (pe.pago_realizado = 'Sí' OR pe.pago_realizado = 'Parcial');
+            `;
+            const ninosPagadoResult = await dbGetAsync(ninosPagadoSql, [excursion.id]);
+            excursion.ninos_han_pagado = ninosPagadoResult ? ninosPagadoResult.total_ninos_pagado : 0;
+
+            let aportes_clase_str = "N/A";
+            if (excursion.aportes_por_clase && excursion.aportes_por_clase.length > 0) {
+                aportes_clase_str = excursion.aportes_por_clase
+                    .map(aporte => `${aporte.nombre_clase}: ${aporte.total_aportado_clase.toFixed(2)}€`)
+                    .join(', ');
+            }
+
             excursionFinancialData.push({
                 nombre_excursion: excursion.nombre_excursion,
                 fecha_excursion: new Date(excursion.fecha_excursion).toLocaleDateString('es-ES'),
                 total_recaudado: financialDetails.total_dinero_recaudado.toFixed(2),
                 costes_totales: totalCostes.toFixed(2),
-                balance: financialDetails.balance_excursion.toFixed(2)
+                balance: financialDetails.balance_excursion.toFixed(2),
+                aportes_clase_str: aportes_clase_str,
+                ninos_han_pagado: excursion.ninos_han_pagado
             });
         }
 
@@ -4291,9 +4527,15 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             { header: 'Fecha', key: 'fecha_excursion', alignment: 'left'},
             { header: 'Recaudado (€)', key: 'total_recaudado', alignment: 'right'},
             { header: 'Costes (€)', key: 'costes_totales', alignment: 'right'},
-            { header: 'Balance (€)', key: 'balance', alignment: 'right'}
+            { header: 'Balance (€)', key: 'balance', alignment: 'right'},
+            { header: 'Aportes por Clase', key: 'aportes_clase_str', alignment: 'left'},
+            { header: 'Niños Pagado', key: 'ninos_han_pagado', alignment: 'right'}
         ];
-        const columnWidthsExcursiones = [175, 70, 90, 90, 90]; // Sum: 515, to fit contentWidth 515
+        // Original widths: [175, 70, 90, 90, 90] -> Sum 515
+        // New widths: Need to adjust to keep sum around 515 or less.
+        // Excursion: 120, Fecha: 60, Recaudado: 70, Costes: 70, Balance: 70, Aportes: 100, Niños Pagado: 25 -> Sum = 515
+        const columnWidthsExcursiones = [120, 60, 70, 70, 70, 100, 25];
+
 
         if (excursionFinancialData.length > 0) {
             currentY = ensurePageSpace(currentY, rowHeight * (excursionFinancialData.length +1));
