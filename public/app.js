@@ -1018,9 +1018,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const formData = new FormData();
             formData.append('clase_id', clase_id_para_api);
-            // Append the file itself (which contains the ArrayBuffer).
-            // The backend (e.g., using multer) will handle reading the ArrayBuffer from the file.
-            formData.append('csvFile', file);
+            // Create a Blob from the ArrayBuffer and append it with type and filename
+            const blob = new Blob([arrayBuffer], { type: file.type || 'text/csv' });
+            formData.append('csvFile', blob, file.name);
 
             try {
                 // Send FormData directly. apiFetch will handle not setting Content-Type.
