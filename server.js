@@ -37,6 +37,10 @@ app.use(express.urlencoded({ extended: true }));
 const publicPath = path.join(__dirname, 'public');
 app.use(express.static(publicPath));
 
+// Multer setup for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
 let db;
 
 // Middleware de Autenticación JWT
@@ -3402,10 +3406,6 @@ app.get('/api/direccion/export/all-data', authenticateToken, async (req, res) =>
         res.status(500).json({ error: "Error interno al generar la exportación.", detalles: error.message });
     }
 });
-
-// API Endpoint for Data Import (Direccion ROL only)
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
 
 const tableOrder = ['usuarios', 'ciclos', 'clases', 'alumnos', 'excursiones', 'participaciones_excursion', 'shared_excursions'];
 
