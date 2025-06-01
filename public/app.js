@@ -1860,7 +1860,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const data = await apiFetch(endpoint);
             if (!data || !data.alumnosParticipaciones) {
-                container.innerHTML = `<p class="error-message">No se pudieron cargar datos de participación.</p>`;
+                container.innerHTML = `<tr><td colspan="11">Error cargando participaciones.</td></tr>`;
                 return;
             }
 
@@ -1932,7 +1932,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Added wrapper div for table horizontal scrolling
-            let html = `<h4>Participantes: ${excursionNombre}</h4><div style="width: 100%; overflow-x: auto;"><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th><th>Acciones</th></tr></thead><tbody>`;
+            let html = `<h4>Participantes: ${excursionNombre}</h4><div style="width: 100%; overflow-x: auto;"><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Asistencia</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th><th>Acciones</th></tr></thead><tbody>`;
             if (data.alumnosParticipaciones.length > 0) {
                 data.alumnosParticipaciones.forEach(ap => {
                     const esCampoDeshabilitado = ap.autorizacion_firmada === 'Sí' && ap.fecha_autorizacion;
@@ -1941,8 +1941,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         accionesParticipacionHtml = `<button class="btn-eliminar-participacion danger" data-participacion-id="${ap.participacion_id}" data-alumno-nombre="${ap.nombre_completo}"><i class="fas fa-trash-alt"></i> Eliminar</button>`;
                     }
 
+                    const excursionDate = new Date(excursionDetails.fecha_excursion);
+                    const currentDate = new Date();
+                    currentDate.setHours(0,0,0,0); // Compare dates only
+                    excursionDate.setHours(0,0,0,0);
+
+                    let asistenciaHtml = '';
+                    const puedeModificarAsistencia = currentUser.rol === 'TUTOR' && currentDate >= excursionDate;
+
+                    if (puedeModificarAsistencia) {
+                        asistenciaHtml = `<select class="participacion-field-edit" data-field="asistencia">
+                            <option value="Pendiente" ${ap.asistencia === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
+                            <option value="Sí" ${ap.asistencia === 'Sí' ? 'selected' : ''}>Sí</option>
+                            <option value="No" ${ap.asistencia === 'No' ? 'selected' : ''}>No</option>
+                        </select>`;
+                    } else {
+                        asistenciaHtml = ap.asistencia || 'Pendiente';
+                    }
+
                     html += `<tr data-participacion-id="${ap.participacion_id || ''}" data-alumno-id="${ap.alumno_id}">
-                        <td>${ap.nombre_completo}</td><td>${ap.nombre_clase}</td>
+                        <td>${ap.nombre_completo}</td><td>${ap.nombre_clase}</td><td>${asistenciaHtml}</td>
                         <td><select class="participacion-field-edit" data-field="autorizacion_firmada" ${esCampoDeshabilitado?'disabled':''}><option value="No" ${ap.autorizacion_firmada==='No'?'selected':''}>No</option><option value="Sí" ${ap.autorizacion_firmada==='Sí'?'selected':''}>Sí</option></select></td>
                         <td><input type="date" class="participacion-field-edit" data-field="fecha_autorizacion" value="${ap.fecha_autorizacion||''}" ${esCampoDeshabilitado?'disabled':''}></td>
                         <td><select class="participacion-field-edit" data-field="pago_realizado"><option value="No" ${ap.pago_realizado==='No'?'selected':''}>No</option><option value="Parcial" ${ap.pago_realizado==='Parcial'?'selected':''}>Parcial</option><option value="Sí" ${ap.pago_realizado==='Sí'?'selected':''}>Sí</option></select></td>
@@ -1952,7 +1970,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td class="status-message-cell"></td>
                         <td class="actions-cell">${accionesParticipacionHtml}</td></tr>`;
                 });
-            } else { html += `<tr><td colspan="10" style="text-align:center;">No hay alumnos con participación registrada o la clase seleccionada no tiene alumnos.</td></tr>`; }
+            } else { html += `<tr><td colspan="11" style="text-align:center;">No hay alumnos con participación registrada o la clase seleccionada no tiene alumnos.</td></tr>`; }
             html += `</tbody></table></div>`; // Close wrapper div
             container.innerHTML = html;
 
@@ -2007,7 +2025,9 @@ document.addEventListener('DOMContentLoaded', () => {
             pago_realizado: trElement.querySelector('[data-field="pago_realizado"]').value,
             cantidad_pagada: parseFloat(trElement.querySelector('[data-field="cantidad_pagada"]').value) || 0,
             fecha_pago: trElement.querySelector('[data-field="fecha_pago"]').value || null,
-            notas_participacion: trElement.querySelector('[data-field="notas_participacion"]').value.trim() || null
+            notas_participacion: trElement.querySelector('[data-field="notas_participacion"]').value.trim() || null,
+            // Add asistencia here
+            asistencia: trElement.querySelector('[data-field="asistencia"]') ? trElement.querySelector('[data-field="asistencia"]').value : 'Pendiente'
         };
 
         const isModalTriggerEvent = (fieldName === 'autorizacion_firmada' && newValue === 'Sí');
