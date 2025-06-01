@@ -62,6 +62,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const financialModalCloseButton = document.getElementById('financial-modal-close-button');
     let currentExcursionIdForFinancialModal = null;
 
+    // Change Password Modal Elements (User's own password)
+    const showChangePasswordModalBtn = document.getElementById('showChangePasswordModalBtn');
+    const changePasswordModal = document.getElementById('changePasswordModal');
+    const changePasswordForm = document.getElementById('changePasswordForm');
+    const cancelChangePasswordBtn = document.getElementById('cancelChangePasswordBtn');
+    const changePasswordErrorP = document.getElementById('changePasswordError');
+    const changePasswordSuccessP = document.getElementById('changePasswordSuccess');
+
+    // Note: Admin changing other user's password will be handled within showFormAdminUsuario and saveAdminUsuario
+
     // Payment Confirmation Modal Elements
     const paymentConfirmationModal = document.getElementById('paymentConfirmationModal');
     const paymentAmountInput = document.getElementById('paymentAmount');
@@ -282,6 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (userInfoDisplay) userInfoDisplay.innerHTML = `Usuario: <strong>${currentUser.nombre_completo}</strong> (${currentUser.rol}${currentUser.claseNombre ? ` - ${currentUser.claseNombre}` : ''})`;
         if (authButton) authButton.style.display = 'none';
         if (signoutButton) signoutButton.style.display = 'inline-block';
+        if (showChangePasswordModalBtn) showChangePasswordModalBtn.style.display = 'inline-block'; // Show change password button
         if (mainNavSidebar) mainNavSidebar.style.display = 'block';
         adaptarMenuSegunRol();
     }
@@ -294,6 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (userInfoDisplay) userInfoDisplay.textContent = 'Por favor, inicia sesión.';
         if (authButton) authButton.style.display = 'inline-block';
         if (signoutButton) signoutButton.style.display = 'none';
+        if (showChangePasswordModalBtn) showChangePasswordModalBtn.style.display = 'none'; // Hide change password button
         if (mainNavSidebar) mainNavSidebar.style.display = 'none';
         mainSections.forEach(s => { if (s) s.style.display = 'none'; });
         if(document.getElementById('excursion-calendar-container')) document.getElementById('excursion-calendar-container').innerHTML = ''; 
@@ -1948,7 +1960,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const esCampoDeshabilitado = ap.autorizacion_firmada === 'Sí' && ap.fecha_autorizacion;
                     let accionesParticipacionHtml = '';
                     if (ap.participacion_id && (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR')) {
-                        accionesParticipacionHtml = `<button class="btn-eliminar-participacion danger" data-participacion-id="${ap.participacion_id}" data-alumno-nombre="${ap.nombre_completo}"><i class="fas fa-trash-alt"></i> Eliminar</button>`;
+                        // Changed button class, icon, and text for "Resetear"
+                        accionesParticipacionHtml = `<button class="btn-resetear-participacion danger" data-participacion-id="${ap.participacion_id}" data-alumno-nombre="${ap.nombre_completo}"><i class="fas fa-undo"></i> Resetear</button>`;
                     }
 
                     const excursionDate = new Date(excursionDetails.fecha_excursion);
@@ -2011,28 +2024,45 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                // Handle delete participation
-                const deleteButtonTarget = event.target.closest('.btn-eliminar-participacion');
-                if (deleteButtonTarget) {
-                    const button = deleteButtonTarget;
+                // Handle reset participation (formerly delete)
+                const resetButtonTarget = event.target.closest('.btn-resetear-participacion');
+                if (resetButtonTarget) {
+                    const button = resetButtonTarget;
                     const participacionId = button.dataset.participacionId;
                     const alumnoNombre = button.dataset.alumnoNombre;
                     const trElement = button.closest('tr');
                     const statusCell = trElement ? trElement.querySelector('.status-message-cell') : null;
 
-                    if (confirm(`¿Está seguro de que desea eliminar la participación de ${alumnoNombre}? Esta acción no se puede deshacer.`)) {
-                        if(statusCell) showTemporaryStatusInCell(statusCell, "Eliminando...", false, null);
+                    // Updated confirmation message for reset
+                    if (confirm(`¿Está seguro de que desea resetear la participación de ${alumnoNombre} (justificante, pago, asistencia, etc.)? Los datos introducidos se borrarán y el estado volverá a ser el inicial.`)) {
+                        if(statusCell) showTemporaryStatusInCell(statusCell, "Reseteando...", false, null);
                         try {
-                            await apiFetch(`/participaciones/${participacionId}`, 'DELETE');
-                            showGlobalError(`Participación de ${alumnoNombre} eliminada exitosamente.`, document.getElementById('resumenParticipacionesContainer'));
+                            // API call is still DELETE, but server-side logic is now UPDATE (reset)
+                            const resetResult = await apiFetch(`/participaciones/${participacionId}`, 'DELETE');
+                            // Updated success message
+                            showGlobalError(`Participación de ${alumnoNombre} reseteada exitosamente.`, document.getElementById('resumenParticipacionesContainer'));
+
+                            // The API now returns the updated (reset) participation.
+                            // We need to update currentParticipacionesDataArray and re-render.
+                            if (resetResult && resetResult.participacion) {
+                                const index = currentParticipacionesDataArray.findIndex(p => p.participacion_id === resetResult.participacion.id);
+                                if (index !== -1) {
+                                     // Need to merge with existing alumno details as resetResult.participacion only contains participation fields
+                                    currentParticipacionesDataArray[index] = {
+                                        ...currentParticipacionesDataArray[index], // Keep alumno details like nombre_completo, nombre_clase
+                                        ...resetResult.participacion // Overwrite with reset participation fields
+                                    };
+                                }
+                            }
 
                             const currentExcursionNombreElement = document.getElementById('selectExcursionParticipaciones').selectedOptions[0];
                             const currentExcursionNombre = currentExcursionNombreElement ? currentExcursionNombreElement.text : "Excursión";
-                            // Ensure renderTablaParticipaciones uses the correct excursionId that was in scope for this handler
                             renderTablaParticipaciones(currentExcursionId, currentExcursionNombre);
+                            updateParticipacionesSummary(currentExcursionId, currentExcursionNombre);
+
                         } catch (error) {
-                            if(statusCell) showTemporaryStatusInCell(statusCell, `Error: ${error.message}`, true, 5000);
-                            else showGlobalError(`Error al eliminar participación: ${error.message}`, document.getElementById('resumenParticipacionesContainer'));
+                            if(statusCell) showTemporaryStatusInCell(statusCell, `Error al resetear: ${error.message}`, true, 5000);
+                            else showGlobalError(`Error al resetear participación: ${error.message}`, document.getElementById('resumenParticipacionesContainer'));
                         }
                     }
                 }
@@ -2040,6 +2070,7 @@ document.addEventListener('DOMContentLoaded', () => {
             container.addEventListener('click', container._delegatedClickHandler);
 
         } catch (error) {
+            console.error("Error in renderTablaParticipaciones:", error); // Added for more detailed debugging
             container.innerHTML = `<p class="error-message">Error cargando participaciones: ${error.message}</p>`;
             resumenContainer.innerHTML = '';
         }
@@ -2183,11 +2214,38 @@ document.addEventListener('DOMContentLoaded', () => {
             showTemporaryStatusInCell(statusCell, "Guardado!", false, 2000);
             setTimeout(() => { changedElement.style.backgroundColor = originalBackgroundColor; }, 2000);
 
-            const currentExcursionId = sessionStorage.getItem('filtroParticipacionesExcursionId');
-            const currentExcursionNombre = sessionStorage.getItem('filtroParticipacionesNombreExcursion');
-            if (currentExcursionId && currentExcursionNombre) {
-                updateParticipacionesSummary(currentExcursionId, currentExcursionNombre);
+            // Update currentParticipacionesDataArray with the saved/updated data
+            const index = currentParticipacionesDataArray.findIndex(p => p.alumno_id === resultado.alumno_id && p.excursion_id === resultado.excursion_id);
+            if (index !== -1) {
+                currentParticipacionesDataArray[index] = { ...currentParticipacionesDataArray[index], ...resultado };
+            } else {
+                // This case should be rare if the table is populated correctly initially
+                currentParticipacionesDataArray.push(resultado);
             }
+
+            // Refresh summary and table
+            const excursionSelect = document.getElementById('selectExcursionParticipaciones');
+            let currentExcursionIdToRefresh = null;
+            let currentExcursionNombreToRefresh = "Excursión"; // Default
+
+            if (excursionSelect && excursionSelect.value) {
+                currentExcursionIdToRefresh = excursionSelect.value;
+                 if (excursionSelect.options[excursionSelect.selectedIndex]) {
+                    currentExcursionNombreToRefresh = excursionSelect.options[excursionSelect.selectedIndex].text;
+                }
+            } else {
+                // Fallback if select is not available or no value selected, try from dataToSave
+                currentExcursionIdToRefresh = dataToSave.excursion_id;
+                // Attempt to find name if needed from other sources or use a generic one
+            }
+
+
+            if (currentExcursionIdToRefresh) {
+                // Ensure the correct excursionId from the current context is used for refresh
+                 updateParticipacionesSummary(currentExcursionIdToRefresh, currentExcursionNombreToRefresh);
+                 renderTablaParticipaciones(currentExcursionIdToRefresh, currentExcursionNombreToRefresh); // Re-render table
+            }
+
         } catch (error) {
             changedElement.style.backgroundColor = "#ffcdd2";
             showTemporaryStatusInCell(statusCell, error.message || "Error", true, 5000);
@@ -2343,6 +2401,10 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
                 formHtml += `<div><label>Rol:</label><input type="text" value="${initialUserData.rol}" disabled></div>`;
             } else {
                 formHtml += `<div><label>Rol:</label><select id="adminUserRol" name="adminUserRol">${roleOptionsHtml}</select></div>`;
+                // Add new password field for admin editing non-admin user, if not editing self
+                if (currentUser.rol === 'DIRECCION' && initialUserData.rol !== 'DIRECCION' && currentUser.id !== initialUserData.id) {
+                    formHtml += `<div><label>Nueva Contraseña (opcional):</label><input type="password" id="adminUserNewPassword" minlength="8" placeholder="Dejar en blanco para no cambiar"></div>`;
+                }
             }
         } else { 
             formHtml += `<div><label>Contraseña:</label><input type="password" id="adminUserPassword" required minlength="8"></div>
@@ -2388,7 +2450,8 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         const emailInput = document.getElementById('adminUserEmail');
         const nombreCompletoInput = document.getElementById('adminUserNombreCompleto');
         const rolSelect = document.getElementById('adminUserRol'); 
-        const passwordInput = document.getElementById('adminUserPassword'); 
+        const passwordInput = document.getElementById('adminUserPassword'); // For new user creation
+        const adminUserNewPasswordInput = document.getElementById('adminUserNewPassword'); // For admin changing other's password
 
         const email = emailInput ? emailInput.value.trim() : null;
         const nombre_completo = nombreCompletoInput ? nombreCompletoInput.value.trim() : null;
@@ -2406,7 +2469,20 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
             if (rolSelect) { 
                 userData.rol = rolSelect.value;
             }
-        } else { 
+            // Handle admin changing other user's password
+            if (adminUserNewPasswordInput) {
+                const newPassword = adminUserNewPasswordInput.value;
+                if (newPassword && newPassword.trim() !== '') {
+                    if (newPassword.length < 8) {
+                        if (errorP) errorP.textContent = "La nueva contraseña, si se proporciona, debe tener al menos 8 caracteres.";
+                        const submitButton = event.target.querySelector('button[type="submit"]');
+                        if (submitButton) submitButton.disabled = false; // Re-enable button
+                        return;
+                    }
+                    userData.newPassword = newPassword; // Add to userData to be sent to backend
+                }
+            }
+        } else { // Creating a new user
             if (passwordInput) {
                 const password = passwordInput.value;
                 if (!password || password.length < 8) {
@@ -2592,7 +2668,74 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         if (excursionDetailModal && event.target === excursionDetailModal) {
             closeExcursionModal();
         }
+        // Close change password modal on outside click
+        if (changePasswordModal && event.target === changePasswordModal) {
+            changePasswordModal.style.display = 'none';
+        }
     });
+
+    // Event listener for showing the change password modal
+    if (showChangePasswordModalBtn) {
+        showChangePasswordModalBtn.addEventListener('click', () => {
+            if (changePasswordModal) {
+                changePasswordModal.style.display = 'flex';
+                if (changePasswordErrorP) changePasswordErrorP.textContent = '';
+                if (changePasswordSuccessP) changePasswordSuccessP.textContent = '';
+                if (changePasswordForm) changePasswordForm.reset();
+            }
+        });
+    }
+
+    // Event listener for cancelling/closing the change password modal
+    if (cancelChangePasswordBtn) {
+        cancelChangePasswordBtn.addEventListener('click', () => {
+            if (changePasswordModal) changePasswordModal.style.display = 'none';
+        });
+    }
+
+    // Event listener for submitting the change password form
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (changePasswordErrorP) changePasswordErrorP.textContent = '';
+            if (changePasswordSuccessP) changePasswordSuccessP.textContent = '';
+
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+
+            if (!currentPassword || !newPassword || !confirmNewPassword) {
+                if (changePasswordErrorP) changePasswordErrorP.textContent = 'Todos los campos son obligatorios.';
+                return;
+            }
+            if (newPassword.length < 8) {
+                if (changePasswordErrorP) changePasswordErrorP.textContent = 'La nueva contraseña debe tener al menos 8 caracteres.';
+                return;
+            }
+            if (newPassword !== confirmNewPassword) {
+                if (changePasswordErrorP) changePasswordErrorP.textContent = 'Las nuevas contraseñas no coinciden.';
+                return;
+            }
+
+            const submitButton = changePasswordForm.querySelector('button[type="submit"]');
+            if (submitButton) submitButton.disabled = true;
+
+            try {
+                await apiFetch('/auth/change-password', 'PUT', { currentPassword, newPassword });
+                if (changePasswordSuccessP) changePasswordSuccessP.textContent = 'Contraseña actualizada correctamente.';
+                if (changePasswordForm) changePasswordForm.reset();
+                setTimeout(() => {
+                    if (changePasswordModal) changePasswordModal.style.display = 'none';
+                    if (changePasswordSuccessP) changePasswordSuccessP.textContent = ''; // Clear success message before next open
+                }, 2000);
+            } catch (error) {
+                if (changePasswordErrorP) changePasswordErrorP.textContent = error.message || 'Error al cambiar la contraseña.';
+            } finally {
+                if (submitButton) submitButton.disabled = false;
+            }
+        });
+    }
+
 
     async function handleExcursionDayClick(excursionId) {
         if (!excursionId) return;

@@ -714,6 +714,43 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
     res.json({ usuario: req.user });
 });
 
+app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "La contraseña actual y la nueva contraseña son requeridas." });
+    }
+
+    if (newPassword.length < 8) {
+        return res.status(400).json({ error: "La nueva contraseña debe tener al menos 8 caracteres." });
+    }
+
+    try {
+        const user = await dbGetAsync("SELECT password_hash FROM usuarios WHERE id = ?", [userId]);
+        if (!user) {
+            // Should not happen if token is valid and user exists
+            return res.status(404).json({ error: "Usuario no encontrado." });
+        }
+
+        const passwordIsValid = await bcrypt.compare(currentPassword, user.password_hash);
+        if (!passwordIsValid) {
+            return res.status(401).json({ error: "La contraseña actual es incorrecta." });
+        }
+
+        const saltRounds = 10;
+        const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+
+        await dbRunAsync("UPDATE usuarios SET password_hash = ? WHERE id = ?", [newPasswordHash, userId]);
+
+        res.status(200).json({ message: "Contraseña actualizada correctamente." });
+
+    } catch (error) {
+        console.error(`Error en PUT /api/auth/change-password para usuario ID ${userId}:`, error.message);
+        res.status(500).json({ error: "Error interno del servidor al cambiar la contraseña." });
+    }
+});
+
 // Gestión de Usuarios (Solo Dirección)
 app.get('/api/usuarios', authenticateToken, async (req, res) => {
     if (req.user.rol !== 'DIRECCION') return res.status(403).json({ error: 'No autorizado.' });
@@ -793,10 +830,10 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: "ID de usuario inválido." });
     }
 
-    const { email, nombre_completo, rol: newRol } = req.body;
+    const { email, nombre_completo, rol: newRol, newPassword } = req.body; // Added newPassword
 
-    if (email === undefined && nombre_completo === undefined && newRol === undefined) {
-        return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (email, nombre_completo o rol)." });
+    if (email === undefined && nombre_completo === undefined && newRol === undefined && newPassword === undefined) {
+        return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar (email, nombre_completo, rol o newPassword)." });
     }
     
     let normalizedEmail;
@@ -832,14 +869,42 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
         }
 
         if (userToUpdate.id === req.user.id || userToUpdate.rol === 'DIRECCION') {
-            return res.status(403).json({ error: "No se puede modificar un usuario con rol DIRECCION o a sí mismo mediante esta vía." });
+             // Allow DIRECCION to change their own email/name if other fields are also being updated, but not password via this route.
+            if (newPassword) {
+                return res.status(403).json({ error: "No se puede cambiar la contraseña de un usuario con rol DIRECCION o la propia contraseña mediante esta vía. Use la opción 'Cambiar Contraseña' dedicada." });
+            }
+            // If only email/name/rol for self/other admin, and it's not password, it's an error if those fields are not allowed to be changed by this logic path
+            if (userToUpdate.rol === 'DIRECCION' && (newRol || email || nombre_completo) ) {
+                 return res.status(403).json({ error: "Los datos de usuarios con rol DIRECCION no se pueden modificar aquí." });
+            }
+             if (userToUpdate.id === req.user.id && (newRol || email || nombre_completo) ){ // Check if they are trying to change their own non-password details
+                 return res.status(403).json({ error: "No puedes modificar tus propios datos (email, nombre, rol) aquí. Contacta a otro administrador." });
+             }
         }
         
-        const allowedRolesToUpdate = ['TUTOR', 'TESORERIA']; 
-        if (!allowedRolesToUpdate.includes(userToUpdate.rol) && userToUpdate.rol !== null && userToUpdate.rol !== 'COORDINACION') {
-             return res.status(403).json({ error: `Solo se pueden modificar usuarios con roles ${allowedRolesToUpdate.join(', ')} o COORDINACION (para cambiarlo a otro rol).` });
+        // Password change logic for admin changing other non-DIRECCION user's password
+        if (newPassword) {
+            if (req.user.rol !== 'DIRECCION') {
+                return res.status(403).json({ error: "No autorizado para cambiar contraseñas de otros usuarios." });
+            }
+            if (userToUpdate.id === req.user.id) { // Should be caught above, but as a safeguard
+                return res.status(403).json({ error: "Utilice la opción 'Cambiar Contraseña' para su propia cuenta." });
+            }
+            if (userToUpdate.rol === 'DIRECCION') { // Should be caught above, but as a safeguard
+                return res.status(403).json({ error: "No se puede cambiar la contraseña de otro usuario con rol DIRECCION." });
+            }
+            if (newPassword.length < 8) {
+                return res.status(400).json({ error: "La nueva contraseña debe tener al menos 8 caracteres." });
+            }
         }
 
+        const allowedRolesToUpdate = ['TUTOR', 'TESORERIA'];
+        if (newRol !== undefined && !allowedRolesToUpdate.includes(newRol) && userToUpdate.rol !== 'COORDINACION') { // If newRol is provided and it's not one of these (and user is not COORD)
+             return res.status(400).json({ error: `Rol inválido. Roles permitidos para asignación: ${allowedRolesToUpdate.join(', ')}.` });
+        }
+        // If userToUpdate.rol is COORDINACION, they can be changed to TUTOR or TESORERIA.
+        // If userToUpdate.rol is TUTOR or TESORERIA, they can be changed to another role in allowedRolesToUpdate.
+        // This check is now more focused on the validity of the newRol if provided.
 
         let updateFields = [];
         let updateParams = [];
@@ -878,6 +943,14 @@ app.put('/api/usuarios/:id', authenticateToken, async (req, res) => {
             updateFields.push("rol = ?");
             updateParams.push(newRol);
             newValues.rol = newRol; 
+        }
+
+        if (newPassword && req.user.rol === 'DIRECCION' && userToUpdate.rol !== 'DIRECCION' && userToUpdate.id !== req.user.id) {
+            const saltRounds = 10;
+            const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+            updateFields.push("password_hash = ?");
+            updateParams.push(newPasswordHash);
+            // No need to add to newValues as we don't return the hash
         }
 
 
@@ -2998,18 +3071,33 @@ app.delete('/api/participaciones/:participacion_id', authenticateToken, async (r
             return res.status(403).json({ error: "No tiene permisos para eliminar esta participación." });
         }
 
-        const result = await dbRunAsync("DELETE FROM participaciones_excursion WHERE id = ?", [participacionId]);
+        // Update the participation record to reset its fields
+        const updateSql = `
+            UPDATE participaciones_excursion
+            SET
+                autorizacion_firmada = 'No',
+                fecha_autorizacion = NULL,
+                pago_realizado = 'No',
+                cantidad_pagada = 0,
+                fecha_pago = NULL,
+                notas_participacion = NULL,
+                asistencia = 'Pendiente'
+            WHERE id = ?
+        `;
+        const updateResult = await dbRunAsync(updateSql, [participacionId]);
 
-        if (result.changes === 0) {
-            // Esto podría ocurrir si se eliminó justo después de la verificación de existencia.
-            // Considerarlo un éxito o un 404 es una opción. Para simplicidad, se considera éxito.
-            return res.status(200).json({ message: "Participación no encontrada o ya eliminada, ninguna acción realizada." });
+        if (updateResult.changes === 0) {
+            // This means the participationId did not exist, or no rows were changed.
+            return res.status(404).json({ message: "Participación no encontrada o ningún cambio realizado." });
         }
 
-        res.status(200).json({ message: "Participación eliminada exitosamente." });
+        // Fetch the updated record to return it
+        const updatedParticipacion = await dbGetAsync("SELECT * FROM participaciones_excursion WHERE id = ?", [participacionId]);
+
+        res.status(200).json({ message: "Participación reseteada exitosamente.", participacion: updatedParticipacion });
 
     } catch (error) {
-        console.error(`Error en DELETE /api/participaciones/${participacionId}:`, error.message, error.stack);
+        console.error(`Error en RESET (antes DELETE) /api/participaciones/${participacionId}:`, error.message, error.stack);
         res.status(500).json({ error: "Error interno del servidor al eliminar la participación." });
     }
 });
