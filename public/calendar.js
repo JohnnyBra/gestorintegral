@@ -64,7 +64,7 @@ function markExcursionDays(excursions) {
                     try {
                         const ids = JSON.parse(idsString);
                         if (ids && ids.length > 0) {
-                            const excursionId = ids[0]; 
+                            const excursionId = ids[0];
                             if (typeof window.handleExcursionDayClick === 'function') {
                                 window.handleExcursionDayClick(excursionId);
                             } else {

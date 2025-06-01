@@ -610,7 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </ul>`;
                 if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
                     html += '<h5>Próximas Excursiones (Global):</h5><ul>';
-                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
+                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}" data-excursion-nombre="${ex.nombre_excursion}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
                     html += '</ul>';
                 } else { html += '<p>No hay próximas excursiones generales.</p>';}
             }
@@ -621,7 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </ul>`;
                 if (data.proximasExcursiones && data.proximasExcursiones.length > 0) {
                     html += '<h5>Próximas Excursiones (Tu Clase / Globales):</h5><ul>';
-                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
+                    data.proximasExcursiones.forEach(ex => html += `<li><a href="#" class="excursion-detail-link" data-excursion-id="${ex.id}" data-excursion-nombre="${ex.nombre_excursion}">${ex.nombre_excursion}</a> (${ex.fecha_excursion || 'N/D'}) - ${ex.participating_scope_name || 'Scope N/A'}</li>`);
                     html += '</ul>';
                 } else { html += '<p>No hay próximas excursiones para tu clase o globales.</p>'; }
     
@@ -646,6 +646,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 html += '</ul>';
             }
             dashboardSummaryContentDiv.innerHTML = html;
+
+            // Add event listeners for new dashboard links behavior
+            dashboardSummaryContentDiv.querySelectorAll('.excursion-detail-link').forEach(link => {
+                link.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    const excursionId = this.dataset.excursionId;
+                    const excursionName = this.dataset.excursionNombre; // Get the name from the new data attribute
+                    if (excursionId && excursionName) {
+                        sessionStorage.setItem('filtroParticipacionesExcursionId', excursionId);
+                        sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionName);
+                        navigateTo('participaciones');
+                    } else {
+                        console.error('Excursion ID or Name not found on link.', this);
+                        // Optionally show an error to the user
+                    }
+                });
+            });
+
         } catch (error) {
             if (dashboardSummaryContentDiv) dashboardSummaryContentDiv.innerHTML = `<p class="error-message">Error al cargar el resumen: ${error.message}</p>`;
         }
@@ -1719,10 +1737,12 @@ document.addEventListener('DOMContentLoaded', () => {
         participacionesContentDiv.innerHTML = "<p>Cargando participaciones...</p>";
         
         let selectExcursionesHtml = '<option value="">-- Selecciona excursión --</option>';
-        let dataExcursiones;
+        let allExcursionsData = []; // To store fetched excursions data for validation
+
         try {
-            const dataExcursiones = await apiFetch('/excursiones');
-            (dataExcursiones.excursiones || []).forEach(ex => {
+            const dataExcursionesFetched = await apiFetch('/excursiones'); // Fetch excursions first
+            allExcursionsData = dataExcursionesFetched.excursiones || [];
+            allExcursionsData.forEach(ex => {
                 selectExcursionesHtml += `<option value="${ex.id}">${ex.nombre_excursion} (${new Date(ex.fecha_excursion).toLocaleDateString()})</option>`;
             });
         } catch (error) { 
@@ -1754,29 +1774,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectExcursion = document.getElementById('selectExcursionParticipaciones');
         const tablaContainer = document.getElementById('tablaParticipacionesContainer');
         const resumenContainer = document.getElementById('resumenParticipacionesContainer');
+        const filtroClaseSelectElement = document.getElementById('selectFiltroClaseParticipaciones');
 
         if (selectExcursion) {
             selectExcursion.onchange = (e) => {
                 const selectedExId = e.target.value;
                 if (selectedExId) {
                     const selectedExNombre = e.target.options[e.target.selectedIndex].text;
-                    sessionStorage.setItem('filtroParticipacionesExcursionId', selectedExId);
-                    sessionStorage.setItem('filtroParticipacionesNombreExcursion', selectedExNombre);
-                    sessionStorage.removeItem('viewParticipacionesForClaseId'); 
+                    // Store for persistence if user navigates away and back via menu (optional, can be removed if not desired)
+                    // sessionStorage.setItem('lastSelectedExcursionIdParticipaciones', selectedExId);
+                    // sessionStorage.setItem('lastSelectedExcursionNameParticipaciones', selectedExNombre);
                     renderTablaParticipaciones(selectedExId, selectedExNombre);
                 } else {
-                    sessionStorage.removeItem('filtroParticipacionesExcursionId');
-                    sessionStorage.removeItem('filtroParticipacionesNombreExcursion');
-                    sessionStorage.removeItem('viewParticipacionesForClaseId');
+                    // sessionStorage.removeItem('lastSelectedExcursionIdParticipaciones');
+                    // sessionStorage.removeItem('lastSelectedExcursionNameParticipaciones');
                     if(tablaContainer) tablaContainer.innerHTML = '<p>Selecciona una excursión para ver las participaciones.</p>';
                     if(resumenContainer) resumenContainer.innerHTML = '';
                 }
             };
         }
         
-        const filtroClaseSelect = document.getElementById('selectFiltroClaseParticipaciones');
-        if (filtroClaseSelect) {
-            filtroClaseSelect.onchange = () => {
+        if (filtroClaseSelectElement) {
+            filtroClaseSelectElement.onchange = () => {
                 const currentSelectedExcursionId = selectExcursion ? selectExcursion.value : null;
                 if (currentSelectedExcursionId) { 
                     const currentSelectedExcursionName = selectExcursion.options[selectExcursion.selectedIndex].text;
@@ -1786,27 +1805,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const excursionIdFromSession = sessionStorage.getItem('filtroParticipacionesExcursionId');
-        let isValidSessionId = false;
+        const nombreExcursionFromSession = sessionStorage.getItem('filtroParticipacionesNombreExcursion');
 
-        if (excursionIdFromSession && dataExcursiones && dataExcursiones.excursiones) {
-            const numericExcursionId = parseInt(excursionIdFromSession);
-            const foundExcursion = dataExcursiones.excursiones.find(ex => ex.id === numericExcursionId);
-            if (foundExcursion) {
-                isValidSessionId = true;
-                if(selectExcursion) selectExcursion.value = numericExcursionId; 
-                const nombreExcursionFromSession = sessionStorage.getItem('filtroParticipacionesNombreExcursion') || foundExcursion.nombre_excursion; 
-                renderTablaParticipaciones(numericExcursionId, nombreExcursionFromSession);
-            } else {
+        if (excursionIdFromSession && selectExcursion) {
+            const isValidSessionId = Array.from(selectExcursion.options).some(opt => opt.value === excursionIdFromSession);
+            if (isValidSessionId) {
+                selectExcursion.value = excursionIdFromSession;
+                const nombreToUse = nombreExcursionFromSession || (selectExcursion.options[selectExcursion.selectedIndex] ? selectExcursion.options[selectExcursion.selectedIndex].text : 'Excursión');
+                renderTablaParticipaciones(excursionIdFromSession, nombreToUse);
+
                 sessionStorage.removeItem('filtroParticipacionesExcursionId');
                 sessionStorage.removeItem('filtroParticipacionesNombreExcursion');
-                sessionStorage.removeItem('viewParticipacionesForClaseId');
+            } else {
+                 console.warn('Excursion ID from session not found in dropdown, clearing session items.');
+                 sessionStorage.removeItem('filtroParticipacionesExcursionId');
+                 sessionStorage.removeItem('filtroParticipacionesNombreExcursion');
+                 if(tablaContainer) tablaContainer.innerHTML = '<p>Por favor, seleccione una excursión de la lista.</p>';
+                 if(resumenContainer) resumenContainer.innerHTML = '';
             }
-        }
-
-        if (!isValidSessionId) {
+        } else {
             if(tablaContainer) tablaContainer.innerHTML = '<p>Por favor, seleccione una excursión de la lista para ver las participaciones.</p>';
             if(resumenContainer) resumenContainer.innerHTML = '';
-            if(selectExcursion) selectExcursion.value = ""; 
         }
     }
 
@@ -2329,44 +2348,56 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         if(modalExcursionNotas) modalExcursionNotas.textContent = excursionData.notas_excursion || 'N/A';
         if(modalExcursionParticipants) modalExcursionParticipants.textContent = excursionData.participating_scope_name || 'N/A';
 
-        // Add the "Download Info for Families" button
-        const actionsContainer = excursionDetailModal.querySelector('.modal-actions-container') || excursionDetailModal.querySelector('.modal-content'); // Prefer a specific actions container
-        if (actionsContainer) {
-            const existingButton = actionsContainer.querySelector('#btnGenerarInfoFamiliasPdf');
-            if (existingButton) existingButton.remove(); // Remove if already exists to prevent duplicates
+        const modalAuthCountSpan = document.getElementById('modal-excursion-auth-count');
+        if (modalAuthCountSpan) {
+            modalAuthCountSpan.textContent = excursionData.count_autorizados !== undefined ? excursionData.count_autorizados.toString() : 'N/D';
+        }
 
+        // Add the "Download Info for Families" and "Ver Participaciones" buttons
+        const actionsContainer = excursionDetailModal.querySelector('.modal-actions-container') || excursionDetailModal.querySelector('.modal-content'); // Prefer a specific actions container
+
+        if (actionsContainer) {
+            // Remove previous buttons if they exist to prevent duplicates
+            const existingParticipacionesBtn = actionsContainer.querySelector('#modalLinkToParticipaciones');
+            if (existingParticipacionesBtn) existingParticipacionesBtn.parentElement.remove(); // Remove wrapper if exists
+            else { // Fallback if not wrapped, remove individually
+                 if(existingParticipacionesBtn) existingParticipacionesBtn.remove();
+                 const existingDownloadBtn = actionsContainer.querySelector('#btnGenerarInfoFamiliasPdf');
+                 if(existingDownloadBtn) existingDownloadBtn.remove();
+            }
+
+
+            const buttonWrapper = document.createElement('div');
+            buttonWrapper.style.textAlign = 'right';
+            buttonWrapper.style.marginTop = '20px';
+
+            // "Ver Participaciones" Button
+            const participacionesButton = document.createElement('button');
+            participacionesButton.id = 'modalLinkToParticipaciones';
+            participacionesButton.className = 'button secondary';
+            participacionesButton.innerHTML = '<i class="fas fa-users"></i> Ver Participaciones';
+            participacionesButton.style.marginRight = '10px';
+
+            participacionesButton.addEventListener('click', () => {
+                if (excursionData && excursionData.id && excursionData.nombre_excursion) {
+                    sessionStorage.setItem('filtroParticipacionesExcursionId', excursionData.id.toString());
+                    sessionStorage.setItem('filtroParticipacionesNombreExcursion', excursionData.nombre_excursion);
+                    closeExcursionModal();
+                    navigateTo('participaciones');
+                } else {
+                    console.error('Excursion data for participaciones link is missing in modal.');
+                }
+            });
+            buttonWrapper.appendChild(participacionesButton);
+
+            // "Download Info Familias (PDF)" Button
             const downloadInfoButton = document.createElement('button');
             downloadInfoButton.id = 'btnGenerarInfoFamiliasPdf';
-            downloadInfoButton.className = 'info'; // Use a suitable class, 'info' or 'secondary'
+            downloadInfoButton.className = 'info';
             downloadInfoButton.innerHTML = '<i class="fas fa-file-pdf"></i> Descargar Info Familias (PDF)';
             downloadInfoButton.setAttribute('data-excursion-id', excursionData.id);
             downloadInfoButton.setAttribute('data-excursion-nombre', excursionData.nombre_excursion);
-            
-            // Add some margin to the button
-            downloadInfoButton.style.marginTop = '15px';
-            downloadInfoButton.style.marginRight = '10px';
-
-
-            // Append to a new line or a specific div if available for better layout
-            const buttonWrapper = document.createElement('div');
-            buttonWrapper.style.textAlign = 'right'; // Align button to the right
-            buttonWrapper.style.marginTop = '10px';
-            buttonWrapper.appendChild(downloadInfoButton);
-            
-            // Try to append after existing content in the modal body or before the close button
-            const modalBody = excursionDetailModal.querySelector('.modal-body-content'); // Assuming a class for the main content area
-            if (modalBody) {
-                 modalBody.appendChild(buttonWrapper);
-            } else {
-                // Fallback: append before the close button if no specific body/actions container
-                const modalFooter = excursionDetailModal.querySelector('.modal-footer'); // Or any other logical place
-                if (modalFooter) {
-                    modalFooter.insertBefore(buttonWrapper, modalFooter.firstChild);
-                } else {
-                     actionsContainer.appendChild(buttonWrapper); // General fallback
-                }
-            }
-
+            // No specific marginTop here, as it's on the wrapper
 
             downloadInfoButton.addEventListener('click', async function() {
                 const excursionId = this.dataset.excursionId;
@@ -2398,6 +2429,23 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
                     showGlobalError(`Error de red o conexión al generar PDF de información: ${err.message}`);
                 }
             });
+            buttonWrapper.appendChild(downloadInfoButton);
+
+            // Append the wrapper containing both buttons
+            const modalBody = excursionDetailModal.querySelector('.modal-body-content'); // Standard place
+            const modalFooter = excursionDetailModal.querySelector('.modal-footer'); // Alternative place
+
+            if (modalBody) { // Prefer appending to modal-body-content if it exists
+                modalBody.appendChild(buttonWrapper);
+            } else if (modalFooter) { // Else, try modal-footer
+                modalFooter.insertBefore(buttonWrapper, modalFooter.firstChild); // Insert before other footer items
+            } else if (actionsContainer.contains(modalCloseButton) && modalCloseButton) {
+                // If no specific body/footer, and actionsContainer has the close button, insert before it
+                actionsContainer.insertBefore(buttonWrapper, modalCloseButton);
+            }
+             else { // Absolute fallback
+                actionsContainer.appendChild(buttonWrapper);
+            }
         }
         
         excursionDetailModal.style.display = 'block'; 
@@ -2737,4 +2785,5 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         });
     }
 
+    window.navigateTo = navigateTo; // Expose navigateTo to the global scope
 });

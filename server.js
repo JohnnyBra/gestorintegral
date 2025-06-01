@@ -106,9 +106,15 @@ async function getTutorCicloClaseIds(tutorClaseId) {
 
 async function getExcursionScopeDetails(excursion, dbGetAsync) {
     let participating_scope_type = "Desconocido";
-    let participating_scope_name = "N/A";
+    let participating_scope_name = "N/A"; // Initial default
 
-    if (!excursion || typeof excursion.creada_por_usuario_id === 'undefined') {
+    // If excursion object is problematic or creada_por_usuario_id is missing (null or undefined)
+    if (!excursion) {
+        participating_scope_name = "Alcance Indeterminado (Datos excursión ausentes)";
+        return { participating_scope_type, participating_scope_name };
+    }
+    if (excursion.creada_por_usuario_id === null || typeof excursion.creada_por_usuario_id === 'undefined') {
+        participating_scope_name = "Alcance Indeterminado (ID creador ausente)";
         return { participating_scope_type, participating_scope_name };
     }
 
@@ -131,6 +137,7 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
                 participating_scope_name = "Clase Específica (Detalles no encontrados)";
             }
         } else { 
+            // Global excursion (para_clase_id is null)
             const creator = await dbGetAsync("SELECT rol FROM usuarios WHERE id = ?", [excursion.creada_por_usuario_id]);
             if (creator) {
                 switch (creator.rol) {
@@ -147,17 +154,22 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
                         participating_scope_name = "Global (Coordinación)";
                         break;
                     case 'TUTOR':
-                        participating_scope_type = "cycle";
-                        const tutorClase = await dbGetAsync("SELECT ciclo_id FROM clases WHERE tutor_id = ?", [excursion.creada_por_usuario_id]);
-                        if (tutorClase && tutorClase.ciclo_id) {
-                            const cicloTutor = await dbGetAsync("SELECT nombre_ciclo FROM ciclos WHERE id = ?", [tutorClase.ciclo_id]);
-                            if (cicloTutor && cicloTutor.nombre_ciclo) {
-                                participating_scope_name = `${cicloTutor.nombre_ciclo} (Todas las clases del ciclo)`;
-                            } else {
-                                participating_scope_name = "Ciclo del creador (Todas las clases del ciclo)";
-                            }
+                        participating_scope_type = "cycle"; // Default assumption
+                        const tutorCycleInfo = await dbGetAsync(
+                            `SELECT ci.nombre_ciclo
+                             FROM usuarios u
+                             JOIN clases cl ON u.id = cl.tutor_id
+                             JOIN ciclos ci ON cl.ciclo_id = ci.id
+                             WHERE u.id = ?
+                             LIMIT 1`,
+                             [excursion.creada_por_usuario_id]
+                        );
+
+                        if (tutorCycleInfo && tutorCycleInfo.nombre_ciclo) {
+                            participating_scope_name = `${tutorCycleInfo.nombre_ciclo} (Ciclo del Tutor)`;
                         } else {
-                            participating_scope_name = "Ciclo del creador no encontrado (Todas las clases del ciclo)";
+                            // If specific cycle name isn't found, but we know it's a Tutor.
+                            participating_scope_name = "Global (Creada por Tutor)";
                         }
                         break;
                     default:
@@ -170,7 +182,18 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
         }
     } catch (error) {
         console.error(`Error en getExcursionScopeDetails para excursion ID ${excursion.id}:`, error.message);
+        // If an error occurs, and participating_scope_name is still "N/A", set a generic error scope.
+        if (participating_scope_name === "N/A") {
+            participating_scope_name = "Error al determinar alcance";
+        }
     }
+
+    // Final safety net: if, after all logic, it's still "N/A", but we had a valid excursion object and creator ID, set a generic default.
+    // This should ideally not be reached if the logic above is comprehensive.
+    if (participating_scope_name === "N/A" && excursion.creada_por_usuario_id) {
+        participating_scope_name = "Alcance General (Error Lógico)";
+    }
+
     return { participating_scope_type, participating_scope_name };
 }
 
@@ -242,9 +265,10 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
     for (const row of data) { // Changed to for...of for potential async operations within loop if needed
         if (currentY - rowHeight < pageBottomMargin) { 
              page = pdfDoc.addPage(PageSizes.A4);
+             const { width: newPageWidth } = page.getSize(); // Get width from new page
              if (logoDetails && logoDetails.image) {
                 page.drawImage(logoDetails.image, {
-                    x: logoDetails.x,
+                    x: newPageWidth - (pageSetup && pageSetup.xMargin ? pageSetup.xMargin : 40) - logoDetails.dims.width, // Adjusted for new page width
                     y: logoDetails.yTop,
                     width: logoDetails.dims.width,
                     height: logoDetails.dims.height,
@@ -521,7 +545,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         // Draw logo on first page
         if (logoImage) {
             page.drawImage(logoImage, {
-                x: xMargin,
+                x: width - xMargin - logoDims.width,
                 y: height - yPageMargin - logoDims.height,
                 width: logoDims.width,
                 height: logoDims.height,
@@ -546,15 +570,16 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         const pageBottomMargin = 40;
 
 
-        const logoObject = { image: logoImage, dims: logoDims, x: xMargin, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
+        const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
 
         const ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
             let localCurrentY = currentYVal;
             if (localCurrentY - neededSpace < pageBottomMargin || (isNewSection && localCurrentY - neededSpace < (pageBottomMargin + 40))) { // More space for new section headers
                 page = pdfDocLib.addPage(PageSizes.A4);
+                const { width: newPageWidthEnsure } = page.getSize(); // Get width of the new page for ensurePageSpace
                 if (logoObject.image) {
                     page.drawImage(logoObject.image, {
-                        x: logoObject.x,
+                        x: newPageWidthEnsure - xMargin - logoObject.dims.width, // Use new page's width and xMargin
                         y: logoObject.yTop,
                         width: logoObject.dims.width,
                         height: logoObject.dims.height,
@@ -1670,6 +1695,11 @@ app.get('/api/excursiones/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: "Excursión no encontrada." });
         }
 
+        // Contar participantes con autorización firmada
+        const authCountSql = "SELECT COUNT(*) as count_autorizados FROM participaciones_excursion WHERE excursion_id = ? AND autorizacion_firmada = 'Sí'";
+        const authCountResult = await dbGetAsync(authCountSql, [excursionId]);
+        excursion.count_autorizados = authCountResult ? authCountResult.count_autorizados : 0;
+
         let canAccess = false;
         if (req.user.rol === 'DIRECCION' || req.user.rol === 'TESORERIA') { 
             canAccess = true;
@@ -1999,7 +2029,7 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
         // Dibujar logo en la primera página (y en nuevas páginas si es necesario)
         if (logoImage) {
             page.drawImage(logoImage, {
-                x: xMargin,
+                x: width - xMargin - logoDims.width,
                 y: height - yPageMargin - logoDims.height,
                 width: logoDims.width,
                 height: logoDims.height,
@@ -2025,7 +2055,7 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
                 currentY = height - yPageMargin; // Reiniciar Y para la nueva página
                 if (logoImage) {
                     page.drawImage(logoImage, {
-                        x: xMargin,
+                        x: width - xMargin - logoDims.width,
                         y: height - yPageMargin - logoDims.height,
                         width: logoDims.width,
                         height: logoDims.height,
@@ -3940,7 +3970,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         // Draw logo on first page
         if (logoImage) {
             page.drawImage(logoImage, {
-                x: xMargin,
+                x: width - xMargin - logoDims.width,
                 y: height - yPageMargin - logoDims.height,
                 width: logoDims.width,
                 height: logoDims.height,
@@ -3959,7 +3989,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             text: { font: robotoFont, size: 10, color: rgb(0,0,0) }
         };
         
-        const logoObject = { image: logoImage, dims: logoDims, x: xMargin, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
+        const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
         const pageSetup = { height, yMargin: yPageMargin, bottomMargin: pageBottomMargin, xMargin: xMargin };
 
 
@@ -3969,7 +3999,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
                 page = pdfDocLib.addPage(PageSizes.A4);
                 if (logoObject.image) {
                     page.drawImage(logoObject.image, {
-                        x: logoObject.x,
+                        x: width - xMargin - logoObject.dims.width,
                         y: logoObject.yTop,
                         width: logoObject.dims.width,
                         height: logoObject.dims.height,
