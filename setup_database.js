@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS participaciones_excursion (
     pago_realizado TEXT DEFAULT 'No' CHECK(pago_realizado IN ('Sí', 'No', 'Parcial')),
     cantidad_pagada REAL DEFAULT 0,
     fecha_pago TEXT,
+    asistencia TEXT DEFAULT 'Pendiente' CHECK(asistencia IN ('Sí', 'No', 'Pendiente')),
     notas_participacion TEXT,
     FOREIGN KEY (alumno_id) REFERENCES alumnos(id) ON DELETE CASCADE,
     FOREIGN KEY (excursion_id) REFERENCES excursiones(id) ON DELETE CASCADE,

@@ -322,7 +322,7 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
             color: rgb(0.7, 0.7, 0.7)
         });
     }
-    return currentY;
+    return { currentY, page }; // Return both updated Y and potentially updated page object
 }
 
 // Helper function to draw label and value with basic wrapping for value (re-adding)
@@ -426,7 +426,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         if (excursion.para_clase_id !== null) { // Excursion for a specific class or cycle
             // Fetch all students belonging to excursion.para_clase_id
             sqlAlumnosQuery = `
-                SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada
+                SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada, p.asistencia
                 FROM alumnos a
                 JOIN clases c ON a.clase_id = c.id
                 LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
@@ -448,7 +448,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                 if (!userClaseId) return res.status(403).json({ error: "Tutor no asignado a una clase." });
                 // Fetch students only from userClaseId
                 sqlAlumnosQuery = `
-                    SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada
+                    SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada, p.asistencia
                     FROM alumnos a
                     JOIN clases c ON a.clase_id = c.id
                     LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
@@ -459,7 +459,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                 if (viewClaseId) {
                     // Fetch students from that viewClaseId
                     sqlAlumnosQuery = `
-                        SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada
+                        SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada, p.asistencia
                         FROM alumnos a
                         JOIN clases c ON a.clase_id = c.id
                         LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
@@ -469,7 +469,7 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                 } else {
                     // Fetch students from ALL classes
                     sqlAlumnosQuery = `
-                        SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada
+                        SELECT a.id as alumno_id, a.nombre_completo, a.apellidos_para_ordenar, c.id as clase_id, c.nombre_clase, p.autorizacion_firmada, p.asistencia
                         FROM alumnos a
                         JOIN clases c ON a.clase_id = c.id
                         LEFT JOIN participaciones_excursion p ON a.id = p.alumno_id AND p.excursion_id = ?
@@ -486,7 +486,9 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         // Combine and Process Data
         const alumnosPorClase = {};
         let totalGeneralAlumnos = 0;
-        let totalGeneralAsistentes = 0;
+        let totalGeneralAutorizados = 0; // Renamed from totalGeneralAsistentes
+        let totalGeneralPresentes = 0;
+
 
         alumnosData.forEach(ad => {
             if (!alumnosPorClase[ad.nombre_clase]) {
@@ -494,23 +496,30 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                     nombre_clase: ad.nombre_clase,
                     alumnos: [],
                     totalEnClase: 0,
-                    asistentesEnClase: 0
+                    autorizadosEnClase: 0, // Renamed
+                    presentesEnClase: 0    // Added
                 };
             }
             const alumnoConEstado = {
                 nombre_completo: ad.nombre_completo,
-                autorizacion_firmada: ad.autorizacion_firmada || 'No' // Default to 'No' if no participation record
+                autorizacion_firmada: ad.autorizacion_firmada || 'No', // Default to 'No' if no participation record
+                asistencia: ad.asistencia || 'Pendiente' // Added
             };
             alumnosPorClase[ad.nombre_clase].alumnos.push(alumnoConEstado);
             alumnosPorClase[ad.nombre_clase].totalEnClase++;
             totalGeneralAlumnos++;
             if (alumnoConEstado.autorizacion_firmada === 'Sí') {
-                alumnosPorClase[ad.nombre_clase].asistentesEnClase++;
-                totalGeneralAsistentes++;
+                alumnosPorClase[ad.nombre_clase].autorizadosEnClase++;
+                totalGeneralAutorizados++;
+            }
+            if (alumnoConEstado.asistencia === 'Sí') { // New count
+                alumnosPorClase[ad.nombre_clase].presentesEnClase++;
+                totalGeneralPresentes++;
             }
         });
 
-        const totalGeneralNoAsistentes = totalGeneralAlumnos - totalGeneralAsistentes;
+        const totalGeneralNoAutorizados = totalGeneralAlumnos - totalGeneralAutorizados; // Renamed
+        const totalGeneralAusentes = totalGeneralAlumnos - totalGeneralPresentes; // Added
 
         // 2. PDF Generation (pdf-lib)
         const pdfDocLib = await PDFDocument.create();
@@ -567,18 +576,27 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0); // 15 padding below logo
         const contentWidth = width - (2 * xMargin);
         const rowHeight = 18;
-        const pageBottomMargin = 40;
+        const pageBottomMargin = 40; // Already defined, ensure it's used in pageSetup
 
+        const pageSetup = { // Define pageSetup here
+            width: width,
+            height: height,
+            xMargin: xMargin,
+            yMargin: yPageMargin,
+            bottomMargin: pageBottomMargin
+        };
 
         const logoObject = { image: logoImage, dims: logoDims, x: width - xMargin - logoDims.width, yTop: height - yPageMargin - logoDims.height, paddingBelow: 15 };
 
-        const ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
+        const ensurePageSpace = (currentYVal, currentPage, neededSpace, isNewSection = false) => { // Added currentPage
             let localCurrentY = currentYVal;
+            let pageToUse = currentPage; // Use passed page
+
             if (localCurrentY - neededSpace < pageBottomMargin || (isNewSection && localCurrentY - neededSpace < (pageBottomMargin + 40))) { // More space for new section headers
-                page = pdfDocLib.addPage(PageSizes.A4);
-                const { width: newPageWidthEnsure } = page.getSize(); // Get width of the new page for ensurePageSpace
+                pageToUse = pdfDocLib.addPage(PageSizes.A4); // Assign to new variable
+                const { width: newPageWidthEnsure } = pageToUse.getSize(); // Get width of the new page for ensurePageSpace
                 if (logoObject.image) {
-                    page.drawImage(logoObject.image, {
+                    pageToUse.drawImage(logoObject.image, {
                         x: newPageWidthEnsure - xMargin - logoObject.dims.width, // Use new page's width and xMargin
                         y: logoObject.yTop,
                         width: logoObject.dims.width,
@@ -586,13 +604,13 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
                     });
                 }
                 localCurrentY = height - yPageMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
-                // Caller might need to redraw section headers if isNewSection was true and new page created.
-                // This simple version just resets Y. A more complex one might return a flag.
             }
-            return localCurrentY;
+            return { newY: localCurrentY, newPage: pageToUse }; // Return new state
         };
         
-        currentY = ensurePageSpace(currentY, pdfStyles.mainTitle.size + pdfStyles.header.size * 2 + 40); // Estimate space for titles
+        let pageState = ensurePageSpace(currentY, page, pdfStyles.mainTitle.size + pdfStyles.header.size * 2 + 40); // Estimate space for titles
+        currentY = pageState.newY;
+        page = pageState.newPage;
 
         // Overall Title
         page.drawText('Listado de Asistencia y Justificantes', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
@@ -602,54 +620,85 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         page.drawText(`Fecha: ${new Date(excursion.fecha_excursion).toLocaleDateString('es-ES')}`, { x: xMargin, y: currentY, ...pdfStyles.header });
         currentY -= 25;
 
-        // Columns for the table of attending students
-        const columnsAsistentes = [
-            { header: 'Nombre Alumno Asistente', key: 'nombre_completo', alignment: 'left'}
+        // Columns for the table
+        const columnsParticipacion = [
+            { header: 'Nombre Alumno', key: 'nombre_completo', alignment: 'left'},
+            { header: 'Autorización', key: 'autorizacion_firmada', alignment: 'left'},
+            { header: 'Asistencia Real', key: 'asistencia', alignment: 'left'}
         ];
-        const columnWidthsAsistentes = [contentWidth]; // Single column takes full width
+        const columnWidthsParticipacion = [contentWidth * 0.6, contentWidth * 0.2, contentWidth * 0.2];
 
         // Loop by Class
-        for (const nombreClase of Object.keys(alumnosPorClase).sort()) {
+        const sortedNombresClase = Object.keys(alumnosPorClase).sort();
+        for (const nombreClase of sortedNombresClase) {
             const claseData = alumnosPorClase[nombreClase];
-            const alumnosAsistentesEnClase = claseData.alumnos.filter(a => a.autorizacion_firmada === 'Sí');
-            const noAsistentesEnClase = claseData.totalEnClase - claseData.asistentesEnClase;
-
-            ensurePageSpace(rowHeight * 3, true); // Space for class header and summary
             
-            // Class Header
-            page.drawText(`Clase: ${claseData.nombre_clase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
-            currentY -= 20;
+            pageState = ensurePageSpace(currentY, page, pdfStyles.classHeader.size + 25, true);
+            currentY = pageState.newY;
+            page = pageState.newPage;
 
-            // Table of Attending Students
-            if (alumnosAsistentesEnClase.length > 0) {
-                ensurePageSpace(rowHeight * (alumnosAsistentesEnClase.length + 1));
-                 currentY = await drawTable(pdfDocLib, page, currentY, alumnosAsistentesEnClase, columnsAsistentes, { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, columnWidthsAsistentes, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin);
+            page.drawText(`Clase: ${claseData.nombre_clase}`, { x: xMargin, y: currentY, ...pdfStyles.classHeader });
+            currentY -= (pdfStyles.classHeader.size + 10);
+
+            if (claseData.alumnos.length > 0) {
+                const tableDrawResult = await drawTable(
+                    pdfDocLib,
+                    page,
+                    currentY,
+                    claseData.alumnos,
+                    columnsParticipacion,
+                    { normal: robotoFont, bold: robotoBoldFont },
+                    { header: 10, cell: 9 },
+                    columnWidthsParticipacion,
+                    rowHeight,
+                    pdfStyles.tableHeader,
+                    pdfStyles.tableCell,
+                    xMargin,
+                    logoObject,
+                    pageSetup
+                );
+                currentY = tableDrawResult.currentY;
+                page = tableDrawResult.page;
             } else {
-                ensurePageSpace(rowHeight);
-                page.drawText('No hay alumnos asistentes con justificante para esta clase.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+                pageState = ensurePageSpace(currentY, page, rowHeight);
+                currentY = pageState.newY;
+                page = pageState.newPage;
+                page.drawText('No hay alumnos registrados para esta excursión en esta clase.', { x: xMargin, y: currentY, ...pdfStyles.summaryText });
                 currentY -= rowHeight;
             }
-            currentY -= 15; // Increased padding after table or "no asistentes" message
+            currentY -= 10;
 
-            // Class Summary
-            ensurePageSpace(rowHeight * 3);
-            page.drawText(`Total Alumnos en Clase: ${claseData.totalEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            // Per-Class Summary
+            pageState = ensurePageSpace(currentY, page, pdfStyles.subheader.size + (rowHeight * 4) + 10 );
+            currentY = pageState.newY;
+            page = pageState.newPage;
+            page.drawText(`Resumen para Clase ${claseData.nombre_clase}:`, { x: xMargin, y: currentY, ...pdfStyles.subheader });
+            currentY -= 18;
+            page.drawText(`- Total Alumnos en Clase: ${claseData.totalEnClase}`, { x: xMargin + 10, y: currentY, ...pdfStyles.summaryText });
             currentY -= 15;
-            page.drawText(`Total Asistentes (con justificante): ${claseData.asistentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
+            page.drawText(`- Total Autorizados (justificante 'Sí'): ${claseData.autorizadosEnClase}`, { x: xMargin + 10, y: currentY, ...pdfStyles.summaryText });
             currentY -= 15;
-            page.drawText(`Total No Asistentes (sin justificante o no entregado): ${noAsistentesEnClase}`, { x: xMargin, y: currentY, ...pdfStyles.summaryText });
-            currentY -= 25; // Space before next class or overall summary
+            page.drawText(`- Total Presentes (Asistencia 'Sí'): ${claseData.presentesEnClase}`, { x: xMargin + 10, y: currentY, ...pdfStyles.summaryText });
+            currentY -= 15;
+            const ausentesEnClase = claseData.totalEnClase - claseData.presentesEnClase;
+            page.drawText(`- Total Ausentes (Asistencia 'No' o 'Pendiente'): ${ausentesEnClase}`, { x: xMargin + 10, y: currentY, ...pdfStyles.summaryText });
+            currentY -= 25;
         }
 
-        // Overall Summary
-        ensurePageSpace(rowHeight * 4, true);
+        // Overall Summary (after loop)
+        pageState = ensurePageSpace(currentY, page, pdfStyles.header.size + (rowHeight * 4) + 20, true);
+        currentY = pageState.newY;
+        page = pageState.newPage;
+
         page.drawText('Resumen General de la Excursión', { x: xMargin, y: currentY, ...pdfStyles.header });
         currentY -= 20;
         page.drawText(`Total General Alumnos: ${totalGeneralAlumnos}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
         currentY -= 15;
-        page.drawText(`Total General Asistentes (con justificante): ${totalGeneralAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
+        page.drawText(`Total General Autorizados (justificante 'Sí'): ${totalGeneralAutorizados}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
         currentY -= 15;
-        page.drawText(`Total General No Asistentes: ${totalGeneralNoAsistentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
+        page.drawText(`Total General Presentes (asistencia 'Sí'): ${totalGeneralPresentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
+        currentY -= 15;
+        page.drawText(`Total General Ausentes: ${totalGeneralAusentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
         
         const pdfBytes = await pdfDocLib.save();
         res.contentType('application/pdf');
@@ -2705,7 +2754,7 @@ app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, asy
         for (const alumno of alumnosBase) {
             const participacion = await dbGetAsync(
                 `SELECT p.id as participacion_id, p.autorizacion_firmada, p.fecha_autorizacion, 
-                        p.pago_realizado, p.cantidad_pagada, p.fecha_pago, p.notas_participacion 
+                        p.pago_realizado, p.cantidad_pagada, p.fecha_pago, p.notas_participacion, p.asistencia
                  FROM participaciones_excursion p 
                  WHERE p.alumno_id = ? AND p.excursion_id = ?`,
                 [alumno.alumno_id, excursionId]
@@ -2719,6 +2768,7 @@ app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, asy
                 cantidad_pagada: participacion?.cantidad_pagada || 0,
                 fecha_pago: participacion?.fecha_pago || null,
                 notas_participacion: participacion?.notas_participacion || null,
+                asistencia: participacion?.asistencia || 'Pendiente',
             });
         }
         
@@ -2762,7 +2812,7 @@ app.get('/api/excursiones/:excursion_id/participaciones', authenticateToken, asy
 app.post('/api/participaciones', authenticateToken, async (req, res) => {
     const {
         excursion_id, alumno_id, autorizacion_firmada, fecha_autorizacion,
-        pago_realizado, cantidad_pagada = 0, fecha_pago, notas_participacion
+        pago_realizado, cantidad_pagada = 0, fecha_pago, notas_participacion, asistencia
     } = req.body;
 
     if (!excursion_id || !alumno_id) {
@@ -2782,10 +2832,51 @@ app.post('/api/participaciones', authenticateToken, async (req, res) => {
     if (cantidad_pagada !== undefined && (typeof cantidad_pagada !== 'number' || cantidad_pagada < 0)) {
         return res.status(400).json({ error: "cantidad_pagada debe ser un número no negativo." });
     }
+
+    const validAsistencia = ['Sí', 'No', 'Pendiente'];
+    if (asistencia !== undefined && !validAsistencia.includes(asistencia)) {
+        return res.status(400).json({ error: "asistencia debe ser 'Sí', 'No', o 'Pendiente'." });
+    }
+
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (fecha_autorizacion && !dateRegex.test(fecha_autorizacion)) return res.status(400).json({ error: "Formato de fecha_autorizacion inválido. Use YYYY-MM-DD."});
     if (fecha_pago && !dateRegex.test(fecha_pago)) return res.status(400).json({ error: "Formato de fecha_pago inválido. Use YYYY-MM-DD."});
 
+    // Inside POST /api/participaciones, before the main try block for upsert
+    if (req.body.asistencia !== undefined) {
+        const excursionDetails = await dbGetAsync("SELECT fecha_excursion FROM excursiones WHERE id = ?", [excursion_id]);
+        if (!excursionDetails) {
+            return res.status(404).json({ error: "Excursión no encontrada para validar fecha de asistencia." });
+        }
+
+        const fechaExcursion = new Date(excursionDetails.fecha_excursion);
+        const hoy = new Date();
+        // Ajustar 'hoy' para que solo compare fechas, ignorando la hora.
+        hoy.setHours(0, 0, 0, 0);
+        // Lo mismo para fechaExcursion si viene con hora (aunque BBDD suele guardar solo fecha YYYY-MM-DD)
+        fechaExcursion.setHours(0,0,0,0);
+
+
+        if (hoy < fechaExcursion) {
+            // Need to check if asistencia is actually changing for an existing record
+            const existingParticipacion = await dbGetAsync(
+                "SELECT asistencia FROM participaciones_excursion WHERE alumno_id = ? AND excursion_id = ?",
+                [alumno_id, excursion_id]
+            );
+            if (existingParticipacion && existingParticipacion.asistencia !== req.body.asistencia) {
+                return res.status(403).json({ error: "La asistencia solo se puede modificar el día de la excursión o después." });
+            }
+            // If it's a new record, and asistencia is being set (even to 'Pendiente' explicitly by client)
+            // before excursion date, this check might be too restrictive.
+            // The requirement is "modificar", so this mainly applies to changes from 'Pendiente' to 'Sí'/'No'
+            // or between 'Sí' and 'No'.
+            // If it's a new record being created, and an 'asistencia' value is provided, this check applies.
+            // If 'asistencia' is not provided in req.body for a new record, it defaults to 'Pendiente' and this check is skipped.
+            if (!existingParticipacion && req.body.asistencia !== 'Pendiente') {
+                 return res.status(403).json({ error: "La asistencia solo se puede registrar como 'Sí' o 'No' el día de la excursión o después." });
+            }
+        }
+    }
 
     try {
         const alumno = await dbGetAsync("SELECT id, clase_id FROM alumnos WHERE id = ?", [alumno_id]);
@@ -2816,15 +2907,16 @@ app.post('/api/participaciones', authenticateToken, async (req, res) => {
         const sqlUpsert = `
             INSERT INTO participaciones_excursion (
                 alumno_id, excursion_id, autorizacion_firmada, fecha_autorizacion,
-                pago_realizado, cantidad_pagada, fecha_pago, notas_participacion
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                pago_realizado, cantidad_pagada, fecha_pago, notas_participacion, asistencia
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(alumno_id, excursion_id) DO UPDATE SET
                 autorizacion_firmada = excluded.autorizacion_firmada,
                 fecha_autorizacion = excluded.fecha_autorizacion,
                 pago_realizado = excluded.pago_realizado,
                 cantidad_pagada = excluded.cantidad_pagada,
                 fecha_pago = excluded.fecha_pago,
-                notas_participacion = excluded.notas_participacion
+                notas_participacion = excluded.notas_participacion,
+                asistencia = excluded.asistencia
             RETURNING id;`; 
 
         const paramsUpsert = [
@@ -2834,7 +2926,8 @@ app.post('/api/participaciones', authenticateToken, async (req, res) => {
             pago_realizado === undefined ? 'No' : pago_realizado, 
             cantidad_pagada === undefined ? 0 : cantidad_pagada, 
             fecha_pago || null,
-            notas_participacion || null
+            notas_participacion || null,
+            asistencia === undefined ? 'Pendiente' : asistencia
         ];
         
         await dbRunAsync(sqlUpsert.replace("RETURNING id;", ""), paramsUpsert); 
@@ -3801,7 +3894,7 @@ app.get('/api/tesoreria/excursion-financial-details/:excursion_id', authenticate
         excursion.total_dinero_recaudado = recaudadoRow && recaudadoRow.total !== null ? recaudadoRow.total : 0;
 
         const asistentesRow = await dbGetAsync(
-            "SELECT COUNT(DISTINCT alumno_id) as count FROM participaciones_excursion WHERE excursion_id = ? AND autorizacion_firmada = 'Sí'",
+            "SELECT COUNT(DISTINCT alumno_id) as count FROM participaciones_excursion WHERE excursion_id = ? AND asistencia = 'Sí'",
             [excursionId]
         );
         excursion.numero_alumnos_asistentes = asistentesRow ? asistentesRow.count : 0;
@@ -3834,7 +3927,7 @@ async function getFinancialDetailsForExcursion(excursionId, existingExcursionDat
     const total_dinero_recaudado = recaudadoRow && recaudadoRow.total !== null ? recaudadoRow.total : 0;
 
     const asistentesRow = await dbGetAsync(
-        "SELECT COUNT(DISTINCT alumno_id) as count FROM participaciones_excursion WHERE excursion_id = ? AND autorizacion_firmada = 'Sí'",
+        "SELECT COUNT(DISTINCT alumno_id) as count FROM participaciones_excursion WHERE excursion_id = ? AND asistencia = 'Sí'",
         [excursionId]
     );
     const numero_alumnos_asistentes = asistentesRow ? asistentesRow.count : 0;
