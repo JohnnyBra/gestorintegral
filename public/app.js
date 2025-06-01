@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUser = null;
     let currentParticipacionesDataArray = []; // Added global variable
     let currentToken = null;
+    let storedScrollY;
 
     const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:3000/api`;
 
@@ -115,6 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         paymentModalState.originalChangedElement = originalChangedElement;
         paymentModalState.saveCallback = callback;
         paymentModalState.excursionCost = excursionCost;
+        storedScrollY = window.scrollY;
 
         paymentAmountInput.value = excursionCost > 0 ? excursionCost.toFixed(2) : (0).toFixed(2); // Default to 0 if cost is 0
         const today = new Date().toISOString().split('T')[0];
@@ -2357,6 +2359,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Ensure the correct excursionId from the current context is used for refresh
                  updateParticipacionesSummary(currentExcursionIdToRefresh, currentExcursionNombreToRefresh);
                  renderTablaParticipaciones(currentExcursionIdToRefresh, currentExcursionNombreToRefresh); // Re-render table
+            }
+            if (typeof storedScrollY === 'number') { // Check if storedScrollY has a valid value
+                setTimeout(() => {
+                    window.scrollTo(0, storedScrollY);
+                }, 0); // Use setTimeout to ensure scrolling happens after DOM updates
             }
 
         } catch (error) {
