@@ -4472,7 +4472,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         currentY = ensurePageSpace(currentY, pdfStyles.mainTitle.size + pdfStyles.sectionTitle.size + 20, true);
 
         // PDF Title
-        page.drawText('Informe General de Secretaría', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
+        page.drawText('Informe General de Tesorería', { x: xMargin, y: currentY, ...pdfStyles.mainTitle });
         currentY -= (pdfStyles.mainTitle.size + 20);
 
         // Section 1: Resumen Financiero de Excursiones
