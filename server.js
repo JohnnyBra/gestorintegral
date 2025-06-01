@@ -4177,13 +4177,34 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         let logoImage, logoDims;
         try {
             const logoBuffer = fs.readFileSync(logoPath);
-            logoImage = await pdfDocLib.embedJpg(logoBuffer);
-            const logoScale = 50 / logoImage.width; // Aim for 50 points width
-            logoDims = { width: logoImage.width * logoScale, height: logoImage.height * logoScale };
+            logoImage = await pdfDocLib.embedJpg(logoBuffer); // Existing line
+
+            // ---- START MODIFICATION ----
+            if (!logoImage || logoImage.width === 0) { // Check if logoImage is valid and width is not zero
+                console.warn("Logo image width is 0 or logoImage is invalid. Using default 0x0 dimensions for logo.");
+                logoDims = { width: 0, height: 0 };
+            } else {
+                const logoScale = 50 / logoImage.width;
+                logoDims = {
+                    width: logoImage.width * logoScale,
+                    height: logoImage.height * logoScale
+                };
+                // Safeguard against NaN values if calculations produce them (e.g. 0 * Infinity)
+                if (isNaN(logoDims.width)) {
+                    console.warn(`Calculated logoDims.width was NaN. Resetting to 0. logoImage.width: ${logoImage.width}, logoScale: ${logoScale}`);
+                    logoDims.width = 0;
+                }
+                if (isNaN(logoDims.height)) {
+                    console.warn(`Calculated logoDims.height was NaN. Resetting to 0. logoImage.height: ${logoImage.height}, logoScale: ${logoScale}`);
+                    logoDims.height = 0;
+                }
+            }
+            // ---- END MODIFICATION ----
+
         } catch (logoError) {
             console.error("Error cargando logo para Informe General:", logoError.message);
             logoImage = null;
-            logoDims = { width: 0, height: 0 };
+            logoDims = { width: 0, height: 0 }; // Existing line
         }
 
         let page = pdfDocLib.addPage(PageSizes.A4);
