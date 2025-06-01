@@ -2363,7 +2363,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof storedScrollY === 'number') { // Check if storedScrollY has a valid value
                 setTimeout(() => {
                     window.scrollTo(0, storedScrollY);
-                }, 0); // Use setTimeout to ensure scrolling happens after DOM updates
+                }, 100); // Use setTimeout to ensure scrolling happens after DOM updates
             }
 
         } catch (error) {
