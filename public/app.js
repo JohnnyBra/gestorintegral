@@ -178,12 +178,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (cancelPaymentButton) {
-        cancelPaymentButton.addEventListener('click', () => {
-            if (paymentModalState.originalChangedElement) {
-                paymentModalState.originalChangedElement.value = 'No'; // Revert the select
-                // If there's a visual feedback or state tied to this change elsewhere, it might need updating too.
-                // For now, just reverting the select that triggered the modal.
+        cancelPaymentButton.addEventListener('click', async () => { // Make the function async
+            if (paymentModalState.currentParticipationData && paymentModalState.saveCallback) {
+                // Set payment status to 'No'
+                paymentModalState.currentParticipationData.pago_realizado = 'No';
+                paymentModalState.currentParticipationData.cantidad_pagada = 0;
+                paymentModalState.currentParticipationData.fecha_pago = null;
+
+                // Ensure authorization is 'Sí' and date is set (it should be from the modal trigger)
+                paymentModalState.currentParticipationData.autorizacion_firmada = 'Sí';
+                if (!paymentModalState.currentParticipationData.fecha_autorizacion) {
+                    paymentModalState.currentParticipationData.fecha_autorizacion = new Date().toISOString().split('T')[0];
+                }
+
+                // Save the participation data
+                await paymentModalState.saveCallback(paymentModalState.currentParticipationData);
             }
+            // No longer revert the originalChangedElement, as we are saving the 'Sí' for authorization.
             closePaymentConfirmationModal();
         });
     }
