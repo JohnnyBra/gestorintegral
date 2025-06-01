@@ -125,7 +125,23 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
     }
 
     try {
-        if (excursion.para_clase_id !== null && excursion.para_clase_id !== undefined) {
+        // ***** NEW: Check for para_ciclo_id first *****
+        if (excursion.para_ciclo_id !== null && excursion.para_ciclo_id !== undefined) {
+            participating_scope_type = "cycle";
+            const cicloInfo = await dbGetAsync(
+                `SELECT nombre_ciclo FROM ciclos WHERE id = ?`,
+                [excursion.para_ciclo_id]
+            );
+            if (cicloInfo && cicloInfo.nombre_ciclo) {
+                participating_scope_name = cicloInfo.nombre_ciclo;
+            } else {
+                participating_scope_name = "Ciclo Específico (Detalles no encontrados)";
+            }
+            // Early return as this is the most specific valid scope if present
+            return { participating_scope_type, participating_scope_name };
+        }
+        // ***** END NEW *****
+        else if (excursion.para_clase_id !== null && excursion.para_clase_id !== undefined) {
             participating_scope_type = "class";
             const claseInfo = await dbGetAsync(
                 `SELECT c.nombre_clase, ci.nombre_ciclo 
@@ -143,7 +159,7 @@ async function getExcursionScopeDetails(excursion, dbGetAsync) {
                 participating_scope_name = "Clase Específica (Detalles no encontrados)";
             }
         } else { 
-            // Global excursion (para_clase_id is null)
+            // Global excursion (para_clase_id is null and para_ciclo_id is null)
             const creator = await dbGetAsync("SELECT rol FROM usuarios WHERE id = ?", [excursion.creada_por_usuario_id]);
             if (creator) {
                 switch (creator.rol) {
@@ -1651,7 +1667,7 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
         coste_entradas_individual,
         coste_actividad_global
     } = req.body;
-    let { para_clase_id, notas_excursion: notas_excursion_raw } = req.body; 
+    let { para_clase_id, para_ciclo_id = null, notas_excursion: notas_excursion_raw } = req.body; // Add para_ciclo_id
 
     const creada_por_usuario_id = req.user.id;
 
@@ -1792,20 +1808,48 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
         return res.status(403).json({ error: "Rol no autorizado para crear excursiones." });
     }
 
+    // Validation for para_ciclo_id and mutual exclusivity with finalParaClaseId
+    let finalParaCicloId = null;
+    if (para_ciclo_id !== null && String(para_ciclo_id).trim() !== '') {
+        const parsedCicloId = parseInt(para_ciclo_id);
+        if (isNaN(parsedCicloId)) {
+            return res.status(400).json({ error: "ID de para_ciclo_id inválido." });
+        }
+        try {
+            const ciclo = await dbGetAsync("SELECT id FROM ciclos WHERE id = ?", [parsedCicloId]);
+            if (!ciclo) {
+                return res.status(404).json({ error: "El ciclo especificado en para_ciclo_id no existe." });
+            }
+            finalParaCicloId = parsedCicloId;
+        } catch (dbError) {
+            console.error("Error verificando ciclo en POST /api/excursiones:", dbError.message);
+            return res.status(500).json({ error: "Error interno al verificar el ciclo." });
+        }
+    }
+
+    if (finalParaClaseId !== null && finalParaCicloId !== null) {
+        return res.status(400).json({ error: "Una excursión no puede ser para una clase específica y un ciclo completo simultáneamente. Proporcione solo para_clase_id o para_ciclo_id, o ninguno para global." });
+    }
+
+    // If para_ciclo_id is provided and valid, para_clase_id must be null.
+    if (finalParaCicloId !== null) {
+        finalParaClaseId = null;
+    }
+
     const sqlInsert = `
         INSERT INTO excursiones (
             nombre_excursion, fecha_excursion, lugar, hora_salida, hora_llegada,
             coste_excursion_alumno, vestimenta, transporte, justificacion_texto,
-            actividad_descripcion, notas_excursion, creada_por_usuario_id, para_clase_id,
+            actividad_descripcion, notas_excursion, creada_por_usuario_id, para_clase_id, para_ciclo_id,
             numero_autobuses, coste_por_autobus, coste_entradas_individual, coste_actividad_global
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const paramsInsert = [
         nombre_excursion, fecha_excursion, lugar, hora_salida, hora_llegada, 
         coste_excursion_alumno, vestimenta, transporte, justificacion_texto, 
         actividad_descripcion, notas_excursion ? notas_excursion : null, 
-        creada_por_usuario_id, finalParaClaseId,
+        creada_por_usuario_id, finalParaClaseId, finalParaCicloId,
         newNumericFields.numero_autobuses !== undefined ? newNumericFields.numero_autobuses : null,
         newNumericFields.coste_por_autobus !== undefined ? newNumericFields.coste_por_autobus : null,
         newNumericFields.coste_entradas_individual !== undefined ? newNumericFields.coste_entradas_individual : null,
@@ -1815,10 +1859,11 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
     try {
         const result = await dbRunAsync(sqlInsert, paramsInsert);
         const nuevaExcursion = await dbGetAsync(
-            `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+            `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino, ci.nombre_ciclo as nombre_ciclo_destino
              FROM excursiones e 
              JOIN usuarios u ON e.creada_por_usuario_id = u.id 
-             LEFT JOIN clases c ON e.para_clase_id = c.id 
+             LEFT JOIN clases c ON e.para_clase_id = c.id
+             LEFT JOIN ciclos ci ON e.para_ciclo_id = ci.id
              WHERE e.id = ?`,
             [result.lastID]
         );
@@ -1826,8 +1871,10 @@ app.post('/api/excursiones', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error("Error en POST /api/excursiones:", error.message);
         if (error.message.includes("FOREIGN KEY constraint failed")) {
-            if (error.message.includes("clases")) {
+            if (error.message.includes("clases") && finalParaClaseId) {
                  return res.status(400).json({ error: "La clase especificada (para_clase_id) no existe." });
+            } else if (error.message.includes("ciclos") && finalParaCicloId) {
+                 return res.status(400).json({ error: "El ciclo especificado (para_ciclo_id) no existe." });
             } else if (error.message.includes("usuarios")) {
                  return res.status(400).json({ error: "El usuario creador no existe (esto no debería ocurrir si está autenticado)." });
             }
@@ -1842,46 +1889,52 @@ app.get('/api/excursiones', authenticateToken, async (req, res) => {
 
     try {
         if (req.user.rol === 'DIRECCION' || req.user.rol === 'TESORERIA') {
-            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino, ci.nombre_ciclo as nombre_ciclo_destino
                    FROM excursiones e 
                    JOIN usuarios u ON e.creada_por_usuario_id = u.id 
-                   LEFT JOIN clases c ON e.para_clase_id = c.id`;
+                   LEFT JOIN clases c ON e.para_clase_id = c.id
+                   LEFT JOIN ciclos ci ON e.para_ciclo_id = ci.id`;
         } else if (req.user.rol === 'TUTOR') {
             if (!req.user.claseId) {
-                return res.json({ excursiones: [] }); 
+                return res.json({ excursiones: [] });
             }
-            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+            const userCicloIdResult = await dbGetAsync("SELECT ciclo_id FROM clases WHERE id = ?", [req.user.claseId]);
+            const userCicloId = userCicloIdResult ? userCicloIdResult.ciclo_id : null;
+
+            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino, ci.nombre_ciclo as nombre_ciclo_destino
                    FROM excursiones e 
                    JOIN usuarios u ON e.creada_por_usuario_id = u.id 
-                   LEFT JOIN clases c ON e.para_clase_id = c.id`; 
+                   LEFT JOIN clases c ON e.para_clase_id = c.id
+                   LEFT JOIN ciclos ci ON e.para_ciclo_id = ci.id`;
             
-            let whereClauses = ["(e.para_clase_id IS NULL OR e.para_clase_id = ?)"];
+            let whereClauses = ["(e.para_clase_id IS NULL AND e.para_ciclo_id IS NULL)"]; // Global for all users
+            whereClauses.push("e.para_clase_id = ?"); // Excursions for their specific class
             params.push(req.user.claseId);
 
-            const cicloClaseIds = await getTutorCicloClaseIds(req.user.claseId);
+            if (userCicloId) {
+                whereClauses.push("e.para_ciclo_id = ?"); // Excursions for their specific cycle
+                params.push(userCicloId);
+            }
 
+            const cicloClaseIds = await getTutorCicloClaseIds(req.user.claseId);
             if (cicloClaseIds && cicloClaseIds.length > 0) {
                 const otherCicloClaseIds = cicloClaseIds.filter(id => id !== req.user.claseId);
                 if (otherCicloClaseIds.length > 0) {
                     const placeholders = otherCicloClaseIds.map(() => '?').join(',');
-                    whereClauses.push(`e.para_clase_id IN (${placeholders})`);
+                    whereClauses.push(`e.para_clase_id IN (${placeholders})`); // Excursions for other classes in their cycle
                     params.push(...otherCicloClaseIds);
                 }
             }
             sql += ` WHERE ${whereClauses.join(' OR ')}`;
 
         } else if (req.user.rol === 'COORDINACION') {
-            const assignedClaseIds = await getCoordinadorClases(req.user.id);
-            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+            // Similar to DIRECCION, shows all. Refine if coordinators have limited cycle/class scope.
+            sql = `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino, ci.nombre_ciclo as nombre_ciclo_destino
                    FROM excursiones e 
                    JOIN usuarios u ON e.creada_por_usuario_id = u.id 
-                   LEFT JOIN clases c ON e.para_clase_id = c.id 
-                   WHERE e.para_clase_id IS NULL`; 
-            if (assignedClaseIds.length > 0) {
-                const placeholders = assignedClaseIds.map(() => '?').join(',');
-                sql += ` OR e.para_clase_id IN (${placeholders})`;
-                params.push(...assignedClaseIds);
-            }
+                   LEFT JOIN clases c ON e.para_clase_id = c.id
+                   LEFT JOIN ciclos ci ON e.para_ciclo_id = ci.id`;
+            // Add WHERE clauses here if COORDIANTOR scope needs to be restricted
         } else {
             return res.status(403).json({ error: "Rol no autorizado para ver excursiones." });
         }
@@ -1891,7 +1944,7 @@ app.get('/api/excursiones', authenticateToken, async (req, res) => {
 
         if (excursiones && excursiones.length > 0) {
             excursiones = await Promise.all(excursiones.map(async (excursion) => {
-                const scopeDetails = await getExcursionScopeDetails(excursion, dbGetAsync);
+                const scopeDetails = await getExcursionScopeDetails(excursion, dbGetAsync); // Ensure this function is updated for para_ciclo_id
                 return { ...excursion, ...scopeDetails };
             }));
         }
@@ -1911,10 +1964,11 @@ app.get('/api/excursiones/:id', authenticateToken, async (req, res) => {
     }
 
     const sql = `
-        SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+        SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino, ci.nombre_ciclo as nombre_ciclo_destino
         FROM excursiones e 
         JOIN usuarios u ON e.creada_por_usuario_id = u.id 
-        LEFT JOIN clases c ON e.para_clase_id = c.id 
+        LEFT JOIN clases c ON e.para_clase_id = c.id
+        LEFT JOIN ciclos ci ON e.para_ciclo_id = ci.id
         WHERE e.id = ?
     `;
     try {
@@ -1974,7 +2028,7 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
     const camposActualizablesBase = [ 
         'nombre_excursion', 'fecha_excursion', 'lugar', 'hora_salida', 
         'hora_llegada', 'coste_excursion_alumno', 'vestimenta', 'transporte',
-        'justificacion_texto', 'actividad_descripcion', 'notas_excursion', 'para_clase_id',
+        'justificacion_texto', 'actividad_descripcion', 'notas_excursion', 'para_clase_id', 'para_ciclo_id', // Added para_ciclo_id
         ...financialFields
     ];
 
@@ -2097,6 +2151,27 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
                    }
                 }
 
+                if (campo === 'para_ciclo_id') {
+                    if (valueToUpdate === '') {
+                        // Treat empty string as null for para_ciclo_id
+                        valueToUpdate = null;
+                        processedBody[campo] = null; // Ensure processedBody reflects this change for later checks
+                    } else if (valueToUpdate !== null) {
+                        const parsedCicloId = parseInt(valueToUpdate);
+                        if (isNaN(parsedCicloId)) {
+                            return res.status(400).json({ error: "ID de para_ciclo_id inválido." });
+                        }
+                        const ciclo = await dbGetAsync("SELECT id FROM ciclos WHERE id = ?", [parsedCicloId]);
+                        if (!ciclo) {
+                            return res.status(404).json({ error: "El ciclo especificado en para_ciclo_id no existe." });
+                        }
+                        // valueToUpdate is already the parsedCicloId if it's a number, or the original string to be parsed again.
+                        // To be safe, let's ensure it's the integer or null.
+                        valueToUpdate = parsedCicloId;
+                    }
+                }
+
+
                 if (req.user.rol === 'TUTOR' && campo === 'para_clase_id') {
                     const nuevoParaClaseIdNum = valueToUpdate === null ? null : parseInt(valueToUpdate);
                     
@@ -2144,16 +2219,46 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: "No se proporcionaron campos para actualizar." });
         }
 
+        // Mutual exclusivity check after processing all individual fields
+        let finalClaseIdToUpdate = processedBody.hasOwnProperty('para_clase_id') ? (processedBody.para_clase_id === '' ? null : (processedBody.para_clase_id === null ? null : parseInt(processedBody.para_clase_id))) : excursionActual.para_clase_id;
+        let finalCicloIdToUpdate = processedBody.hasOwnProperty('para_ciclo_id') ? (processedBody.para_ciclo_id === '' ? null : (processedBody.para_ciclo_id === null ? null : parseInt(processedBody.para_ciclo_id))) : excursionActual.para_ciclo_id;
+
+        if (finalClaseIdToUpdate !== null && finalCicloIdToUpdate !== null) {
+            return res.status(400).json({ error: "Una excursión no puede ser para una clase específica y un ciclo completo simultáneamente. Proporcione solo para_clase_id o para_ciclo_id, o ninguno para global." });
+        }
+
+        // If para_ciclo_id is being set (or already set and not being changed to null) and it's not null,
+        // ensure para_clase_id is null in the update.
+        if (finalCicloIdToUpdate !== null) {
+            if (processedBody.hasOwnProperty('para_clase_id') && finalClaseIdToUpdate !== null) {
+                // This case is problematic, means both were provided. Already handled by above check.
+            } else if (!processedBody.hasOwnProperty('para_clase_id') && excursionActual.para_clase_id !== null) {
+                // para_ciclo_id is being set/updated, and para_clase_id was not in request but is non-null in DB
+                // We need to explicitly set para_clase_id to null
+                if (!setClauses.find(c => c.startsWith('para_clase_id'))) {
+                    setClauses.push('para_clase_id = ?');
+                    paramsForUpdate.push(null);
+                } else { // para_clase_id = ? is already in setClauses, find its param and update it
+                    const idx = setClauses.findIndex(c => c.startsWith('para_clase_id'));
+                    paramsForUpdate[idx] = null;
+                }
+            } else if (processedBody.hasOwnProperty('para_clase_id') && finalClaseIdToUpdate === null) {
+                // para_clase_id was explicitly set to null in the request, which is fine.
+            }
+        }
+
+
         const sqlUpdate = `UPDATE excursiones SET ${setClauses.join(", ")} WHERE id = ?`;
         paramsForUpdate.push(excursionId);
 
         await dbRunAsync(sqlUpdate, paramsForUpdate);
         
         const excursionActualizada = await dbGetAsync(
-             `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino 
+             `SELECT e.*, u.nombre_completo as nombre_creador, c.nombre_clase as nombre_clase_destino, ci.nombre_ciclo as nombre_ciclo_destino
               FROM excursiones e 
               JOIN usuarios u ON e.creada_por_usuario_id = u.id 
-              LEFT JOIN clases c ON e.para_clase_id = c.id 
+              LEFT JOIN clases c ON e.para_clase_id = c.id
+              LEFT JOIN ciclos ci ON e.para_ciclo_id = ci.id
               WHERE e.id = ?`, 
               [excursionId]
         );
@@ -2161,8 +2266,12 @@ app.put('/api/excursiones/:id', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error(`Error en PUT /api/excursiones/${excursionId}:`, error.message);
-        if (error.message.includes("FOREIGN KEY constraint failed") && error.message.includes("clases")) {
-             return res.status(400).json({ error: "La clase especificada (para_clase_id) no existe." });
+        if (error.message.includes("FOREIGN KEY constraint failed")) {
+            if (error.message.includes("clases") && processedBody.para_clase_id) {
+                 return res.status(400).json({ error: "La clase especificada (para_clase_id) no existe." });
+            } else if (error.message.includes("ciclos") && processedBody.para_ciclo_id) {
+                return res.status(400).json({ error: "El ciclo especificado (para_ciclo_id) no existe." });
+            }
         }
         res.status(500).json({ error: "Error interno del servidor al actualizar la excursión." });
     }
@@ -2188,12 +2297,15 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
         const robotoBoldBuffer = fs.readFileSync('./public/assets/fonts/Roboto-Bold.ttf');
         
         const excursion = await dbGetAsync(
-            `SELECT nombre_excursion, actividad_descripcion, lugar, fecha_excursion, 
-                    hora_salida, hora_llegada, vestimenta, transporte, 
-                    justificacion_texto, coste_excursion_alumno, notas_excursion,
-                    para_clase_id, creada_por_usuario_id 
-             FROM excursiones 
-             WHERE id = ?`,
+            `SELECT e.nombre_excursion, e.actividad_descripcion, e.lugar, e.fecha_excursion,
+                    e.hora_salida, e.hora_llegada, e.vestimenta, e.transporte,
+                    e.justificacion_texto, e.coste_excursion_alumno, e.notas_excursion,
+                    e.para_clase_id, e.para_ciclo_id, e.creada_por_usuario_id,
+                    c.nombre_clase as nombre_clase_destino, ci.nombre_ciclo as nombre_ciclo_destino
+             FROM excursiones e
+             LEFT JOIN clases c ON e.para_clase_id = c.id
+             LEFT JOIN ciclos ci ON e.para_ciclo_id = ci.id
+             WHERE e.id = ?`,
             [excursionId]
         );
 
@@ -2206,22 +2318,41 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
         if (userRol === 'DIRECCION' || userRol === 'TESORERIA') {
             canAccess = true;
         } else if (userRol === 'TUTOR') {
-            if (!userClaseId && excursion.para_clase_id !== null) {
-                // Tutor sin clase no puede ver excursiones específicas de clase (a menos que sea global)
-            } else if (excursion.para_clase_id === null || excursion.para_clase_id === userClaseId) {
+            const userCicloIdResult = userClaseId ? await dbGetAsync("SELECT ciclo_id FROM clases WHERE id = ?", [userClaseId]) : null;
+            const tutorActualCicloId = userCicloIdResult ? userCicloIdResult.ciclo_id : null;
+
+            if (excursion.para_clase_id === null && excursion.para_ciclo_id === null) { // Global
                 canAccess = true;
-            } else {
-                const cicloClaseIds = userClaseId ? await getTutorCicloClaseIds(userClaseId) : [];
-                if (cicloClaseIds && cicloClaseIds.includes(excursion.para_clase_id)) {
+            } else if (excursion.para_clase_id !== null) { // Specific class
+                if (userClaseId && excursion.para_clase_id === userClaseId) {
+                    canAccess = true;
+                } else { // Check if class is in tutor's cycle
+                    const cicloClaseIds = userClaseId ? await getTutorCicloClaseIds(userClaseId) : [];
+                    if (cicloClaseIds && cicloClaseIds.includes(excursion.para_clase_id)) {
+                        canAccess = true;
+                    }
+                }
+            } else if (excursion.para_ciclo_id !== null) { // Specific cycle
+                if (tutorActualCicloId && excursion.para_ciclo_id === tutorActualCicloId) {
                     canAccess = true;
                 }
             }
         } else if (userRol === 'COORDINACION') {
-            const assignedClaseIds = await getCoordinadorClases(userId); // Assuming getCoordinadorClases is available
-            if (excursion.para_clase_id === null || (excursion.para_clase_id && assignedClaseIds.includes(excursion.para_clase_id))) {
+            // Assuming COORDINACION role might have specific cycles or classes assigned.
+            // This logic would need to be more specific based on how COORDINACION permissions for cycles are defined.
+            // For now, a simplified check:
+            if (excursion.para_clase_id === null && excursion.para_ciclo_id === null) { // Global
                 canAccess = true;
+            } else {
+                // Potentially check assignedClaseIds for para_clase_id or an equivalent for para_ciclo_id
+                const assignedClaseIds = await getCoordinadorClases(userId);
+                if (excursion.para_clase_id && assignedClaseIds.includes(excursion.para_clase_id)) {
+                    canAccess = true;
+                }
+                // Add logic for para_ciclo_id if COORDINACION has assigned cycles
             }
         }
+
 
         if (!canAccess) {
             return res.status(403).json({ error: "No tiene permisos para ver la información de esta excursión." });

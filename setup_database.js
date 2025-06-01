@@ -67,10 +67,11 @@ CREATE TABLE IF NOT EXISTS excursiones (
     coste_entradas_individual REAL,
     coste_actividad_global REAL,
     creada_por_usuario_id INTEGER NOT NULL, 
-    para_clase_id INTEGER, 
+    para_clase_id INTEGER,
+    para_ciclo_id INTEGER, -- New column
     FOREIGN KEY (creada_por_usuario_id) REFERENCES usuarios(id),
-    FOREIGN KEY (para_clase_id) REFERENCES clases(id) ON DELETE SET NULL 
-        ON UPDATE CASCADE
+    FOREIGN KEY (para_clase_id) REFERENCES clases(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    FOREIGN KEY (para_ciclo_id) REFERENCES ciclos(id) ON DELETE SET NULL ON UPDATE CASCADE -- New FK
 );
 
 CREATE TABLE IF NOT EXISTS shared_excursions (
