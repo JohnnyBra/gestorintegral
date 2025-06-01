@@ -26,6 +26,7 @@ body {
 .sidebar {
     width: 230px; /* Ancho del menú lateral */
     background-color: #36454F; /* Lighter and more modern dark slate gray */
+    transition: margin-left 0.3s ease-in-out, width 0.3s ease-in-out; /* Add transition */
     color: #ecf0f1; /* Texto claro para el sidebar */
     padding: 20px 0; /* Padding vertical, sin padding horizontal para que los links ocupen todo */
     box-sizing: border-box;
@@ -92,6 +93,7 @@ body {
 .main-panel {
     flex-grow: 1;
     display: flex;
+    transition: margin-left 0.3s ease-in-out; /* Add transition */
     flex-direction: column;
     background-color: #ecf0f1; /* Fondo claro para el contenido */
     overflow-x: hidden; /* Prevent main panel itself from overflowing if children misbehave */
@@ -691,8 +693,23 @@ td input[type="number"].quick-edit { max-width: 70px; }
     font-weight: 500; 
 }
 
+/* New class for desktop collapsed state */
+.sidebar-desktop-collapsed {
+    margin-left: -230px !important; /* To slide it off-screen, !important to override fixed position issues if any */
+    /* Or alternatively:
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    overflow: hidden;
+    */
+}
+
 /* Responsive adjustments for mobile/tablet */
 @media (max-width: 768px) {
+    /* Reset desktop collapse styles if they could interfere */
+    .sidebar.sidebar-desktop-collapsed { /* Target sidebar if it has both classes */
+        margin-left: 0 !important; /* Ensure desktop margin doesn't interfere with transform */
+    }
     /* .sidebar-toggle-button specific styles removed from here as it's globally styled now */
 
     .sidebar {

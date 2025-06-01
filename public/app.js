@@ -364,13 +364,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 navigateTo('login');
             }
 
-            if (sidebarToggle && sidebar) {
-                const isMobileView = getComputedStyle(sidebarToggle).display !== 'none';
-                if (isMobileView && sidebar.classList.contains('open')) {
-                    sidebar.classList.remove('open');
-                    document.body.classList.remove('body-sidebar-open');
-                }
+            // Existing mobile sidebar closing logic
+            const isMobileView = window.innerWidth <= 768;
+            if (isMobileView && sidebar && sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+                document.body.classList.remove('body-sidebar-open');
             }
+            // No need to explicitly close desktop sidebar on nav link click,
+            // as it's not an overlay. If desired, similar logic could be added.
         });
     });
 
@@ -2780,8 +2781,21 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
 
     if (sidebarToggle && sidebar) {
         sidebarToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('open');
-            document.body.classList.toggle('body-sidebar-open');
+            const isMobileView = window.innerWidth <= 768; // More direct check for mobile view
+
+            if (isMobileView) {
+                sidebar.classList.toggle('open'); // Mobile uses 'open' for transform
+                document.body.classList.toggle('body-sidebar-open'); // Mobile uses this to prevent body scroll
+            } else {
+                // Desktop toggles the new class for margin-left adjustment
+                sidebar.classList.toggle('sidebar-desktop-collapsed');
+                // Optionally, if mainPanel needs direct style adjustment:
+                // if (sidebar.classList.contains('sidebar-desktop-collapsed')) {
+                //    mainPanel.style.marginLeft = '0';
+                // } else {
+                //    mainPanel.style.marginLeft = '230px'; // Assuming sidebar width is 230px
+                // }
+            }
         });
     }
 
