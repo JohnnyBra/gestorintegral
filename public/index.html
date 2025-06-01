@@ -41,6 +41,7 @@
                 <h1 id="main-app-title">Gestor de excursiones del Colegio La Hispanidad</h1>
                 <div id="auth-status">
                     <span id="userInfoDisplay">Por favor, inicia sesión.</span>
+                    <button id="showChangePasswordModalBtn" class="button secondary" style="display: none; margin-left: 10px;">Cambiar Contraseña</button>
                     <button id="auth_button">Iniciar Sesión</button>
                     <button id="signout_button" style="display:none;">Cerrar Sesión</button>
                 </div>
@@ -251,5 +252,31 @@
     </div>
     <script src="app.js"></script>
     <script src="calendar.js"></script>
+
+    <div id="changePasswordModal" class="simple-modal" style="display: none;">
+        <div class="simple-modal-content">
+            <h4>Cambiar Contraseña</h4>
+            <form id="changePasswordForm">
+                <div>
+                    <label for="currentPassword">Contraseña Actual:</label>
+                    <input type="password" id="currentPassword" name="currentPassword" required>
+                </div>
+                <div>
+                    <label for="newPassword">Nueva Contraseña:</label>
+                    <input type="password" id="newPassword" name="newPassword" required minlength="8">
+                </div>
+                <div>
+                    <label for="confirmNewPassword">Confirmar Nueva Contraseña:</label>
+                    <input type="password" id="confirmNewPassword" name="confirmNewPassword" required minlength="8">
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="success">Actualizar Contraseña</button>
+                    <button type="button" id="cancelChangePasswordBtn" class="secondary">Cancelar</button>
+                </div>
+                <p id="changePasswordError" class="error-message" style="margin-top: 10px;"></p>
+                <p id="changePasswordSuccess" class="success-message" style="margin-top: 10px;"></p>
+            </form>
+        </div>
+    </div>
 </body>
 </html>
