@@ -135,8 +135,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const amountPaid = parseFloat(paymentAmountInput.value);
             const datePaid = paymentDateInput.value;
 
-            if (isNaN(amountPaid) || amountPaid <= 0) {
-                alert("La cantidad pagada debe ser un número positivo.");
+            if (isNaN(amountPaid)) {
+                alert("La cantidad pagada debe ser un número.");
+                return;
+            }
+            if (paymentModalState.excursionCost > 0 && amountPaid <= 0) {
+                alert("Para excursiones con coste, la cantidad pagada debe ser un número positivo.");
+                return;
+            }
+            if (paymentModalState.excursionCost === 0 && amountPaid < 0) {
+                alert("Para excursiones gratuitas, la cantidad pagada no puede ser negativa.");
                 return;
             }
             if (!datePaid) {
