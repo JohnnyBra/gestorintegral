@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUser = null;
     let currentParticipacionesDataArray = []; // Added global variable
     let currentToken = null;
+    let storedScrollY;
 
     const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:3000/api`;
 
@@ -115,6 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         paymentModalState.originalChangedElement = originalChangedElement;
         paymentModalState.saveCallback = callback;
         paymentModalState.excursionCost = excursionCost;
+        storedScrollY = window.scrollY;
 
         paymentAmountInput.value = excursionCost > 0 ? excursionCost.toFixed(2) : (0).toFixed(2); // Default to 0 if cost is 0
         const today = new Date().toISOString().split('T')[0];
@@ -178,12 +180,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (cancelPaymentButton) {
-        cancelPaymentButton.addEventListener('click', () => {
-            if (paymentModalState.originalChangedElement) {
-                paymentModalState.originalChangedElement.value = 'No'; // Revert the select
-                // If there's a visual feedback or state tied to this change elsewhere, it might need updating too.
-                // For now, just reverting the select that triggered the modal.
+        cancelPaymentButton.addEventListener('click', async () => { // Make the function async
+            if (paymentModalState.currentParticipationData && paymentModalState.saveCallback) {
+                // Set payment status to 'No'
+                paymentModalState.currentParticipationData.pago_realizado = 'No';
+                paymentModalState.currentParticipationData.cantidad_pagada = 0;
+                paymentModalState.currentParticipationData.fecha_pago = null;
+
+                // Ensure authorization is 'Sí' and date is set (it should be from the modal trigger)
+                paymentModalState.currentParticipationData.autorizacion_firmada = 'Sí';
+                if (!paymentModalState.currentParticipationData.fecha_autorizacion) {
+                    paymentModalState.currentParticipationData.fecha_autorizacion = new Date().toISOString().split('T')[0];
+                }
+
+                // Save the participation data
+                await paymentModalState.saveCallback(paymentModalState.currentParticipationData);
             }
+            // No longer revert the originalChangedElement, as we are saving the 'Sí' for authorization.
             closePaymentConfirmationModal();
         });
     }
@@ -2346,6 +2359,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Ensure the correct excursionId from the current context is used for refresh
                  updateParticipacionesSummary(currentExcursionIdToRefresh, currentExcursionNombreToRefresh);
                  renderTablaParticipaciones(currentExcursionIdToRefresh, currentExcursionNombreToRefresh); // Re-render table
+            }
+            if (typeof storedScrollY === 'number') { // Check if storedScrollY has a valid value
+                setTimeout(() => {
+                    window.scrollTo(0, storedScrollY);
+                }, 250); // Use setTimeout to ensure scrolling happens after DOM updates
             }
 
         } catch (error) {
