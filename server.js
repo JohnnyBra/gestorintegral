@@ -272,6 +272,9 @@ async function drawTable(pdfDoc, page, startY, data, columns, fonts, sizes, colu
         if (currentY - rowHeight < pageBottomMargin) { 
              page = pdfDoc.addPage(PageSizes.A4);
              const { width: newPageWidth } = page.getSize(); // Get width from new page
+             const pageHeight = pageSetup ? pageSetup.height : page.getSize().height; // Already here
+             const yPageMargin = pageSetup ? pageSetup.yMargin : 40; // Already here
+
              if (logoDetails && logoDetails.image) {
                 page.drawImage(logoDetails.image, {
                     x: newPageWidth - (pageSetup && pageSetup.xMargin ? pageSetup.xMargin : 40) - logoDetails.dims.width, // Adjusted for new page width
@@ -4177,13 +4180,34 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         let logoImage, logoDims;
         try {
             const logoBuffer = fs.readFileSync(logoPath);
-            logoImage = await pdfDocLib.embedJpg(logoBuffer);
-            const logoScale = 50 / logoImage.width; // Aim for 50 points width
-            logoDims = { width: logoImage.width * logoScale, height: logoImage.height * logoScale };
+            logoImage = await pdfDocLib.embedJpg(logoBuffer); // Existing line
+
+            // ---- START MODIFICATION ----
+            if (!logoImage || logoImage.width === 0) { // Check if logoImage is valid and width is not zero
+                console.warn("Logo image width is 0 or logoImage is invalid. Using default 0x0 dimensions for logo.");
+                logoDims = { width: 0, height: 0 };
+            } else {
+                const logoScale = 50 / logoImage.width;
+                logoDims = {
+                    width: logoImage.width * logoScale,
+                    height: logoImage.height * logoScale
+                };
+                // Safeguard against NaN values if calculations produce them (e.g. 0 * Infinity)
+                if (isNaN(logoDims.width)) {
+                    console.warn(`Calculated logoDims.width was NaN. Resetting to 0. logoImage.width: ${logoImage.width}, logoScale: ${logoScale}`);
+                    logoDims.width = 0;
+                }
+                if (isNaN(logoDims.height)) {
+                    console.warn(`Calculated logoDims.height was NaN. Resetting to 0. logoImage.height: ${logoImage.height}, logoScale: ${logoScale}`);
+                    logoDims.height = 0;
+                }
+            }
+            // ---- END MODIFICATION ----
+
         } catch (logoError) {
             console.error("Error cargando logo para Informe General:", logoError.message);
             logoImage = null;
-            logoDims = { width: 0, height: 0 };
+            logoDims = { width: 0, height: 0 }; // Existing line
         }
 
         let page = pdfDocLib.addPage(PageSizes.A4);
@@ -4273,10 +4297,24 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
 
         if (excursionFinancialData.length > 0) {
             currentY = ensurePageSpace(currentY, rowHeight * (excursionFinancialData.length +1));
-            currentY = await drawTable(pdfDocLib, page, currentY, excursionFinancialData, columnsExcursiones, 
-                                       { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 }, 
-                                       columnWidthsExcursiones, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin,
-                                       logoObject, pageSetup);
+            const tableResultExcursiones = await drawTable(
+                pdfDocLib,
+                page,
+                currentY,
+                excursionFinancialData,
+                columnsExcursiones,
+                { normal: robotoFont, bold: robotoBoldFont }, // Ensure robotoFont is used, not pdfStyles.tableCell.font etc directly here
+                { header: 10, cell: 9 },
+                columnWidthsExcursiones,
+                rowHeight,
+                pdfStyles.tableHeader,
+                pdfStyles.tableCell,
+                xMargin,
+                logoObject,
+                pageSetup
+            );
+            currentY = tableResultExcursiones.currentY;
+            page = tableResultExcursiones.page;
         } else {
             currentY = ensurePageSpace(currentY, rowHeight);
             page.drawText('No hay datos financieros de excursiones disponibles.', { x: xMargin, y: currentY, ...pdfStyles.text });
@@ -4311,10 +4349,24 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
 
         if (tutorListData.length > 0) {
             currentY = ensurePageSpace(currentY, rowHeight * (tutorListData.length +1));
-            currentY = await drawTable(pdfDocLib, page, currentY, tutorListData, columnsTutores,
-                                   { normal: robotoFont, bold: robotoBoldFont }, { header: 10, cell: 9 },
-                                   columnWidthsTutores, rowHeight, pdfStyles.tableHeader, pdfStyles.tableCell, xMargin,
-                                   logoObject, pageSetup);
+            const tableResultTutores = await drawTable(
+                pdfDocLib,
+                page,
+                currentY,
+                tutorListData,
+                columnsTutores,
+                { normal: robotoFont, bold: robotoBoldFont }, // Ensure robotoFont is used
+                { header: 10, cell: 9 },
+                columnWidthsTutores,
+                rowHeight,
+                pdfStyles.tableHeader,
+                pdfStyles.tableCell,
+                xMargin,
+                logoObject,
+                pageSetup
+            );
+            currentY = tableResultTutores.currentY;
+            page = tableResultTutores.page;
         } else {
             currentY = ensurePageSpace(currentY, rowHeight);
             page.drawText('No hay tutores registrados.', { x: xMargin, y: currentY, ...pdfStyles.text });
