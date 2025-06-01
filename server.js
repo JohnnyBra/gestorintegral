@@ -710,8 +710,53 @@ app.get('/api/excursiones/:excursion_id/participaciones/reporte_pagos', authenti
         page.drawText(`Total General Ausentes: ${totalGeneralAusentes}`, { x: xMargin, y: currentY, ...pdfStyles.boldSummaryText });
         
         const pdfBytes = await pdfDocLib.save();
+
+        // START FOOTER ADDITION
+        const pages = pdfDocLib.getPages();
+        const totalPages = pdfDocLib.getPageCount();
+        const footerFontSize = 8;
+        const footerMargin = 30; // Points from the bottom
+
+        for (let i = 0; i < totalPages; i++) {
+            const page = pages[i];
+            const { width, height } = page.getSize();
+            const pageNumber = i + 1;
+
+            // Date/Time (Center Footer)
+            const now = new Date();
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+            const year = now.getFullYear();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const dateTimeString = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+
+            const dateTimeTextWidth = robotoFont.widthOfTextAtSize(dateTimeString, footerFontSize);
+            page.drawText(dateTimeString, {
+                x: (width - dateTimeTextWidth) / 2,
+                y: footerMargin,
+                font: robotoFont,
+                size: footerFontSize,
+                color: rgb(0.5, 0.5, 0.5), // Light gray color for footer
+            });
+
+            // Page Number (Right Footer)
+            const pageNumString = `Página ${pageNumber}/${totalPages}`;
+            const pageNumTextWidth = robotoFont.widthOfTextAtSize(pageNumString, footerFontSize);
+            page.drawText(pageNumString, {
+                x: width - pageNumTextWidth - footerMargin, // footerMargin also used as right margin
+                y: footerMargin,
+                font: robotoFont,
+                size: footerFontSize,
+                color: rgb(0.5, 0.5, 0.5), // Light gray color for footer
+            });
+        }
+        // END FOOTER ADDITION
+
+        const finalPdfBytes = await pdfDocLib.save(); // Save again after adding footers
         res.contentType('application/pdf');
-        res.send(Buffer.from(pdfBytes));
+        res.send(Buffer.from(finalPdfBytes));
 
     } catch (error) {
         console.error(`Error en GET /api/excursiones/${excursionId}/participaciones/reporte_pagos (nuevo reporte asistencia):`, error.message, error.stack);
@@ -2317,10 +2362,57 @@ app.get('/api/excursiones/:excursion_id/info_pdf', authenticateToken, async (req
             currentY = await drawFieldWithWrappingInternal('Notas Adicionales:', excursion.notas_excursion, { normal: robotoFont, bold: robotoBoldFont }, {label: styles.fieldLabel, value: styles.fieldValue}, currentY, fieldMaxWidth, baseLineHeight);
         }
         
-        const pdfBytes = await pdfDocLib.save();
+        // Initial save to finalize content and allow page counting
+        await pdfDocLib.save();
+
+        // START FOOTER ADDITION
+        const pages = pdfDocLib.getPages();
+        const totalPages = pdfDocLib.getPageCount();
+        const footerFontSize = 8;
+        const footerMargin = 30; // Points from the bottom
+        const footerColor = rgb(0.5, 0.5, 0.5);
+
+        for (let i = 0; i < totalPages; i++) {
+            const pageInstance = pages[i]; // Renamed to avoid conflict with 'page' from outer scope
+            const { width: pageWidth, height: pageHeight } = pageInstance.getSize(); // Renamed for clarity
+            const pageNumber = i + 1;
+
+            // Date/Time (Center Footer)
+            const now = new Date();
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const dateTimeString = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+
+            const dateTimeTextWidth = robotoFont.widthOfTextAtSize(dateTimeString, footerFontSize);
+            pageInstance.drawText(dateTimeString, {
+                x: (pageWidth - dateTimeTextWidth) / 2,
+                y: footerMargin,
+                font: robotoFont,
+                size: footerFontSize,
+                color: footerColor,
+            });
+
+            // Page Number (Right Footer)
+            const pageNumString = `Página ${pageNumber}/${totalPages}`;
+            const pageNumTextWidth = robotoFont.widthOfTextAtSize(pageNumString, footerFontSize);
+            pageInstance.drawText(pageNumString, {
+                x: pageWidth - pageNumTextWidth - footerMargin,
+                y: footerMargin,
+                font: robotoFont,
+                size: footerFontSize,
+                color: footerColor,
+            });
+        }
+        // END FOOTER ADDITION
+
+        const finalPdfBytes = await pdfDocLib.save(); // Save again after adding footers
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Info_Excursion_${excursion.nombre_excursion.replace(/\s+/g, '_')}.pdf`);
-        res.send(Buffer.from(pdfBytes));
+        res.send(Buffer.from(finalPdfBytes));
 
     } catch (error) {
         console.error(`Error en GET /api/excursiones/${excursionId}/info_pdf:`, error.message, error.stack);
@@ -4183,10 +4275,55 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
             currentY -= 20; // Space before next class
         }
 
-        const pdfBytes = await pdfDocLib.save();
+        // Initial save to finalize content and allow page counting
+        await pdfDocLib.save();
+
+        // START FOOTER ADDITION
+        const pagesTesoreria = pdfDocLib.getPages(); // Use a different variable name for pages array
+        const totalPagesTesoreria = pdfDocLib.getPageCount();
+        const footerFontSizeTesoreria = 8;
+        const footerMarginTesoreria = 30;
+        const footerColorTesoreria = rgb(0.5, 0.5, 0.5);
+
+        for (let i = 0; i < totalPagesTesoreria; i++) {
+            const pageInstance = pagesTesoreria[i]; // Use a different variable name for page object
+            const { width: pageWidth, height: pageHeight } = pageInstance.getSize();
+            const pageNumber = i + 1;
+
+            const now = new Date();
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const dateTimeString = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+
+            const dateTimeTextWidth = robotoFont.widthOfTextAtSize(dateTimeString, footerFontSizeTesoreria);
+            pageInstance.drawText(dateTimeString, {
+                x: (pageWidth - dateTimeTextWidth) / 2,
+                y: footerMarginTesoreria,
+                font: robotoFont,
+                size: footerFontSizeTesoreria,
+                color: footerColorTesoreria,
+            });
+
+            const pageNumString = `Página ${pageNumber}/${totalPagesTesoreria}`;
+            const pageNumTextWidth = robotoFont.widthOfTextAtSize(pageNumString, footerFontSizeTesoreria);
+            pageInstance.drawText(pageNumString, {
+                x: pageWidth - pageNumTextWidth - footerMarginTesoreria,
+                y: footerMarginTesoreria,
+                font: robotoFont,
+                size: footerFontSizeTesoreria,
+                color: footerColorTesoreria,
+            });
+        }
+        // END FOOTER ADDITION
+
+        const finalPdfBytes = await pdfDocLib.save(); // Save again after adding footers
         res.contentType('application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Reporte_Tesoreria_Excursion_${excursion_id}.pdf`);
-        res.send(Buffer.from(pdfBytes));
+        res.send(Buffer.from(finalPdfBytes));
 
     } catch (error) {
         console.error(`Error en GET /api/tesoreria/excursiones/${req.params.excursion_id}/reporte_detallado_pdf:`, error.message, error.stack);
@@ -4670,9 +4807,54 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             currentY -= rowHeight;
         }
 
-        const pdfBytes = await pdfDocLib.save();
+        // Initial save to finalize content and allow page counting
+        await pdfDocLib.save();
+
+        // START FOOTER ADDITION
+        const pagesSecretaria = pdfDocLib.getPages(); // Use a different variable name for pages array
+        const totalPagesSecretaria = pdfDocLib.getPageCount();
+        const footerFontSizeSecretaria = 8;
+        const footerMarginSecretaria = 30;
+        const footerColorSecretaria = rgb(0.5, 0.5, 0.5);
+
+        for (let i = 0; i < totalPagesSecretaria; i++) {
+            const pageInstance = pagesSecretaria[i]; // Use a different variable name for page object
+            const { width: pageWidth, height: pageHeight } = pageInstance.getSize();
+            const pageNumber = i + 1;
+
+            const now = new Date();
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const dateTimeString = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+
+            const dateTimeTextWidth = robotoFont.widthOfTextAtSize(dateTimeString, footerFontSizeSecretaria);
+            pageInstance.drawText(dateTimeString, {
+                x: (pageWidth - dateTimeTextWidth) / 2,
+                y: footerMarginSecretaria,
+                font: robotoFont,
+                size: footerFontSizeSecretaria,
+                color: footerColorSecretaria,
+            });
+
+            const pageNumString = `Página ${pageNumber}/${totalPagesSecretaria}`;
+            const pageNumTextWidth = robotoFont.widthOfTextAtSize(pageNumString, footerFontSizeSecretaria);
+            pageInstance.drawText(pageNumString, {
+                x: pageWidth - pageNumTextWidth - footerMarginSecretaria,
+                y: footerMarginSecretaria,
+                font: robotoFont,
+                size: footerFontSizeSecretaria,
+                color: footerColorSecretaria,
+            });
+        }
+        // END FOOTER ADDITION
+
+        const finalPdfBytes = await pdfDocLib.save(); // Save again after adding footers
         res.contentType('application/pdf');
-        res.send(Buffer.from(pdfBytes));
+        res.send(Buffer.from(finalPdfBytes));
 
     } catch (error) {
         console.error("Error en GET /api/secretaria/informe_general_pdf:", error.message, error.stack);
