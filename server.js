@@ -4482,6 +4482,8 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
 
         const excursionesDb = await dbAllAsync("SELECT * FROM excursiones ORDER BY fecha_excursion DESC");
         const excursionFinancialData = [];
+        const participatingClassIds = new Set(); // Initialize Set for class IDs
+
         for (const excursion of excursionesDb) {
             const financialDetails = await getFinancialDetailsForExcursion(excursion.id, excursion);
             const totalCostes = financialDetails.coste_total_autobuses + 
@@ -4491,6 +4493,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             // Get money contributed by each class
             const aportesPorClaseSql = `
                 SELECT
+                    c.id as clase_id,
                     c.nombre_clase,
                     SUM(pe.cantidad_pagada) as total_aportado_clase
                 FROM participaciones_excursion pe
@@ -4502,6 +4505,18 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             `;
             const aportesData = await dbAllAsync(aportesPorClaseSql, [excursion.id]);
             excursion.aportes_por_clase = aportesData;
+
+            if (excursion.aportes_por_clase && excursion.aportes_por_clase.length > 0) {
+                excursion.aportes_por_clase.forEach(aporte => {
+                    if (aporte.clase_id) {
+                        participatingClassIds.add(aporte.clase_id);
+                    }
+                });
+            }
+
+            if (excursion.para_clase_id) {
+                participatingClassIds.add(excursion.para_clase_id);
+            }
 
             // Get number of children who paid
             const ninosPagadoSql = `
@@ -4579,10 +4594,25 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         page.drawText('Listado de Tutores', { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
         currentY -= (pdfStyles.sectionTitle.size + 10);
         
-        const tutoresDb = await dbAllAsync("SELECT id, nombre_completo, email FROM usuarios WHERE rol = 'TUTOR' ORDER BY nombre_completo ASC");
-        const clasesDb = await dbAllAsync("SELECT id, nombre_clase, tutor_id FROM clases");
+        const classIdsArray = Array.from(participatingClassIds);
+        // console.log("Participating Class IDs for Tutor List:", classIdsArray); // Temporary log to be removed
+
+        let tutoresDb = [];
+        if (classIdsArray.length > 0) {
+            const placeholders = classIdsArray.map(() => '?').join(',');
+            const sqlTutores = `
+                SELECT DISTINCT u.id, u.nombre_completo, u.email
+                FROM usuarios u
+                JOIN clases c ON u.id = c.tutor_id
+                WHERE c.id IN (${placeholders}) AND u.rol = 'TUTOR'
+                ORDER BY u.nombre_completo ASC;
+            `;
+            tutoresDb = await dbAllAsync(sqlTutores, classIdsArray);
+        }
+
+        const clasesDb = await dbAllAsync("SELECT id, nombre_clase, tutor_id FROM clases"); // Still needed for clasesMap
         const clasesMap = clasesDb.reduce((map, clase) => {
-            if (clase.tutor_id) map[clase.tutor_id] = clase.nombre_clase;
+            if (clase.tutor_id) map[clase.tutor_id] = clase.nombre_clase; // This will associate tutor_id with nombre_clase
             return map;
         }, {});
 
@@ -4621,7 +4651,7 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             page = tableResultTutores.page;
         } else {
             currentY = ensurePageSpace(currentY, rowHeight);
-            page.drawText('No hay tutores registrados.', { x: xMargin, y: currentY, ...pdfStyles.text });
+            page.drawText('No hay tutores de clases participantes para mostrar.', { x: xMargin, y: currentY, ...pdfStyles.text });
             currentY -= rowHeight;
         }
 
