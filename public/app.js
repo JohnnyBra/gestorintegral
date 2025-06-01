@@ -1258,7 +1258,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div><label>Justificación:</label><textarea id="justificacionExcursion" required>${excursionData.justificacion_texto || ''}</textarea></div>
                     <div><label>Notas:</label><textarea id="notasExcursion">${excursionData.notas_excursion || ''}</textarea></div>
                     ${currentUser.rol === 'DIRECCION' ? paraCicloSelectHtml : ''}
-                    ${paraClaseSelectHtml} {/* This will be correctly populated for DIRECCION or TUTOR roles */}
+                    ${paraClaseSelectHtml}
                     <div class="form-buttons"><button type="submit" class="success"><i class="fas ${idExcursion ? 'fa-save' : 'fa-plus'}"></i> ${idExcursion ? 'Guardar Cambios' : 'Crear Excursión'}</button><button type="button" id="btnCancelarFormExcursion" class="secondary"><i class="fas fa-times"></i> Cancelar</button></div>
                     <p id="formExcursionError" class="error-message"></p>
                 </form>
