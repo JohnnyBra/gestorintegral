@@ -4050,13 +4050,14 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
             logoDims = { width: 0, height: 0 };
         }
 
-        let page = pdfDocLib.addPage(PageSizes.A4);
-        const { width, height } = page.getSize();
+        let page = pdfDocLib.addPage([PageSizes.A4[1], PageSizes.A4[0]]); // LANDSCAPE
+        let { width, height } = page.getSize(); // Get dimensions for landscape
         const yPageMargin = 40;
         const xMargin = 40;
         const pageBottomMargin = 40;
-        const contentWidth = width - (2 * xMargin);
+        let contentWidth = width - (2 * xMargin); // Recalculate for landscape
         const rowHeight = 18; // Consistent row height
+        const fieldMaxWidth = contentWidth; // For drawFieldWithWrapping
 
         const pdfStyles = {
             mainTitle: { font: robotoBoldFont, size: 18, color: rgb(0,0,0) },
@@ -4076,16 +4077,20 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
         const _ensurePageSpace = (currentYVal, neededSpace, isNewSection = false) => {
             let localCurrentY = currentYVal;
             if (localCurrentY - neededSpace < pageSetup.bottomMargin || (isNewSection && localCurrentY - neededSpace < (pageSetup.bottomMargin + 40))) {
-                page = pdfDocLib.addPage(PageSizes.A4);
+                page = pdfDocLib.addPage([PageSizes.A4[1], PageSizes.A4[0]]); // New page in Landscape
+                width = page.getSize().width; // Update width for new page
+                height = page.getSize().height; // Update height for new page
+                contentWidth = width - (2 * xMargin); // Update contentWidth for new page
+
                 if (logoObject.image) {
                     page.drawImage(logoObject.image, {
-                        x: logoObject.x,
-                        y: logoObject.yTop,
+                        x: width - xMargin - logoObject.dims.width, // Use new landscape width
+                        y: height - yPageMargin - logoObject.dims.height, // Use new landscape height
                         width: logoObject.dims.width,
                         height: logoObject.dims.height,
                     });
                 }
-                localCurrentY = pageSetup.height - pageSetup.yMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
+                localCurrentY = height - yPageMargin - (logoObject.image ? logoObject.dims.height : 0) - (logoObject.image ? logoObject.paddingBelow : 0);
             }
             return localCurrentY;
         };
@@ -4138,7 +4143,8 @@ app.get('/api/tesoreria/excursiones/:excursion_id/reporte_detallado_pdf', authen
                 { header: 'Pagado (€)', key: 'cantidad_pagada_str', alignment: 'right' },
                 { header: 'Estado Pago', key: 'pago_realizado', alignment: 'left' }
             ];
-            const columnWidthsAlumnosClase = [contentWidth * 0.5, contentWidth * 0.25, contentWidth * 0.25];
+            // Adjusted for landscape: Nombre: 400, Pagado: 180, Estado: 180 (approx sum 760 for contentWidth ~760)
+            const columnWidthsAlumnosClase = [400, 180, 180];
 
             const alumnosDataParaTabla = alumnosEnClase.map(p => ({
                 ...p,
@@ -4411,24 +4417,27 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             logoDims = { width: 0, height: 0 }; // Existing line
         }
 
-        let page = pdfDocLib.addPage(PageSizes.A4);
-        const { width, height } = page.getSize();
+        // Set Landscape Orientation
+        let page = pdfDocLib.addPage([PageSizes.A4[1], PageSizes.A4[0]]);
+        let { width, height } = page.getSize(); // Get dimensions for landscape
         const yPageMargin = 40; 
         const xMargin = 40;
         const pageBottomMargin = 40;
 
+        // Update contentWidth based on new landscape width
+        const contentWidth = width - (2 * xMargin);
+
         // Draw logo on first page
         if (logoImage) {
             page.drawImage(logoImage, {
-                x: width - xMargin - logoDims.width,
-                y: height - yPageMargin - logoDims.height,
+                x: width - xMargin - logoDims.width, // Use landscape width
+                y: height - yPageMargin - logoDims.height, // Use landscape height
                 width: logoDims.width,
                 height: logoDims.height,
             });
         }
         
-        let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0); // 15 padding below logo
-        const contentWidth = width - (2 * xMargin);
+        let currentY = height - yPageMargin - (logoImage ? logoDims.height : 0) - (logoImage ? 15 : 0); // Use landscape height
         const rowHeight = 18;
 
         const pdfStyles = {
@@ -4529,12 +4538,13 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
             { header: 'Costes (€)', key: 'costes_totales', alignment: 'right'},
             { header: 'Balance (€)', key: 'balance', alignment: 'right'},
             { header: 'Aportes por Clase', key: 'aportes_clase_str', alignment: 'left'},
-            { header: 'Niños Pagado', key: 'ninos_han_pagado', alignment: 'right'}
+            { header: 'Alumnos Pagados', key: 'ninos_han_pagado', alignment: 'right'} // Updated Header
         ];
-        // Original widths: [175, 70, 90, 90, 90] -> Sum 515
-        // New widths: Need to adjust to keep sum around 515 or less.
-        // Excursion: 120, Fecha: 60, Recaudado: 70, Costes: 70, Balance: 70, Aportes: 100, Niños Pagado: 25 -> Sum = 515
-        const columnWidthsExcursiones = [120, 60, 70, 70, 70, 100, 25];
+        // Original portrait widths: [120, 60, 70, 70, 70, 100, 25]; Sum = 515
+        // New landscape widths for contentWidth approx 761.89:
+        // Excursion: 200, Fecha: 70, Recaudado: 90, Costes: 90, Balance: 90, Aportes: 150, Alumnos Pagados: 70
+        // Sum = 200 + 70 + 90 + 90 + 90 + 150 + 70 = 760
+        const columnWidthsExcursiones = [200, 70, 90, 90, 90, 150, 70];
 
 
         if (excursionFinancialData.length > 0) {
