@@ -1106,7 +1106,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 listaDeClasesGlobal.forEach(cl => htmlTablaAlumnos += `<option value="${cl.id}">${cl.nombre_clase}</option>`);
                 htmlTablaAlumnos += `</select></div>`;
             } else if (filtroClaseIdActual && currentUser.rol === 'DIRECCION') {
-                 htmlTablaAlumnos += `<button onclick="sessionStorage.removeItem('filtroAlumnosClaseId'); sessionStorage.removeItem('filtroAlumnosNombreClase'); loadAlumnos();" class="secondary" style="margin-bottom:15px;"><i class="fas fa-list-ul"></i> Mostrar Todos</button>`;
+                 htmlTablaAlumnos += `<button id="btnMostrarTodosAlumnosDynamic" class="secondary" style="margin-bottom:15px;"><i class="fas fa-list-ul"></i> Mostrar Todos</button>`;
             }
             if (currentUser.rol === 'DIRECCION' || (currentUser.rol === 'TUTOR' && currentUser.claseId)) {
                 htmlTablaAlumnos += `<button id="btnShowFormNuevoAlumno" class="success" style="margin-bottom:15px;"><i class="fas fa-user-plus"></i> Añadir Alumno</button>`;
@@ -1126,6 +1126,16 @@ document.addEventListener('DOMContentLoaded', () => {
             poblarSelectorClaseDestinoCSV(); 
             const formImp = document.getElementById('formImportarAlumnosCSV');
             if(formImp) formImp.addEventListener('submit', handleImportAlumnosCSV);
+
+            const btnMostrarTodosDynamic = document.getElementById('btnMostrarTodosAlumnosDynamic');
+            if (btnMostrarTodosDynamic) {
+                btnMostrarTodosDynamic.addEventListener('click', () => {
+                    sessionStorage.removeItem('filtroAlumnosClaseId');
+                    sessionStorage.removeItem('filtroAlumnosNombreClase');
+                    loadAlumnos();
+                });
+            }
+
             if(document.getElementById('btnShowFormNuevoAlumno')) document.getElementById('btnShowFormNuevoAlumno').onclick = () => showFormAlumno();
             alumnosContentDiv.querySelectorAll('.edit-alumno').forEach(b => b.onclick = async (e) => {
                 const alumnoId = e.target.dataset.id;
