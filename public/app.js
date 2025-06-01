@@ -2767,6 +2767,44 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
     }
     window.handleExcursionDayClick = handleExcursionDayClick; 
 
+    async function handleGenerarTesoreriaInformePdf(excursionId, excursionNombre) {
+        const apiUrl = `${API_BASE_URL}/tesoreria/excursiones/${excursionId}/reporte_detallado_pdf`;
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${currentToken}` }
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                // Sanitize excursionNombre for filename and add timestamp
+                const safeExcursionNombre = excursionNombre ? excursionNombre.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '') : 'Excursion';
+                const timestamp = new Date().toISOString().split('T')[0];
+                a.download = `Reporte_Tesoreria_${safeExcursionNombre}_${timestamp}.pdf`;
+                a.href = downloadUrl;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(downloadUrl);
+                a.remove();
+            } else {
+                let errorData;
+                try {
+                    errorData = await response.json();
+                } catch (e) {
+                    // If response is not JSON, use status text or generic message
+                    showGlobalError(`Error ${response.status}: ${response.statusText || 'Error al generar PDF (respuesta no JSON)'}`);
+                    return;
+                }
+                showGlobalError(errorData.error || `Error ${response.status} al generar el PDF detallado.`);
+            }
+        } catch (err) {
+            showGlobalError(`Error de red o conexión al generar PDF detallado: ${err.message}`);
+        }
+    }
+
     async function loadTesoreriaData() {
         const contentDiv = document.getElementById('tesoreria-content');
         if (!contentDiv || !currentToken) {
@@ -2827,7 +2865,10 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
                         <td>${ex.coste_excursion_alumno !== null ? ex.coste_excursion_alumno.toFixed(2) : '0.00'}</td>
                         <td>${ex.participating_scope_name || 'Global'}</td>
                         <td>${ex.nombre_creador || 'N/D'}</td>
-                        <td><button class="edit-financials-button primary" data-excursion-id="${ex.id}">Ver/Editar Finanzas</button></td>
+                        <td>
+                            <button class="edit-financials-button primary" data-excursion-id="${ex.id}">Ver/Editar Finanzas</button>
+                            <button class="generar-tesoreria-informe-pdf-button info" data-excursion-id="${ex.id}"><i class="fas fa-file-pdf"></i> Informe PDF</button>
+                        </td>
                     </tr>`;
                 });
                 html += '</tbody></table>';
@@ -2868,7 +2909,10 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
                         <td>${ex.lugar || 'N/D'}</td>
                         <td>${ex.participating_scope_name || 'Global'}</td>
                         <td>${ex.nombre_creador || 'N/D'}</td>
-                        <td><button class="edit-financials-button primary" data-excursion-id="${ex.id}">Ver/Editar Finanzas</button></td>
+                        <td>
+                            <button class="edit-financials-button primary" data-excursion-id="${ex.id}">Ver/Editar Finanzas</button>
+                            <button class="generar-tesoreria-informe-pdf-button info" data-excursion-id="${ex.id}"><i class="fas fa-file-pdf"></i> Informe PDF</button>
+                        </td>
                     </tr>`;
                 });
                 html += '</tbody></table>';
@@ -2930,6 +2974,40 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
                     }
                 });
             }
+
+            // Add event listener for the new PDF report buttons
+            if (contentDiv._tesoreriaInformePdfHandler) {
+                contentDiv.removeEventListener('click', contentDiv._tesoreriaInformePdfHandler);
+            }
+            contentDiv._tesoreriaInformePdfHandler = async function(event) {
+                const button = event.target.closest('.generar-tesoreria-informe-pdf-button');
+                if (button) {
+                    const excursionId = button.dataset.excursionId;
+                    let excursionNombre = 'Excursion_Desconocida'; // Default
+
+                    const tr = button.closest('tr');
+                    if (tr) {
+                        const firstTd = tr.querySelector('td:first-child');
+                        if (firstTd) {
+                            // For "Excursiones Pasadas", name is in an <a> tag
+                            const linkInFirstTd = firstTd.querySelector('a');
+                            if (linkInFirstTd) {
+                                excursionNombre = linkInFirstTd.textContent.trim();
+                            } else {
+                                // For "Excursiones Pendientes", name is direct text content
+                                excursionNombre = firstTd.textContent.trim();
+                            }
+                        }
+                    }
+                    if (excursionId) {
+                        await handleGenerarTesoreriaInformePdf(excursionId, excursionNombre);
+                    } else {
+                        console.error('Excursion ID not found for PDF report button.');
+                        showGlobalError('No se pudo obtener el ID de la excursión para generar el informe.');
+                    }
+                }
+            };
+            contentDiv.addEventListener('click', contentDiv._tesoreriaInformePdfHandler);
 
         } catch (error) {
             contentDiv.innerHTML = `<p class="error-message">Error al cargar datos de tesorería: ${error.message}</p>`;
