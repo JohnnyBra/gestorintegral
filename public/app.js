@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
         paymentModalState.saveCallback = callback;
         paymentModalState.excursionCost = excursionCost;
 
-        paymentAmountInput.value = excursionCost > 0 ? excursionCost.toFixed(2) : (10).toFixed(2); // Default to 10 if cost is 0 or not set
+        paymentAmountInput.value = excursionCost > 0 ? excursionCost.toFixed(2) : (0).toFixed(2); // Default to 0 if cost is 0
         const today = new Date().toISOString().split('T')[0];
         paymentDateInput.value = today;
 
