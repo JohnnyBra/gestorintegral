@@ -1147,15 +1147,22 @@ document.addEventListener('DOMContentLoaded', () => {
          if (!currentFormWrapper) return; 
 
         let paraClaseIdActual = excursionData.para_clase_id !== undefined ? excursionData.para_clase_id : defaultParaClaseId;
-        if (!idExcursion && currentUser.rol === 'TUTOR' && paraClaseIdActual === null) {
+        // Logic for TUTOR role pre-selection based on 'ciclo' or specific class
+        if (!idExcursion && currentUser.rol === 'TUTOR' && paraClaseIdActual === null) { // Creating new, default to 'ciclo'
             paraClaseIdActual = "ciclo"; 
-        } else if (idExcursion && excursionData.para_clase_id === null && currentUser.rol === 'TUTOR') {
+        } else if (idExcursion && excursionData.para_clase_id === null && excursionData.para_ciclo_id === null && currentUser.rol === 'TUTOR') { // Editing, was global, default to 'ciclo' for tutor
             paraClaseIdActual = "ciclo"; 
+        } else if (idExcursion && excursionData.para_ciclo_id !== null && currentUser.rol === 'TUTOR') { // Editing, was for cycle, ensure "ciclo" is selected for tutor
+            paraClaseIdActual = "ciclo";
         }
 
 
         let opcionesClasesHtml = '';
+        let ciclosDisponibles = [];
         let selectDisabled = false;
+        let paraCicloSelectHtml = '';
+        let paraClaseSelectHtml = '';
+
 
         if (currentUser.rol === 'DIRECCION') {
              if (listaDeClasesGlobal.length === 0) { 
@@ -1164,18 +1171,50 @@ document.addEventListener('DOMContentLoaded', () => {
                     listaDeClasesGlobal = dataClases.clases || [];
                 } catch (error) { /* Error handled by showGlobalError */ }
             }
-            opcionesClasesHtml = `<option value="" ${paraClaseIdActual === null || paraClaseIdActual === "" ? 'selected' : ''}>-- Global (para todas las clases) --</option>`;
+            // Default option for "Para Clase" when "Para Ciclo" is available
+            opcionesClasesHtml = `<option value="" ${!excursionData.para_clase_id ? 'selected' : ''}>-- Selecciona Clase (si no es por ciclo o global) --</option>`;
             listaDeClasesGlobal.forEach(clase => {
-                opcionesClasesHtml += `<option value="${clase.id}" ${paraClaseIdActual == clase.id ? 'selected' : ''}>${clase.nombre_clase}</option>`;
+                opcionesClasesHtml += `<option value="${clase.id}" ${excursionData.para_clase_id == clase.id ? 'selected' : ''}>${clase.nombre_clase}</option>`;
             });
+            // This will be part of the formHtml later, constructed conditionally
+
+            try {
+                const dataCiclos = await apiFetch('/ciclos'); // Ensure this is awaited
+                if (dataCiclos && dataCiclos.ciclos) {
+                    ciclosDisponibles = dataCiclos.ciclos;
+                }
+            } catch (error) {
+                console.error("Error fetching ciclos:", error);
+                // Optionally, display an error to the user in the form
+                paraCicloSelectHtml = `<p class="error-message">Error cargando ciclos.</p>`;
+            }
+
+            // Generate "Para Ciclo" dropdown HTML
+            if (!paraCicloSelectHtml) { // Avoid overwriting error message if fetch failed
+                let cicloOptions = ciclosDisponibles.map(ciclo =>
+                    `<option value="${ciclo.id}" ${excursionData.para_ciclo_id == ciclo.id ? 'selected' : ''}>${ciclo.nombre_ciclo}</option>`
+                ).join('');
+                paraCicloSelectHtml = `
+                    <div>
+                        <label for="paraCicloIdExcursion">Para Ciclo:</label>
+                        <select id="paraCicloIdExcursion">
+                            <option value="">-- Global/Clase Específica --</option>
+                            ${cicloOptions}
+                        </select>
+                    </div>`;
+            }
+
+            // Generate "Para Clase" dropdown HTML for DIRECCION
+            paraClaseSelectHtml = `<div><label for="paraClaseIdExcursion">Para Clase:</label><select id="paraClaseIdExcursion">${opcionesClasesHtml}</select></div>`;
+
         } else if (currentUser.rol === 'TUTOR') {
             opcionesClasesHtml = ''; 
             opcionesClasesHtml += `<option value="ciclo" ${paraClaseIdActual === "ciclo" ? 'selected' : ''}>Mi Ciclo (Todas las clases de mi ciclo)</option>`;
 
             if (!currentUser.claseId) {
-                 // Tutor sin clase solo puede seleccionar "Mi Ciclo" (que será global)
+                 // Tutor sin clase solo puede seleccionar "Mi Ciclo" (que será global por defecto en backend si no hay claseId)
             } else {
-                 if (listaDeClasesGlobal.length === 0) {
+                 if (listaDeClasesGlobal.length === 0) { // Fetch all classes if not already available
                     try {
                         const dataTodasClases = await apiFetch('/clases');
                         listaDeClasesGlobal = dataTodasClases.clases || [];
@@ -1184,22 +1223,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 opcionesClasesHtml += `<option value="${currentUser.claseId}" ${paraClaseIdActual == currentUser.claseId ? 'selected' : ''}>${currentUser.claseNombre} (Mi Clase)</option>`;
 
+                // Find the cycle ID of the tutor's current class
                 const tutorClaseActual = listaDeClasesGlobal.find(clase => clase.id === currentUser.claseId);
                 const tutorCicloId = tutorClaseActual ? tutorClaseActual.ciclo_id : null;
 
+                // Add other classes from the same cycle
                 if (tutorCicloId) {
                     const clasesDelMismoCiclo = listaDeClasesGlobal.filter(clase => clase.ciclo_id === tutorCicloId && clase.id !== currentUser.claseId);
                     clasesDelMismoCiclo.forEach(clase => {
                         opcionesClasesHtml += `<option value="${clase.id}" ${paraClaseIdActual == clase.id ? 'selected' : ''}>${clase.nombre_clase} (Mismo Ciclo)</option>`;
                     });
                 }
-                selectDisabled = false; 
+                selectDisabled = false; // Enable select if options are available
             }
-        }
-
-        let paraClaseSelectHtml = '';
-        if (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR') {
-            paraClaseSelectHtml = `<div><label>Para Clase:</label><select id="paraClaseIdExcursion" ${selectDisabled ? 'disabled':''}>${opcionesClasesHtml}</select></div>`;
+             // Build paraClaseSelectHtml for TUTOR
+            paraClaseSelectHtml = `<div><label for="paraClaseIdExcursion">Para Clase/Ciclo:</label><select id="paraClaseIdExcursion" ${selectDisabled ? 'disabled':''}>${opcionesClasesHtml}</select></div>`;
         }
 
 
@@ -1219,7 +1257,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div><label>Transporte:</label><select id="transporteExcursion" required><option value="">-- Selecciona --</option><option value="Autobús" ${excursionData.transporte === 'Autobús' ? 'selected' : ''}>Autobús</option><option value="Andando" ${excursionData.transporte === 'Andando' ? 'selected' : ''}>Andando</option></select></div>
                     <div><label>Justificación:</label><textarea id="justificacionExcursion" required>${excursionData.justificacion_texto || ''}</textarea></div>
                     <div><label>Notas:</label><textarea id="notasExcursion">${excursionData.notas_excursion || ''}</textarea></div>
-                    ${paraClaseSelectHtml}
+                    ${currentUser.rol === 'DIRECCION' ? paraCicloSelectHtml : ''}
+                    ${paraClaseSelectHtml} {/* This will be correctly populated for DIRECCION or TUTOR roles */}
                     <div class="form-buttons"><button type="submit" class="success"><i class="fas ${idExcursion ? 'fa-save' : 'fa-plus'}"></i> ${idExcursion ? 'Guardar Cambios' : 'Crear Excursión'}</button><button type="button" id="btnCancelarFormExcursion" class="secondary"><i class="fas fa-times"></i> Cancelar</button></div>
                     <p id="formExcursionError" class="error-message"></p>
                 </form>
@@ -1232,6 +1271,34 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const btnCancelar = currentFormWrapper.querySelector('#btnCancelarFormExcursion');
         if(btnCancelar) btnCancelar.onclick = () => { currentFormWrapper.innerHTML = ''; currentFormWrapper.style.display = 'none'; };
+
+        if (currentUser.rol === 'DIRECCION') {
+            const cicloSelect = document.getElementById('paraCicloIdExcursion');
+            const claseSelect = document.getElementById('paraClaseIdExcursion');
+
+            if (cicloSelect && claseSelect) {
+                cicloSelect.addEventListener('change', function() {
+                    if (this.value) { // A cycle is selected
+                        claseSelect.value = ''; // Clear class selection
+                    }
+                });
+
+                claseSelect.addEventListener('change', function() {
+                    if (this.value) { // A class is selected
+                        if (cicloSelect) { // Ensure cycleSelect exists (it should for DIRECCION)
+                            cicloSelect.value = ''; // Clear cycle selection
+                        }
+                    }
+                });
+
+                // Set initial state based on loaded data when editing
+                if (excursionData.para_ciclo_id && cicloSelect.value) { // If a cycle is pre-selected
+                    if (claseSelect) claseSelect.value = '';
+                } else if (excursionData.para_clase_id && claseSelect.value) { // If a class is pre-selected
+                     if (cicloSelect) cicloSelect.value = '';
+                }
+            }
+        }
     }
     async function saveExcursion(event, specificClaseIdForReload = null) { 
         event.preventDefault();
@@ -1242,24 +1309,39 @@ document.addEventListener('DOMContentLoaded', () => {
         if(errorP) errorP.textContent = '';
         const excursionId = formWrapper.querySelector('#excursionId').value;
         const paraClaseIdSelect = formWrapper.querySelector('#paraClaseIdExcursion');
+        const paraCicloIdSelect = formWrapper.querySelector('#paraCicloIdExcursion'); // Get cycle select
         
-        let para_clase_id_valor;
-        if (paraClaseIdSelect) {
-            const selectedValue = paraClaseIdSelect.value;
-            if (selectedValue === "ciclo" || selectedValue === "") { 
-                para_clase_id_valor = null;
-            } else {
-                para_clase_id_valor = parseInt(selectedValue);
+        let para_clase_id_valor = null;
+        let para_ciclo_id_valor = null; // Initialize cycle id value
+
+        if (currentUser.rol === 'DIRECCION') {
+            const cicloSelectedValue = paraCicloIdSelect ? paraCicloIdSelect.value : "";
+            const claseSelectedValue = paraClaseIdSelect ? paraClaseIdSelect.value : "";
+
+            if (cicloSelectedValue) {
+                para_ciclo_id_valor = parseInt(cicloSelectedValue);
+                para_clase_id_valor = null; // Mutual exclusivity: if cycle, then no class
+            } else if (claseSelectedValue) {
+                para_clase_id_valor = parseInt(claseSelectedValue);
+                para_ciclo_id_valor = null; // Mutual exclusivity: if class, then no cycle
             }
-        } else { 
-             const originalExcursionData = excursionId ? JSON.parse(sessionStorage.getItem(`editExcursionData_${excursionId}`) || '{}') : {};
-             para_clase_id_valor = originalExcursionData.para_clase_id !== undefined ? originalExcursionData.para_clase_id : null;
-             if (currentUser.rol === 'TUTOR' && !excursionId && currentUser.claseId) { 
-                para_clase_id_valor = null; 
-             }
+            // If neither is selected, both remain null (global excursion)
+        } else if (currentUser.rol === 'TUTOR') {
+            // For TUTOR, the existing logic determines para_clase_id.
+            // para_ciclo_id is not directly set by TUTOR from a separate dropdown in this UI design.
+            // The backend handles "Mi Ciclo" selection by interpreting null para_clase_id for a tutor.
+            if (paraClaseIdSelect) {
+                const selectedValue = paraClaseIdSelect.value;
+                if (selectedValue === "ciclo" || selectedValue === "") {
+                    para_clase_id_valor = null; // Indicates "Mi Ciclo" or global for the tutor
+                } else {
+                    para_clase_id_valor = parseInt(selectedValue);
+                }
+            }
+            // para_ciclo_id_valor remains null for TUTOR as they don't have a direct cycle selection input in this form version
         }
 
-        const excursionData = {
+        const excursionDataPayload = {
             nombre_excursion: document.getElementById('nombreExcursion').value,
             actividad_descripcion: document.getElementById('actividadExcursion').value,
             lugar: document.getElementById('lugarExcursion').value,
@@ -1271,11 +1353,17 @@ document.addEventListener('DOMContentLoaded', () => {
             transporte: formWrapper.querySelector('#transporteExcursion').value,
             justificacion_texto: formWrapper.querySelector('#justificacionExcursion').value,
             notas_excursion: formWrapper.querySelector('#notasExcursion').value,
-            para_clase_id: para_clase_id_valor
+            para_clase_id: para_clase_id_valor,
+            para_ciclo_id: para_ciclo_id_valor // Add cycle_id to payload
         };
 
-        if (excursionId) { 
-            sessionStorage.setItem(`editExcursionData_${excursionId}`, JSON.stringify(excursionData));
+        // Explicit mutual exclusivity check for DIRECCION payload, just before sending
+        if (currentUser.rol === 'DIRECCION') {
+            if (excursionDataPayload.para_ciclo_id) {
+                excursionDataPayload.para_clase_id = null;
+            } else if (excursionDataPayload.para_clase_id) {
+                excursionDataPayload.para_ciclo_id = null;
+            }
         }
 
         let method = 'POST';
@@ -1287,10 +1375,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const submitButton = formWrapper.querySelector('button[type="submit"]');
         try {
             if(submitButton) submitButton.disabled = true;
-            await apiFetch(endpoint, method, excursionData);
+            await apiFetch(endpoint, method, excursionDataPayload);
             formWrapper.innerHTML = '';
             formWrapper.style.display = 'none';
-            if (excursionId) sessionStorage.removeItem(`editExcursionData_${excursionId}`);
             loadExcursiones(); 
         } catch (error) {
             if(errorP) errorP.textContent = error.message || 'Error guardando excursión.';
@@ -1595,7 +1682,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (currentUser.rol === 'DIRECCION' || currentUser.rol === 'TUTOR' || currentUser.rol === 'TESORERIA' || currentUser.rol === 'COORDINACION') {
                         accionesHtml += ` <button class="download-info-general-pdf info" data-excursion-id="${ex.id}" data-excursion-nombre="${ex.nombre_excursion}"><i class="fas fa-file-pdf"></i> Info PDF</button>`;
                     }
-            html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
+            html += `<tr data-excursion-id="${ex.id}"><td>${ex.nombre_excursion}</td><td>${ex.fecha_excursion}</td><td>${ex.lugar}</td><td>${ex.participating_scope_name || ex.nombre_clase_destino || '<em>Global</em>'}</td><td>${ex.nombre_creador}</td><td class="actions-cell">${accionesHtml}</td></tr>`;
 
                 });
             } else { html += '<tr><td colspan="6" style="text-align:center;">No hay excursiones.</td></tr>'; }
