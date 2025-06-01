@@ -4365,8 +4365,29 @@ app.get('/api/secretaria/informe_general_pdf', authenticateToken, async (req, re
         currentY -= 20; // Space after section
 
         // Section 2: Listado de Tutores
-        currentY = ensurePageSpace(currentY, pdfStyles.sectionTitle.size + rowHeight * 2, true);
+        // MODIFICATION START for hyper-focused logging
+        const currentYBeforeEnsureSpaceForListadoTutores = currentY;
+        let yValueForListadoTutoresTitle = ensurePageSpace(currentYBeforeEnsureSpaceForListadoTutores, pdfStyles.sectionTitle.size + rowHeight * 2, true);
+
+        console.log(`[PDF Gen Debug - Pre-ListadoTutoresTitle] currentY passed to ensurePageSpace: ${currentYBeforeEnsureSpaceForListadoTutores}`);
+        console.log(`[PDF Gen Debug - Pre-ListadoTutoresTitle] yValue returned from ensurePageSpace: ${yValueForListadoTutoresTitle}`);
+
+        if (isNaN(yValueForListadoTutoresTitle)) {
+            console.error(`[PDF Gen Debug - Pre-ListadoTutoresTitle] CRITICAL: yValueForListadoTutoresTitle IS NaN HERE!`);
+            // Forcing a crash with more context if it's NaN, to ensure it's noticed if logs are truncated
+            if (isNaN(currentYBeforeEnsureSpaceForListadoTutores)) {
+              console.error('[PDF Gen Debug - Pre-ListadoTutoresTitle] Input currentY to ensurePageSpace was ALSO NaN!');
+            }
+            // Re-log components of ensurePageSpace's internal calculation if it might have made a new page
+            // Note: pageSetup and logoObject are in scope from the outer function
+            console.log(`[PDF Gen Debug - Pre-ListadoTutoresTitle] For context - pageSetup.height: ${typeof pageSetup !== 'undefined' ? pageSetup.height : 'pageSetup undefined'}, pageSetup.yMargin: ${typeof pageSetup !== 'undefined' ? pageSetup.yMargin : 'pageSetup undefined'}`);
+            console.log(`[PDF Gen Debug - Pre-ListadoTutoresTitle] For context - logoObject.dims.height: ${typeof logoObject !== 'undefined' ? logoObject.dims.height : 'logoObject undefined'}, logoObject.paddingBelow: ${typeof logoObject !== 'undefined' ? logoObject.paddingBelow : 'logoObject undefined'}`);
+        }
+
+        currentY = yValueForListadoTutoresTitle;
+        // The failing line, as identified by user:
         page.drawText('Listado de Tutores', { x: xMargin, y: currentY, ...pdfStyles.sectionTitle });
+        // MODIFICATION END
         currentY -= (pdfStyles.sectionTitle.size + 10);
         
         const tutoresDb = await dbAllAsync("SELECT id, nombre_completo, email FROM usuarios WHERE rol = 'TUTOR' ORDER BY nombre_completo ASC");
