@@ -17,7 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const signoutButton = document.getElementById('signout_button');
 
     const mainNavSidebar = document.getElementById('main-nav-sidebar');
-    const navLinks = document.querySelectorAll('#main-nav-sidebar a'); 
+    const navLinks = document.querySelectorAll('#main-nav-sidebar a');
+    const bottomNavLinks = document.querySelectorAll('#bottom-mobile-nav a'); // Added for bottom nav
     const mainSections = document.querySelectorAll('.main-section'); 
     
     const dashboardSummaryContentDiv = document.getElementById('dashboard-summary-content');
@@ -122,12 +123,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const today = new Date().toISOString().split('T')[0];
         paymentDateInput.value = today;
 
-        paymentConfirmationModal.style.display = 'flex';
+        // paymentConfirmationModal.style.display = 'flex';
+        paymentConfirmationModal.classList.add('visible');
     }
 
     function closePaymentConfirmationModal() {
         if (paymentConfirmationModal) {
-            paymentConfirmationModal.style.display = 'none';
+            // paymentConfirmationModal.style.display = 'none';
+            paymentConfirmationModal.classList.remove('visible');
         }
         // Clear stored data
         paymentModalState.currentParticipationData = null;
@@ -375,22 +378,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function navigateTo(sectionName) {
-        mainSections.forEach(s => { if(s) s.style.display = 'none';});
+        mainSections.forEach(s => {
+            if(s) {
+                s.classList.remove('section-visible');
+                // The CSS .main-section default is display:none, so removing .section-visible
+                // will hide it and allow opacity/transform transitions.
+            }
+        });
         navLinks.forEach(l => { if(l) l.classList.remove('active');});
-        if (loginSection) loginSection.style.display = 'none';
+        // Also handle active state for bottom nav
+        bottomNavLinks.forEach(l => { if(l) l.classList.remove('active');});
+
+        if (loginSection) {
+            // loginSection.style.display = 'none'; // Handled by mainSections loop if it has .main-section
+            loginSection.classList.remove('section-visible');
+        }
 
         const activeSectionDiv = document.getElementById(`${sectionName}-section`);
         const activeLink = document.querySelector(`#main-nav-sidebar a[data-section="${sectionName}"]`);
+        const activeBottomLink = document.querySelector(`#bottom-mobile-nav a[data-section="${sectionName}"]`);
 
         if (sectionName === 'login') {
-            if (loginSection) loginSection.style.display = 'block';
+            if (loginSection) {
+                // loginSection.style.display = 'block'; // Replaced by class toggle
+                loginSection.classList.add('section-visible');
+            }
         } else if (activeSectionDiv) {
-            activeSectionDiv.style.display = 'block';
-            if (activeLink) activeLink.classList.add('active'); 
+            // activeSectionDiv.style.display = 'block'; // Replaced by class toggle
+            activeSectionDiv.classList.add('section-visible');
+            if (activeLink) activeLink.classList.add('active');
+            if (activeBottomLink) activeBottomLink.classList.add('active');
             loadContentForSection(sectionName);
         } else {
-            if (sectionName !== 'coordinacion') {
-                // Element for section not found, this could be an issue if the section is expected.
+            if (sectionName !== 'coordinacion') { // Coordinacion section was removed
+                // Element for section not found
             }
         }
     }
@@ -410,8 +431,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 sidebar.classList.remove('open');
                 document.body.classList.remove('body-sidebar-open');
             }
-            // No need to explicitly close desktop sidebar on nav link click,
-            // as it's not an overlay. If desired, similar logic could be added.
+            // Existing mobile sidebar closing logic - NOW REMOVED/COMMENTED as sidebar is hidden on mobile
+            // const isMobileView = window.innerWidth <= 768;
+            // if (isMobileView && sidebar && sidebar.classList.contains('open')) {
+            //     sidebar.classList.remove('open');
+            //     document.body.classList.remove('body-sidebar-open');
+            // }
+        });
+    });
+
+    // Bottom Mobile Navigation Logic
+    bottomNavLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const section = link.dataset.section;
+
+            // Call existing navigateTo function
+            if (typeof window.navigateTo === 'function') {
+                window.navigateTo(section);
+            } else {
+                console.error('navigateTo function is not defined globally.');
+            }
+
+            // Update active class for bottom nav (already handled in navigateTo, but good for explicitness if called directly)
+            bottomNavLinks.forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
         });
     });
 
@@ -2726,7 +2770,7 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
             // "Download Info Familias (PDF)" Button
             const downloadInfoButton = document.createElement('button');
             downloadInfoButton.id = 'btnGenerarInfoFamiliasPdf';
-            downloadInfoButton.className = 'info';
+            downloadInfoButton.className = 'info'; // General button class
             downloadInfoButton.innerHTML = '<i class="fas fa-file-pdf"></i> Descargar Info Familias (PDF)';
             downloadInfoButton.setAttribute('data-excursion-id', excursionData.id);
             downloadInfoButton.setAttribute('data-excursion-nombre', excursionData.nombre_excursion);
@@ -2781,12 +2825,14 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
             }
         }
         
-        excursionDetailModal.style.display = 'block'; 
+        // excursionDetailModal.style.display = 'block';
+        excursionDetailModal.classList.add('visible');
     }
 
     function closeExcursionModal() {
         if (excursionDetailModal) {
-            excursionDetailModal.style.display = 'none';
+            // excursionDetailModal.style.display = 'none';
+            excursionDetailModal.classList.remove('visible');
         }
     }
 
@@ -2800,15 +2846,26 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         }
         // Close change password modal on outside click
         if (changePasswordModal && event.target === changePasswordModal) {
-            changePasswordModal.style.display = 'none';
+            // changePasswordModal.style.display = 'none';
+            changePasswordModal.classList.remove('visible');
         }
+        // Close payment confirmation modal on outside click
+        if (paymentConfirmationModal && event.target === paymentConfirmationModal) {
+            closePaymentConfirmationModal();
+        }
+        // Close tesoreria financial modal on outside click
+        if (tesoreriaFinancialModal && event.target === tesoreriaFinancialModal) {
+            closeTesoreriaFinancialModal();
+        }
+
     });
 
     // Event listener for showing the change password modal
     if (showChangePasswordModalBtn) {
         showChangePasswordModalBtn.addEventListener('click', () => {
             if (changePasswordModal) {
-                changePasswordModal.style.display = 'flex';
+                // changePasswordModal.style.display = 'flex';
+                changePasswordModal.classList.add('visible');
                 if (changePasswordErrorP) changePasswordErrorP.textContent = '';
                 if (changePasswordSuccessP) changePasswordSuccessP.textContent = '';
                 if (changePasswordForm) changePasswordForm.reset();
@@ -2819,7 +2876,8 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
     // Event listener for cancelling/closing the change password modal
     if (cancelChangePasswordBtn) {
         cancelChangePasswordBtn.addEventListener('click', () => {
-            if (changePasswordModal) changePasswordModal.style.display = 'none';
+            // if (changePasswordModal) changePasswordModal.style.display = 'none';
+            if (changePasswordModal) changePasswordModal.classList.remove('visible');
         });
     }
 
@@ -2855,7 +2913,8 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
                 if (changePasswordSuccessP) changePasswordSuccessP.textContent = 'Contraseña actualizada correctamente.';
                 if (changePasswordForm) changePasswordForm.reset();
                 setTimeout(() => {
-                    if (changePasswordModal) changePasswordModal.style.display = 'none';
+                    // if (changePasswordModal) changePasswordModal.style.display = 'none';
+                    if (changePasswordModal) changePasswordModal.classList.remove('visible');
                     if (changePasswordSuccessP) changePasswordSuccessP.textContent = ''; // Clear success message before next open
                 }, 2000);
             } catch (error) {
@@ -3139,7 +3198,8 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
     checkInitialLoginState();
 
     function closeTesoreriaFinancialModal() {
-        if (tesoreriaFinancialModal) tesoreriaFinancialModal.style.display = 'none';
+        // if (tesoreriaFinancialModal) tesoreriaFinancialModal.style.display = 'none';
+        if (tesoreriaFinancialModal) tesoreriaFinancialModal.classList.remove('visible');
         if (financialModalStatus) financialModalStatus.textContent = '';
         currentExcursionIdForFinancialModal = null;
     }
@@ -3159,7 +3219,8 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
         }
         currentExcursionIdForFinancialModal = excursionId;
         if (financialModalStatus) financialModalStatus.textContent = 'Cargando...';
-        tesoreriaFinancialModal.style.display = 'flex';
+        // tesoreriaFinancialModal.style.display = 'flex';
+        tesoreriaFinancialModal.classList.add('visible');
 
         try {
             const excursion = await apiFetch(`/tesoreria/excursion-financial-details/${excursionId}`);
@@ -3260,17 +3321,24 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
     if (sidebarToggle && sidebar) {
         sidebarToggle.addEventListener('click', () => {
             const isMobileView = window.innerWidth <= 768;
+            const bottomNav = document.getElementById('bottom-mobile-nav');
 
-            if (isMobileView) {
-                sidebar.classList.toggle('open'); // Mobile uses 'open' for transform
-                document.body.classList.toggle('body-sidebar-open'); // Mobile uses this to prevent body scroll
-            } else {
-                // Desktop toggles classes for sidebar and main-panel
-                sidebar.classList.toggle('sidebar-desktop-collapsed');
-                if (mainPanel) { // Check if mainPanel exists
-                    mainPanel.classList.toggle('main-panel-sidebar-collapsed');
-                }
+            // If bottom nav is visible (mobile view), this toggle should do nothing for the sidebar
+            if (isMobileView && bottomNav && window.getComputedStyle(bottomNav).display !== 'none') {
+                return;
             }
+
+            // Desktop sidebar toggle logic (original 'else' block)
+            sidebar.classList.toggle('sidebar-desktop-collapsed');
+            if (mainPanel) {
+                mainPanel.classList.toggle('main-panel-sidebar-collapsed');
+            }
+
+            // The old mobile specific logic is removed because CSS now hides the sidebar and toggle button entirely.
+            // if (isMobileView) {
+            //    sidebar.classList.toggle('open');
+            //    document.body.classList.toggle('body-sidebar-open');
+            // } else { ... }
         });
     }
 
