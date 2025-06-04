@@ -243,7 +243,7 @@ a:hover {
   background-color: var(--light-bg-color);
   margin-left: 250px; /* Matches new sidebar width */
   transition: margin-left 0.3s ease-in-out;
-  padding-top: 60px; /* Height of the header, adjust if header height changes */
+  /* padding-top: 60px; */ /* REMOVED - Caused empty space above header */
   min-height: 100vh; /* Ensure it takes full height */
 }
 
@@ -667,7 +667,7 @@ div[style*="overflow-x: auto"] {
   .main-panel {
     margin-left: 0 !important;
     padding-bottom: 60px;
-    padding-top: 100px; /* Adjusted padding top due to taller header */
+    /* padding-top: 100px; */ /* REMOVED - Caused empty space above header */
   }
 
   /* Tables - Ensure horizontal scroll for wider tables */
@@ -781,7 +781,7 @@ div[style*="overflow-x: auto"] {
 
   /* Padding and Margins */
   .main-panel {
-    padding-top: 90px; /* Adjust if header is smaller */
+    /* padding-top: 90px; */ /* REMOVED - Caused empty space above header */
   }
   main.content-area,
   .main-section {
