@@ -299,6 +299,56 @@ div[style*="overflow-x: auto"] { border: 1px solid var(--border-color); border-r
   .form-buttons, .section-buttons { justify-content:center; }
   .form-buttons button, .section-buttons button { flex-grow:1; margin-bottom:0.5rem; }
   .form-buttons button:last-child, .section-buttons button:last-child { margin-bottom:0; }
+
+  /* Participaciones Table Column Widths for Mobile */
+  .tabla-participaciones th.col-alumno,
+  .tabla-participaciones td.col-alumno {
+      width: 30%;       /* Adjusted percentage */
+      min-width: 90px;  /* Minimum width for readability */
+      white-space: normal; /* Allow text wrapping */
+      padding-left: 4px;  /* Reduced padding */
+      padding-right: 4px; /* Reduced padding */
+      font-size: 0.85em;  /* Slightly smaller font in these cells */
+  }
+
+  .tabla-participaciones th.col-clase,
+  .tabla-participaciones td.col-clase {
+      width: 20%;       /* Adjusted percentage */
+      min-width: 60px;  /* Minimum width */
+      white-space: normal; /* Allow text wrapping */
+      padding-left: 4px;
+      padding-right: 4px;
+      font-size: 0.85em;
+  }
+
+  .tabla-participaciones th.col-autorizacion,
+  .tabla-participaciones td.col-autorizacion {
+      width: 20%;       /* Adjusted percentage for select dropdown */
+      min-width: 70px;  /* Minimum width to fit "Sí"/"No" select */
+      white-space: normal; /* Though select itself won't wrap */
+      padding-left: 4px;
+      padding-right: 4px;
+      font-size: 0.85em;
+  }
+
+  .tabla-participaciones td.col-autorizacion select.participacion-field-edit {
+      min-width: auto;    /* Override any general input min-width that might be too large */
+      width: 100%;        /* Make it fill the (now narrower) td */
+      font-size: 0.9em;   /* Font size specifically for the select options */
+      padding: 6px 3px;   /* Adjust padding for the select element itself */
+      height: auto;       /* Ensure height is not overly constrained */
+  }
+
+  /* General rule for all th/td in this specific table on small mobile, if not already covered by global mobile table styles */
+  .tabla-participaciones th,
+  .tabla-participaciones td {
+      /* This overrides the general 'white-space: nowrap' that might be on all table cells from a wider media query */
+      /* For columns NOT explicitly sized above, they will also wrap if this is uncommented.
+         If we want ONLY the specified columns to wrap, keep this commented.
+         The user wants specific columns to fit, others can cause scroll. So keep nowrap for others.
+      */
+      /* white-space: normal; */
+  }
 }
 
 @media (max-width: 480px) {

@@ -2123,7 +2123,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Added wrapper div for table horizontal scrolling
-            let html = `<h4>Participantes: ${excursionNombre}</h4><div style="width: 100%; overflow-x: auto;"><table class="tabla-datos tabla-participaciones"><thead><tr><th>Alumno</th><th>Clase</th><th>Autorización</th><th>Fecha Aut.</th><th>Pago</th><th>Cantidad (€)</th><th>Fecha Pago</th><th>Notas</th><th class="status-column">Estado</th><th>Acciones</th></tr></thead><tbody>`;
+            let html = `<h4>Participantes: ${excursionNombre}</h4><div style="width: 100%; overflow-x: auto;"><table class="tabla-datos tabla-participaciones"><thead><tr>
+            <th class="col-alumno">Alumno</th>
+            <th class="col-clase">Clase</th>
+            <th class="col-autorizacion">Autorización</th>
+            <th>Fecha Aut.</th>
+            <th>Pago</th>
+            <th>Cantidad (€)</th>
+            <th>Fecha Pago</th>
+            <th>Notas</th>
+            <th class="status-column">Estado</th>
+            <th>Acciones</th>
+        </tr></thead><tbody>`;
             if (data.alumnosParticipaciones.length > 0) {
                 data.alumnosParticipaciones.forEach(ap => {
                     const esCampoDeshabilitado = ap.autorizacion_firmada === 'Sí' && ap.fecha_autorizacion;
@@ -2152,8 +2163,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     html += `<tr data-participacion-id="${ap.participacion_id || ''}" data-alumno-id="${ap.alumno_id}" data-current-asistencia="${ap.asistencia || 'Pendiente'}">
-                        <td>${studentNameDisplayHtml}</td><td>${ap.nombre_clase}</td>
-                        <td><select class="participacion-field-edit" data-field="autorizacion_firmada" ${esCampoDeshabilitado?'disabled':''}><option value="No" ${ap.autorizacion_firmada==='No'?'selected':''}>No</option><option value="Sí" ${ap.autorizacion_firmada==='Sí'?'selected':''}>Sí</option></select></td>
+                        <td class="col-alumno">${studentNameDisplayHtml}</td><td class="col-clase">${ap.nombre_clase}</td>
+                        <td class="col-autorizacion"><select class="participacion-field-edit" data-field="autorizacion_firmada" ${esCampoDeshabilitado?'disabled':''}><option value="No" ${ap.autorizacion_firmada==='No'?'selected':''}>No</option><option value="Sí" ${ap.autorizacion_firmada==='Sí'?'selected':''}>Sí</option></select></td>
                         <td><input type="date" class="participacion-field-edit" data-field="fecha_autorizacion" value="${ap.fecha_autorizacion||''}" ${esCampoDeshabilitado?'disabled':''}></td>
                         <td><select class="participacion-field-edit" data-field="pago_realizado"><option value="No" ${ap.pago_realizado==='No'?'selected':''}>No</option><option value="Parcial" ${ap.pago_realizado==='Parcial'?'selected':''}>Parcial</option><option value="Sí" ${ap.pago_realizado==='Sí'?'selected':''}>Sí</option></select></td>
                         <td><input type="number" step="0.01" class="participacion-field-edit" data-field="cantidad_pagada" value="${ap.cantidad_pagada||0}" min="0" style="width:70px;"></td>
