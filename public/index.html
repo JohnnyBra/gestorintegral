@@ -169,21 +169,27 @@
             <div class="footer-credit">Creado por Javi Barrero</div>
         </div>
 
-        <div id="excursion-detail-modal" class="simple-modal"> {/* Added simple-modal class for consistency if needed, or keep as is if it has unique base styles */}
-            <h4 id="modal-excursion-title"></h4>
-            <p><strong>Fecha:</strong> <span id="modal-excursion-date"></span></p>
-            <p><strong>Lugar:</strong> <span id="modal-excursion-place"></span></p>
-            <p><strong>Participan:</strong> <span id="modal-excursion-participants"></span></p>
-            <p><strong>Justificantes Recibidos:</strong> <span id="modal-excursion-auth-count">N/A</span></p>
-            <p><strong>Descripción:</strong> <span id="modal-excursion-description"></span></p>
-            <p><strong>Hora Salida:</strong> <span id="modal-excursion-hora-salida"></span></p>
-            <p><strong>Hora Llegada:</strong> <span id="modal-excursion-hora-llegada"></span></p>
-            <p><strong>Coste:</strong> <span id="modal-excursion-coste"></span></p>
-            <p><strong>Vestimenta:</strong> <span id="modal-excursion-vestimenta"></span></p>
-            <p><strong>Transporte:</strong> <span id="modal-excursion-transporte"></span></p>
-            <p><strong>Justificación:</strong> <span id="modal-excursion-justificacion"></span></p>
-            <p><strong>Notas:</strong> <span id="modal-excursion-notas"></span></p>
-            <button id="modal-close-button">Cerrar</button>
+        <div id="excursion-detail-modal" class="simple-modal">
+            <div class="modal-content-box">
+                <span class="modal-close-x">&times;</span> <!-- Optional: Add a dedicated X close button -->
+                <h4 id="modal-excursion-title"></h4>
+                <p><strong>Fecha:</strong> <span id="modal-excursion-date"></span></p>
+                <p><strong>Lugar:</strong> <span id="modal-excursion-place"></span></p>
+                <p><strong>Participan:</strong> <span id="modal-excursion-participants"></span></p>
+                <p><strong>Justificantes Recibidos:</strong> <span id="modal-excursion-auth-count">N/A</span></p>
+                <p><strong>Descripción:</strong> <span id="modal-excursion-description"></span></p>
+                <p><strong>Hora Salida:</strong> <span id="modal-excursion-hora-salida"></span></p>
+                <p><strong>Hora Llegada:</strong> <span id="modal-excursion-hora-llegada"></span></p>
+                <p><strong>Coste:</strong> <span id="modal-excursion-coste"></span></p>
+                <p><strong>Vestimenta:</strong> <span id="modal-excursion-vestimenta"></span></p>
+                <p><strong>Transporte:</strong> <span id="modal-excursion-transporte"></span></p>
+                <p><strong>Justificación:</strong> <span id="modal-excursion-justificacion"></span></p>
+                <p><strong>Notas:</strong> <span id="modal-excursion-notas"></span></p>
+                <!-- Original close button can be kept or replaced by the X -->
+                <div class="form-buttons" style="margin-top: 1.5rem;"> <!-- Wrapper for button alignment -->
+                   <button id="modal-close-button" class="button secondary">Cerrar</button>
+                </div>
+            </div>
         </div>
 
         <div id="tesoreria-excursion-financial-modal" class="simple-modal" style="display:none;">

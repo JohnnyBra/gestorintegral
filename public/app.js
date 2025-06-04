@@ -2839,6 +2839,12 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
     if (modalCloseButton) {
         modalCloseButton.addEventListener('click', closeExcursionModal);
     }
+
+    // Add listener for the new X button in excursion detail modal
+    const excursionDetailModalXClose = excursionDetailModal ? excursionDetailModal.querySelector('.modal-close-x') : null;
+    if (excursionDetailModalXClose) {
+        excursionDetailModalXClose.addEventListener('click', closeExcursionModal);
+    }
     
     window.addEventListener('click', (event) => {
         if (excursionDetailModal && event.target === excursionDetailModal) {

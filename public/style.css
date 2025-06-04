@@ -25,6 +25,7 @@
 
 html {
   font-size: 16px;
+  overflow-x: hidden; /* Prevent html from scrolling horizontally */
 }
 
 body {
@@ -37,12 +38,40 @@ body {
   margin: 0;
   display: flex;
   min-height: 100vh;
+  /* Safeguards for fixed positioning context */
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  overflow-x: hidden; /* Prevent body itself from scrolling horizontally */
 }
 
 .app-container {
   display: flex;
   width: 100%;
   min-height: 100vh;
+  /* Safeguards for fixed positioning context */
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+}
+
+/* Responsive Images */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block; /* Helps with spacing and layout */
+}
+
+/* Text Wrapping */
+p, td, th, div { /* Apply broadly, can be refined if it causes issues */
+    overflow-wrap: break-word;
+    word-wrap: break-word; /* Older browsers */
+}
+
+pre {
+    white-space: pre-wrap; /* Allow wrapping but preserve whitespace */
+    word-wrap: break-word;
+    overflow-x: auto; /* Add scroll if content is still too wide */
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -278,7 +307,12 @@ a:hover {
   opacity: 0;
   visibility: hidden;
   transform: translateY(15px);
-  transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out, transform 0.3s ease-in-out;
+  /* Corrected transition for visibility: it should not "animate" over 0.3s.
+     It becomes visible immediately when .section-visible is added,
+     and becomes hidden after opacity fades out if .section-visible is removed.
+     However, with display:none on base, visibility transition is less critical here.
+     The main point is the opacity and transform. */
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
 }
 
 .main-section.section-visible {
@@ -557,7 +591,8 @@ div[style*="overflow-x: auto"] {
   opacity: 0;
   visibility: hidden;
   transform: scale(0.95);
-  transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out, transform 0.2s ease-in-out;
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+  /* Visibility will be toggled instantly by adding/removing .visible */
 }
 
 .simple-modal.visible,
@@ -571,35 +606,70 @@ div[style*="overflow-x: auto"] {
 }
 
 .simple-modal-content,
-#excursion-detail-modal > div:first-child { /* Be careful with this selector */
+#excursion-detail-modal > div.modal-content-box { /* Updated selector */
+  background-color: #ffffff; /* Opaque white background */
+  border-radius: 0.5rem;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  padding: 2rem;
+  width: 90%;
+  max-width: 600px; /* Was already set for #excursion-detail-modal > div:first-child */
+  position: relative; /* For positioning the X close button if added */
+  overflow-y: auto;   /* Allow internal scrolling for tall content */
+  max-height: 90vh;   /* Prevent modal from being taller than viewport */
+}
+
+.modal-content-box { /* New class for the inner wrapper of #excursion-detail-modal and potentially others */
+    background-color: #ffffff; /* Opaque white background */
+    border-radius: 0.5rem;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    padding: 2rem;
+    width: 90%;
+    /* max-width should be defined by specific modal or by .simple-modal-content */
+    position: relative;
+    overflow-y: auto;
+    max-height: 90vh;
+}
+
+
+.simple-modal-content,
+/* #excursion-detail-modal > div:first-child removed, now use .modal-content-box or specific ID selector */
+#paymentConfirmationModal .simple-modal-content, /* Keep for other simple modals */
+#changePasswordModal .simple-modal-content,
+#tesoreria-excursion-financial-modal .simple-modal-content {
   background-color: #ffffff;
   border-radius: 0.5rem;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   padding: 2rem;
   width: 90%;
-  max-width: 500px;
+  max-width: 500px; /* Default max-width for simple-modal-content */
   position: relative;
-  /* transform: translateY(-50px); Removed for new scale transform */
-  /* transition: transform 0.3s ease-out; Removed for new scale transform */
+  overflow-y: auto; /* Allow internal scrolling */
+  max-height: 90vh; /* Prevent modal from being taller than viewport */
 }
 
+
 /* .simple-modal.visible .simple-modal-content,
-#excursion-detail-modal.visible > div:first-child {
+#excursion-detail-modal.visible > div:first-child { // This selector needs update
     transform: translateY(0); // Replaced by scale transform
 } */
 
 /* Ensure the content itself doesn't have transition that conflicts with modal's scale */
 .simple-modal.visible .simple-modal-content,
-#excursion-detail-modal.visible > div:first-child {
+#excursion-detail-modal.visible .modal-content-box { /* Updated selector */
     /* No specific transform here, handled by the parent .visible class */
 }
 
 
 /* Specific Modal Sizes */
-#excursion-detail-modal .simple-modal-content, /* If #excursion-detail-modal IS .simple-modal */
-#excursion-detail-modal > div:first-child { /* If structure is #excursion-detail-modal > div */
+/* #excursion-detail-modal .simple-modal-content, // This selector might be redundant if #excursion-detail-modal has .modal-content-box
+#excursion-detail-modal > div:first-child {
   max-width: 600px;
+} */
+/* Max width for excursion detail modal is now on .modal-content-box or #excursion-detail-modal .modal-content-box */
+#excursion-detail-modal .modal-content-box {
+    max-width: 600px;
 }
+
 
 #tesoreria-excursion-financial-modal .simple-modal-content { /* Assuming it uses .simple-modal-content */
   max-width: 700px;
@@ -607,7 +677,7 @@ div[style*="overflow-x: auto"] {
 
 /* Modal Headers (assuming h4 is used, adjust if not) */
 .simple-modal-content h4,
-#excursion-detail-modal > div:first-child h4,
+.modal-content-box h4, /* Added for the new wrapper */
 #tesoreria-excursion-financial-modal .simple-modal-content h4 {
   margin-top: 0;
   font-size: 1.5rem;
@@ -634,13 +704,10 @@ div[style*="overflow-x: auto"] {
 }
 
 /* Ensure modal buttons in footers use general button styling */
-.simple-modal-content .form-buttons button, /* if form-buttons class is used in modal */
-#excursion-detail-modal > div:first-child button, /* Target buttons directly if no class */
-#paymentConfirmationModal .simple-modal-content button,
-#changePasswordModal .simple-modal-content button,
-#tesoreria-excursion-financial-modal .simple-modal-content button {
-  /* This is a bit broad. Ideally, modal action buttons have a common class or structure. */
-  /* The general button styling will apply, this is more of a placeholder for specific modal button adjustments if needed */
+.simple-modal-content .form-buttons, /* if form-buttons class is used in modal */
+.modal-content-box .form-buttons { /* Targeting form-buttons within the new wrapper */
+  justify-content: flex-end; /* Or center, depending on desired alignment */
+  /* General button styling will apply to buttons inside .form-buttons */
 }
 
 
@@ -823,10 +890,11 @@ div[style*="overflow-x: auto"] {
   }
 
   /* Tables - Ensure horizontal scroll for wider tables */
-  table.tabla-datos, /* Target specific tables if needed, or all general tables */
+  .main-section table, /* Target tables within main sections */
+  table.tabla-datos,
   .table-responsive-mobile { /* Add this class to divs wrapping tables if specific control is needed */
     display: block;
-    width: 100%;
+    width: 100%;    /* Often not needed if display: block is used, but good for safety */
     overflow-x: auto;
     -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
   }
@@ -841,7 +909,7 @@ div[style*="overflow-x: auto"] {
     position: fixed;
     bottom: 0;
     left: 0;
-    width: 100%;
+    width: 100vw; /* Use viewport width */
     height: 60px; /* Default height for 768px media query */
     background-color: #ffffff;
     border-top: 1px solid var(--border-color);
@@ -1006,12 +1074,13 @@ div[style*="overflow-x: auto"] {
 
   /* Modal Content */
   .simple-modal-content,
-  #excursion-detail-modal > div:first-child {
+  .modal-content-box { /* Apply to new general content box as well */
     padding: 1rem;
     font-size: 0.9rem;
     width: 95%; /* Allow more width on very small screens */
   }
-  .simple-modal-content h4 {
+  .simple-modal-content h4,
+  .modal-content-box h4 {
     font-size: 1.2rem;
   }
 
