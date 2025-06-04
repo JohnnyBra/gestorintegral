@@ -272,7 +272,7 @@ a:hover {
   background-color: #ffffff;
   padding: 1.5rem;
   border-radius: 0.5rem;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.075);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); /* Adjusted shadow */
   margin-bottom: 1.5rem;
   display: none; /* Initially hidden, JS controls visibility via .section-visible */
   opacity: 0;
@@ -294,6 +294,21 @@ a:hover {
   padding-bottom: 0.5rem;
   margin-bottom: 1.5rem;
   font-size: 1.7rem;
+}
+
+.main-section h3 {
+  font-size: 1.35rem;
+  color: var(--text-color);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.main-section h4 {
+  font-size: 1.15rem;
+  color: var(--secondary-color); /* More subdued */
+  margin-top: 1.5rem; /* Add space above if it follows other content */
+  margin-bottom: 0.75rem;
 }
 
 /* Form Styling */
@@ -324,6 +339,17 @@ textarea {
   border: 1px solid var(--border-color);
   border-radius: 0.25rem;
   transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+input[type="text"]:hover,
+input[type="date"]:hover,
+input[type="number"]:hover,
+input[type="file"]:hover,
+input[type="email"]:hover,
+input[type="password"]:hover,
+select:hover,
+textarea:hover {
+    border-color: var(--secondary-color); /* Darken border slightly on hover */
 }
 
 input:focus,
@@ -626,12 +652,138 @@ div[style*="overflow-x: auto"] {
   background-color: #ffffff;
   padding: 2rem; /* More padding for login */
   border-radius: 0.5rem;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.075);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); /* Adjusted shadow, consistent with .main-section */
 }
 
-#login-section h2 { /* Assuming h2 is used for "Login" title */
+#login-section h2 { /* Assuming h2 is used for "Login" title - this might be an h3 based on HTML structure */
     text-align: center; /* Center login title */
+    margin-bottom: 1.5rem; /* More space after title */
 }
+
+#login-section form div { /* Spacing between label/input groups */
+    margin-bottom: 1rem;
+}
+#login-section form button[type="submit"] {
+    margin-top: 1rem; /* Space before the main login button */
+}
+
+
+/* --- Calendar Styles --- */
+#excursion-calendar-container {
+    margin-top: 1.5rem; /* Use consistent spacing unit */
+    padding: 1rem;
+    background-color: #ffffff; /* White background for the card */
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem; /* Consistent with .main-section */
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.075); /* Consistent with .main-section */
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.calendar-header h4 { /* Should inherit from base h4, but can be specific */
+    margin: 0;
+    font-size: 1.25rem; /* Match base h4 */
+    color: var(--text-color);
+}
+
+.calendar-header button {
+    /* Inherits general button styles. Override if needed: */
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+/* Ensure primary/secondary colors are applied if they don't have specific classes */
+.calendar-header button#calendar-prev-month,
+.calendar-header button#calendar-next-month {
+     background-color: var(--primary-color);
+     color: var(--text-color-light);
+     border-color: var(--primary-color);
+}
+.calendar-header button#calendar-prev-month:hover,
+.calendar-header button#calendar-next-month:hover {
+    background-color: var(--primary-hover-color);
+    border-color: var(--primary-hover-color);
+}
+
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px; /* Creates the border effect between cells */
+    background-color: var(--border-color); /* Grid line color using variable */
+    border: 1px solid var(--border-color); /* Outer border for the grid */
+    border-radius: 0.25rem; /* Slight rounding for the grid itself */
+    overflow: hidden; /* Ensures child background colors don't bleed past border-radius */
+}
+
+.calendar-day-header {
+    background-color: var(--light-bg-color);
+    padding: 0.5rem 0.25rem; /* Adjusted padding */
+    font-weight: 500;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--secondary-color); /* More subtle color for day headers */
+    line-height: 1.2;
+}
+
+.calendar-day {
+    background-color: #ffffff; /* White background for day cells */
+    padding: 0.5rem 0.25rem; /* Adjusted padding */
+    text-align: center;
+    min-height: 80px; /* Adjusted min-height for a bit more space */
+    font-size: 0.9rem;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start; /* Align number to top */
+    align-items: center;
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+}
+.calendar-day:hover:not(.empty) {
+     background-color: #e9ecef; /* Light hover for non-empty days */
+}
+
+
+.calendar-day.empty {
+    background-color: var(--light-bg-color); /* Lighter for empty cells */
+    cursor: default;
+}
+.calendar-day.empty:hover {
+    background-color: var(--light-bg-color); /* No hover change for empty */
+}
+
+.calendar-day .date-number { /* If a specific span is used for numbers */
+    font-size: 0.95em; /* Default is fine, but can be targeted */
+}
+
+.calendar-day.has-excursion {
+    background-color: var(--accent-color); /* Use accent color from palette */
+    color: var(--text-color-light); /* Light text on accent background */
+    font-weight: 500;
+}
+.calendar-day.has-excursion:hover {
+    background-color: var(--accent-hover-color);
+}
+
+.calendar-message { /* For 'No excursions' or 'Error loading' messages */
+    margin-top: 1rem;
+    text-align: center;
+    font-style: italic;
+    color: var(--secondary-color);
+}
+.calendar-message.error-message { /* For error messages specifically */
+    color: var(--danger-color);
+    font-style: normal;
+    font-weight: 500;
+}
+
 
 /* Bottom Mobile Navigation - Hidden by default on larger screens */
 #bottom-mobile-nav {
@@ -683,14 +835,14 @@ div[style*="overflow-x: auto"] {
   /* .wrap-text { white-space: normal !important; } */
 
 
-  /* Bottom Mobile Navigation Styling - Already present and mostly correct */
+  /* Bottom Mobile Navigation Styling - Apply review and reinforcement */
   #bottom-mobile-nav {
-    display: flex; /* Show bottom nav on mobile */
+    display: flex;
     position: fixed;
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 60px;
+    height: 60px; /* Default height for 768px media query */
     background-color: #ffffff;
     border-top: 1px solid var(--border-color);
     box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
@@ -702,27 +854,34 @@ div[style*="overflow-x: auto"] {
     margin: 0;
     padding: 0;
     display: flex;
-    justify-content: space-around;
-    align-items: center;
+    justify-content: space-around; /* Distributes space around items */
+    align-items: center; /* Vertically center items in the ul */
     height: 100%;
-    width: 100%; /* Ensure ul takes full width */
+    width: 100%;
   }
 
   #bottom-mobile-nav li {
     flex-grow: 1;
-    text-align: center; /* Center content within li */
+    flex-basis: 0; /* Ensures items distribute available space from a zero base */
+    text-align: center; /* Center text within li, though <a> takes over most styling */
+    display: flex; /* Allow <a> to fill the li */
+    justify-content: center; /* Center <a> within li if <a> width is not 100% */
+    align-items: center; /* Center <a> within li if <a> height is not 100% */
   }
 
   #bottom-mobile-nav li a {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    align-items: center; /* Center icon and text horizontally */
+    justify-content: center; /* Center icon and text vertically */
     height: 100%;
-    padding: 5px 0;
+    width: 100%; /* Make <a> take full space of li for better tap target */
+    padding: 5px 2px; /* Small vertical padding, minimal horizontal */
     color: var(--secondary-color);
     text-decoration: none;
     font-size: 0.7rem;
+    min-width: 0; /* Prevent content like long text from breaking flex item sizing */
+    line-height: 1.2; /* Adjust line height for small text */
   }
 
   #bottom-mobile-nav li a i {
@@ -821,7 +980,7 @@ div[style*="overflow-x: auto"] {
   }
   h1 { font-size: 1.8rem; }
   h3 { font-size: 1.2rem; }
-  h4 { font-size: 1rem; }
+  /* h4 { font-size: 1rem; } */ /* Base h4 is 1.25rem, calendar-header h4 is 1.25rem. Let's adjust calendar's h4 specifically */
 
   input[type="text"],
   input[type="date"],
@@ -878,6 +1037,25 @@ div[style*="overflow-x: auto"] {
     padding: 0.3rem 0.6rem;
     font-size: 0.8rem;
   }
+
+  /* Calendar Specific Adjustments for very narrow screens */
+  .calendar-day {
+    min-height: 50px;
+    padding: 5px 3px;
+    font-size: 0.8em;
+  }
+  .calendar-day-header {
+    font-size: 0.75em;
+    padding: 6px 2px;
+  }
+  .calendar-header h4 { /* Specific adjustment for calendar header title */
+    font-size: 1.0em;
+  }
+  .calendar-header button { /* If calendar header buttons were styled separately */
+    padding: 5px 8px;
+    font-size: 0.75em;
+  }
+   /* If calendar header buttons use general .button class, they inherit from above */
 }
 
 /* Optional Loading Animation */
