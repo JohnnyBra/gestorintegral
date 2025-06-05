@@ -309,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateUIAfterLogin() {
-        if (loginSection) loginSection.style.display = 'none';
+        // if (loginSection) loginSection.style.display = 'none'; /* Rely on navigateTo for section visibility */
         if (authStatusDiv) authStatusDiv.style.display = 'flex';
         if (userInfoDisplay) userInfoDisplay.innerHTML = `Usuario: <strong>${currentUser.nombre_completo}</strong> (${currentUser.rol}${currentUser.claseNombre ? ` - ${currentUser.claseNombre}` : ''})`;
         if (authButton) authButton.style.display = 'none';
@@ -320,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateUIAfterLogout() {
-        if (loginSection) loginSection.style.display = 'block';
+        // if (loginSection) loginSection.style.display = 'block'; /* Rely on navigateTo for section visibility */
         if (loginForm) loginForm.reset();
         if (loginErrorP) loginErrorP.textContent = '';
         if (authStatusDiv) authStatusDiv.style.display = 'flex';
@@ -329,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (signoutButton) signoutButton.style.display = 'none';
         if (showChangePasswordModalBtn) showChangePasswordModalBtn.style.display = 'none'; // Hide change password button
         if (mainNavSidebar) mainNavSidebar.style.display = 'none';
-        mainSections.forEach(s => { if (s) s.style.display = 'none'; });
+        // mainSections.forEach(s => { if (s) s.style.display = 'none'; }); /* Rely on navigateTo for section visibility */
         if(document.getElementById('excursion-calendar-container')) document.getElementById('excursion-calendar-container').innerHTML = ''; 
     }
 
