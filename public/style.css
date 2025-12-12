@@ -1,19 +1,47 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
-/* --- public/style.css --- */
+:root {
+    --primary-color: #2563eb;
+    --primary-hover: #1d4ed8;
+    --secondary-color: #1e293b;
+    --secondary-hover: #334155;
+    --accent-color: #3b82f6;
+    --success-color: #10b981;
+    --success-hover: #059669;
+    --warning-color: #f59e0b;
+    --danger-color: #ef4444;
+    --danger-hover: #dc2626;
+
+    --bg-body: #f3f4f6;
+    --bg-surface: #ffffff;
+    --bg-sidebar: #1e293b;
+
+    --text-primary: #1f2937;
+    --text-secondary: #6b7280;
+    --text-inverted: #ffffff;
+
+    --border-color: #e5e7eb;
+    --border-radius: 0.5rem;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 *, *::before, *::after {
-    box-sizing: border-box; /* Apply border-box to all elements for easier sizing */
+    box-sizing: border-box;
 }
 
 body {
-    font-family: 'Roboto', Arial, Helvetica, sans-serif;
+    font-family: 'Roboto', sans-serif;
     line-height: 1.6;
     margin: 0;
     padding: 0;
-    background-color: #f0f2f5; /* Un gris un poco más claro para el fondo general */
-    color: #333;
-    display: flex; /* Para asegurar que .app-container puede usar flex-grow si es necesario */
+    background-color: var(--bg-body);
+    color: var(--text-primary);
     min-height: 100vh;
+    display: flex;
 }
 
 .app-container {
@@ -22,985 +50,455 @@ body {
     min-height: 100vh;
 }
 
-/* --- Sidebar (Contenedor Principal del Menú Lateral) --- */
+/* --- Sidebar --- */
 .sidebar {
-    width: 230px; /* Ancho del menú lateral */
-    background-color: #36454F; /* Lighter and more modern dark slate gray */
-    color: #ecf0f1; /* Texto claro para el sidebar */
-    padding: 20px 0; /* Padding vertical, sin padding horizontal para que los links ocupen todo */
-    box-sizing: border-box;
+    width: 260px;
+    background-color: var(--bg-sidebar);
+    color: var(--text-inverted);
     display: flex;
     flex-direction: column;
-    /* El sidebar (<aside>) siempre está presente, JS mostrará/ocultará el <nav> interno */
-
-    /* Desktop fixed positioning */
     position: fixed;
     height: 100vh;
     top: 0;
     left: 0;
-    overflow-y: auto; /* Scroll for sidebar content if taller than viewport */
-    z-index: 1000; /* Ensure it's above main-panel content, but below mobile overlay potentially */
-    transition: left 0.3s ease-in-out, width 0.3s ease-in-out; /* Transition for left property */
+    z-index: 50;
+    transition: transform 0.3s ease-in-out;
+    box-shadow: var(--shadow-lg);
 }
 
 .sidebar .logo-container {
-    text-align: center;
-    padding: 0 15px 20px 15px; /* Padding horizontal para el logo */
-    margin-bottom: 15px;
-    border-bottom: 1px solid #34495e; /* Separador más oscuro */
+    padding: 2rem 1.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.sidebar .logo-container .logo-text {
-    font-size: 1.5em; /* Un poco más grande */
-    font-weight: bold;
-    color: #fff; /* Fallback text color for logo */
+.sidebar .logo-container img {
+    max-width: 140px;
+    height: auto;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
 }
 
-/* El <nav id="main-nav-sidebar"> (controlado por JavaScript) */
 #main-nav-sidebar {
-    display: none; /* JS lo cambiará a 'block' después del login */
+    padding: 1.5rem 1rem;
+    flex-grow: 1;
+    overflow-y: auto;
 }
 
 #main-nav-sidebar ul {
-    list-style-type: none;
+    list-style: none;
     padding: 0;
     margin: 0;
 }
 
+#main-nav-sidebar li {
+    margin-bottom: 0.5rem;
+}
+
 #main-nav-sidebar li a {
-    display: flex; /* Para alinear iconos y texto */
+    display: flex;
     align-items: center;
-    color: #D3D3D3; /* Light gray */
-    padding: 12px 20px; /* Padding para los items del menú */
+    color: #94a3b8;
+    padding: 0.75rem 1rem;
     text-decoration: none;
-    border-radius: 0; /* Quitamos border-radius para un look más plano */
-    margin-bottom: 1px; /* Pequeña separación */
-    font-size: 0.95em;
-    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+    border-radius: var(--border-radius);
+    font-weight: 500;
+    transition: var(--transition);
 }
 
 #main-nav-sidebar li a:hover {
-    background-color: #4A5A67; /* More distinct hover background */
-    color: #fff;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-inverted);
 }
 
-#main-nav-sidebar li a.active, /* Si añades una clase 'active' con JS */
-#main-nav-sidebar li a.active-link { /* Para el fontWeight que puse en app.js */
-    background-color: #007bff; /* Modern blue accent color */
-    color: #fff;
-    font-weight: bold;
+#main-nav-sidebar li a.active,
+#main-nav-sidebar li a.active-link {
+    background-color: var(--primary-color);
+    color: var(--text-inverted);
+    box-shadow: var(--shadow-md);
 }
 
-#main-nav-sidebar li a i { /* Para futuros iconos */
-    margin-right: 10px;
-    width: 18px;
+#main-nav-sidebar li a i {
+    width: 24px;
+    margin-right: 12px;
     text-align: center;
+    font-size: 1.1rem;
 }
 
-/* --- Panel Principal y Cabecera --- */
+/* --- Main Panel --- */
 .main-panel {
     flex-grow: 1;
+    margin-left: 260px;
     display: flex;
     flex-direction: column;
-    background-color: #ecf0f1; /* Fondo claro para el contenido */
-    overflow-x: hidden; /* Prevent main panel itself from overflowing if children misbehave */
-    margin-left: 230px; /* Default margin for when sidebar is visible on desktop */
-    transition: margin-left 0.3s ease-in-out; /* Add transition */
-}
-
-/* This class will be toggled by JS on .main-panel when sidebar is collapsed on desktop */
-.main-panel-sidebar-collapsed {
-    margin-left: 0;
+    background-color: var(--bg-body);
+    transition: margin-left 0.3s ease-in-out;
+    min-height: 100vh;
 }
 
 header.main-header {
-    background: #fff; /* Cabecera blanca */
-    padding: 10px 25px;
-    border-bottom: 1px solid #dee2e6;
-    display: flex;
-    justify-content: flex-end; /* Mueve el contenido a la derecha */
-    align-items: center;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-#auth-status { /* Contenedor de info de usuario y botones de auth */
-    display: flex;
-    align-items: center;
-}
-
-#userInfoDisplay {
-    margin-right: 15px;
-    font-size: 0.9em;
-    color: #555;
-}
-#userInfoDisplay strong { color: #333; }
-
-
-#auth_button, #signout_button { /* Estilo común para botones en el header */
-    font-size: 0.85em;
-    padding: 6px 12px;
-    margin-left: 10px;
-    cursor: pointer;
-    border-radius: 4px;
-    border: 1px solid transparent;
-}
-#auth_button { background-color: #28a745; border-color: #28a745; color:white; }
-#auth_button:hover { background-color: #218838; border-color: #1e7e34; }
-#signout_button { background-color: #dc3545; border-color: #dc3545; color:white; }
-#signout_button:hover { background-color: #c82333; border-color: #bd2130; }
-
-
-/* --- Área de Contenido Principal --- */
-main.content-area {
-    flex-grow: 1;
-    padding: 25px;
-    overflow-y: auto; /* Scroll si el contenido es muy largo */
-    overflow-x: hidden; /* Prevent horizontal scroll from content within main area */
-}
-
-/* Sección de Login */
-#login-section {
-    max-width: 450px;
-    margin: 50px auto; /* Centrado y con margen superior */
-    padding: 25px 30px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-}
-
-/* Excursion Detail Modal Styling */
-#excursion-detail-modal {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background-color: #fff;
-    padding: 20px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    z-index: 1000; /* Ensure it's above other content */
-    width: 90%; /* Changed from 80% for better small screen layout */
-    max-width: 500px; /* Max width remains the same */
-}
-
-#excursion-detail-modal h4 {
-    margin-top: 0;
-    color: #333;
-}
-
-#excursion-detail-modal p {
-    margin-bottom: 10px;
-    line-height: 1.6;
-}
-
-#excursion-detail-modal strong {
-    color: #555;
-}
-
-#modal-close-button {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 4px;
-    cursor: pointer;
-    float: right; /* Align button to the right */
-}
-
-#modal-close-button:hover {
-    background-color: #0056b3;
-}
-
-/* Calendar Styles */
-#excursion-calendar-container {
-    margin-top: 20px;
-    padding: 15px;
-    background-color: #f9f9f9;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.calendar-header {
+    background-color: var(--bg-surface);
+    padding: 1rem 2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 0;
-    margin-bottom: 15px;
-    border-bottom: 1px solid #eee;
+    box-shadow: var(--shadow-sm);
+    position: sticky;
+    top: 0;
+    z-index: 40;
 }
 
-.calendar-header h4 {
+#main-app-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
     margin: 0;
-    font-size: 1.3em;
-    color: #333;
 }
 
-.calendar-header button {
-    background-color: #007bff;
-    color: white;
+#auth-status {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+#userInfoDisplay {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+
+#userInfoDisplay strong {
+    color: var(--text-primary);
+}
+
+/* Buttons */
+button {
+    padding: 0.625rem 1.25rem;
     border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: var(--border-radius);
+    font-size: 0.95rem;
+    font-weight: 500;
     cursor: pointer;
-    font-size: 0.9em;
-    transition: background-color 0.2s ease;
+    transition: var(--transition);
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
 }
 
-.calendar-header button:hover {
-    background-color: #0056b3;
+button:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+button.primary { background-color: var(--primary-color); color: white; }
+button.primary:hover { background-color: var(--primary-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+button.success { background-color: var(--success-color); color: white; }
+button.success:hover { background-color: var(--success-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+button.warning { background-color: var(--warning-color); color: white; }
+button.warning:hover { opacity: 0.9; box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+button.danger { background-color: var(--danger-color); color: white; }
+button.danger:hover { background-color: var(--danger-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+button.secondary { background-color: white; color: var(--text-primary); border: 1px solid var(--border-color); }
+button.secondary:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+
+#auth_button { background-color: var(--primary-color); color: white; }
+#auth_button:hover { background-color: var(--primary-hover); }
+
+#signout_button { background-color: transparent; color: var(--danger-color); border: 1px solid var(--danger-color); }
+#signout_button:hover { background-color: var(--danger-color); color: white; }
+
+/* --- Content Area --- */
+main.content-area {
+    padding: 2rem;
+    flex-grow: 1;
+}
+
+/* Login Section */
+#login-section {
+    max-width: 400px;
+    margin: 4rem auto;
+    padding: 2.5rem;
+    background: var(--bg-surface);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+}
+
+#login-section h3 {
+    font-size: 1.75rem;
+    margin-bottom: 2rem;
+    color: var(--text-primary);
+}
+
+#login-section form div {
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+/* Forms */
+input[type="text"], input[type="email"], input[type="password"],
+input[type="date"], input[type="number"], select, textarea {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    background-color: #f9fafb;
+    transition: var(--transition);
+}
+
+input:focus, select:focus, textarea:focus {
+    background-color: white;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    outline: none;
+}
+
+label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* Cards / Sections */
+.main-section {
+    background: var(--bg-surface);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 2rem;
+    border: 1px solid var(--border-color);
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.main-section h2 {
+    font-size: 1.5rem;
+    color: var(--text-primary);
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #f1f5f9;
+}
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    margin-top: 1rem;
+}
+
+th, td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+th {
+    background-color: #f8fafc;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    position: sticky;
+    top: 0;
+}
+
+tr:hover td {
+    background-color: #f8fafc;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+/* Badges */
+.badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.badge-success { background-color: #dcfce7; color: #166534; }
+.badge-warning { background-color: #fef3c7; color: #92400e; }
+.badge-danger { background-color: #fee2e2; color: #991b1b; }
+
+/* Dashboard Cards */
+#dashboard-summary-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.dashboard-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.dashboard-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    border-color: var(--primary-color);
+}
+
+/* Calendar */
+#excursion-calendar-container {
+    background: white;
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+}
+
+.calendar-header {
+    margin-bottom: 1.5rem;
 }
 
 .calendar-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 1px; /* Creates the border effect between cells */
-    background-color: #d0d0d0; /* Grid line color */
-    border: 1px solid #d0d0d0; /* Outer border for the grid */
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
 }
 
 .calendar-day-header {
-    background-color: #e9ecef;
-    padding: 10px 5px; /* Adjusted padding */
-    font-weight: bold;
-    text-align: center;
-    font-size: 0.85em; /* Adjusted font size */
-    color: #495057;
-    line-height: 1.2;
+    background-color: #f1f5f9;
+    color: var(--text-secondary);
+    padding: 1rem;
 }
 
 .calendar-day {
-    background-color: #fff;
-    padding: 10px 5px; /* Adjusted padding */
-    text-align: center;
-    min-height: 70px; /* Adjusted min-height */
-    font-size: 0.9em; /* Adjusted font size */
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: center;
-    transition: background-color 0.2s ease;
+    border-right: 1px solid #f1f5f9;
+    border-bottom: 1px solid #f1f5f9;
+    min-height: 100px;
 }
 
-.calendar-day.empty {
-    background-color: #f5f5f5;
-    cursor: default;
-}
-
-.calendar-day:not(.empty):hover {
-    background-color: #e9e9e9;
-    cursor: pointer;
-}
-
-.calendar-day .date-number { /* If you wrap the number in a span */
-    font-size: 0.95em;
+.calendar-day:hover:not(.empty) {
+    background-color: #f8fafc;
 }
 
 .calendar-day.has-excursion {
-    background-color: #ffebcc; /* Light orange, for example */
-    font-weight: bold;
-    cursor: pointer; /* Indicate it's clickable */
-}
-.calendar-day.has-excursion:hover {
-    background-color: #ffd8a8;
-}
-#login-section h3 { text-align:center; margin-bottom: 20px; font-size: 1.6em; color: #333; }
-#login-section div { margin-bottom: 1rem; }
-#login-section label { display: block; margin-bottom: 0.4rem; font-size:0.9em; color: #555; }
-#login-section input[type="email"], 
-#login-section input[type="password"] {
-    width: 100%; /* Ocupar todo el ancho menos padding */
-    padding: 12px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-sizing: border-box; /* Importante para que el padding no aumente el ancho total */
-}
-#login-section button[type="submit"] {
-    width:100%;
-    padding: 12px;
-    background-color: #007bff; /* Azul primario */
-    color:white;
-    border:0;
-    cursor:pointer;
-    border-radius:4px;
-    font-size:1.05em;
-    transition: background-color 0.2s;
-}
-#login-section button[type="submit"]:hover { background-color: #0056b3; }
-
-/* Secciones de Contenido (Dashboard, Clases, etc.) */
-.main-section {
-    background-color: #fff;
-    padding: 25px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
-    margin-bottom: 25px;
-    display: none; /* JS las muestra con .active-section o display:block */
-}
-.main-section.active-section { display: block; } /* Si usas esta clase con JS */
-
-.main-section h2 {
-    text-align: left;
-    border-bottom: 2px solid #007bff;
-    padding-bottom: 10px;
-    margin-top: 0;
-    margin-bottom: 25px;
-    font-size: 1.7em;
-    color: #007bff;
-}
-.main-section h3 { text-align: left; font-size: 1.3em; color: #333; margin-top:25px; margin-bottom:15px; }
-.main-section h4 { margin-top:20px; margin-bottom:10px; text-align:left; color:#555; font-size:1.1em; }
-.main-section p { margin-bottom: 1em; }
-.main-section ul { padding-left: 20px; }
-.main-section li { margin-bottom: 0.5em; }
-
-h1, h2, h3, h4, h5, h6 {
-    font-family: 'Roboto', sans-serif; /* Fallback to generic sans-serif */
+    background-color: #eff6ff;
+    color: var(--primary-color);
 }
 
-/* Estilos generales para formularios dentro de secciones */
-form {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* Ajustar minmax */
-    gap: 20px; /* Más espacio */
-    margin-bottom: 25px;
-}
-form div { display:flex; flex-direction:column; }
-label { margin-bottom:6px; font-weight:bold; font-size:0.9em; color:#444; }
-input[type="text"], input[type="date"], input[type="number"],
-input[type="file"], input[type="email"], select, textarea {
-    padding: 10px 12px;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    box-sizing: border-box;
-    width: 100%;
-    font-size: 0.95em;
-    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-    font-family: inherit; /* Add this */
-}
-input:focus, select:focus, textarea:focus {
-    border-color: #80bdff;
-    outline: 0;
-    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
-}
-textarea { resize: vertical; min-height: 80px; }
-
-.form-buttons, .section-buttons {
-    grid-column: 1 / -1; /* Para que ocupe toda la fila en el grid del form */
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 15px;
+/* Modals */
+.simple-modal, #excursion-detail-modal, #paymentConfirmationModal {
+    background-color: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
 }
 
-/* Estilos para botones generales (puedes especializar más si es necesario) */
-button {
-    padding: 10px 18px;
+.simple-modal-content, #excursion-detail-modal {
+    background: var(--bg-surface);
+    border-radius: 1rem;
+    padding: 2rem;
     border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.95em;
-    font-weight: 500;
-    transition: background-color 0.2s, box-shadow 0.2s;
-    font-family: inherit; /* Add this */
-}
-button:hover { opacity: 0.9; }
-
-button.primary, button.success { background-color: #007bff; color: white; } /* Azul por defecto */
-button.success { background-color: #28a745; }
-button.warning { background-color: #ffc107; color: #212529; }
-button.danger { background-color: #dc3545; color: white; }
-button.secondary { background-color: #6c757d; color: white; }
-
-button.primary:hover { background-color: #0056b3; }
-button.success:hover { background-color: #1e7e34; }
-button.warning:hover { background-color: #e0a800; }
-button.danger:hover { background-color: #c82333; }
-button.secondary:hover { background-color: #545b62; }
-
-
-/* Tablas */
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
-    font-size: 0.9em;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-th, td {
-    border: 1px solid #e1e1e1; /* Borde más suave */
-    padding: 10px 12px; /* Más padding */
-    text-align: left;
-}
-th {
-    background-color: #f8f9fa; /* Fondo de cabecera de tabla más claro */
-    color: #333;
-    font-weight: 600;
-}
-tr:nth-child(even) { background-color: #fdfdfd; }
-tr:hover { background-color: #f1f1f1; } /* Hover para filas */
-
-/* Clases de utilidad */
-.error-message { color: #d9534f; font-size: 0.9em; margin-top: 5px; }
-.text-center { text-align: center; }
-
-/* Footer Credit Styling */
-.footer-credit {
-    font-size: 0.8em;
-    color: #777;
-    float: right;
-    margin-top: 15px;
-    margin-right: 15px;
-}
-
-/* Logo Image Styling */
-.sidebar .logo-container img {
-    max-width: 80%;
-    height: auto;
-    margin: 0 auto;
-    display: block;
-}
-
-/* Para los inputs/selects en edición rápida de tabla */
-td input[type="number"].quick-edit, td select.quick-edit {
-    padding: 4px 6px;
-    font-size: 0.95em;
-    width: auto;
-    max-width: 110px;
-    border: 1px solid #007bff;
-    border-radius:3px;
-}
-td input[type="number"].quick-edit { max-width: 70px; }
-
-/* Listados (ej. para alumnos en "Gestionar Clases") */
-.lista-clases-item { 
-    background-color: #f8f9fa; 
-    padding: 12px 15px; 
-    margin-bottom: 8px; 
-    border-radius: 4px; 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center;
-    border: 1px solid #e9ecef;
-}
-.lista-clases-item span { font-weight: 500; color: #333; }
-.lista-clases-item .actions button { 
-    font-size: 0.8em; 
-    padding: 5px 10px; 
-    margin-left: 6px;
-}
-#alumnosDeClaseDiv ul { list-style-type: disc; margin-left: 0; padding-left: 25px; }
-#alumnosDeClaseDiv h4 { margin-bottom: 8px; }
-
-/* Simple Modal for Duplication */
-.simple-modal {
-    display: none; /* Hidden by default, shown by JS */
-    position: fixed;
-    z-index: 1049; /* Base z-index for simple modals */
-    left: 0;
-    top: 0;
-    width: 100vw; /* Force width relative to viewport */
-    height: 100vh; /* Force height relative to viewport */
-    overflow: auto;
-    background-color: rgba(0,0,0,0.5); /* Dim background */
-    justify-content: center; /* Center horizontally */
-    align-items: center; /* Center vertically */
-}
-
-.simple-modal-content {
-    background-color: #fefefe;
-    margin: auto; /* Works with flex centering on parent for vertical/horizontal centering */
-    padding: 25px;
-    border: 1px solid #888;
-    border-radius: 8px;
-    width: 90%; /* Responsive width */
-    max-width: 400px; /* Max width constraint for larger small screens, as per subtask */
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-}
-
-.simple-modal-content h4 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 1.4em;
-    color: #333;
-}
-
-.simple-modal-content label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: bold;
-}
-
-.simple-modal-content select {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 20px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-sizing: border-box;
-}
-
-.simple-modal-buttons {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-}
-/* Buttons inside simple-modal will inherit general button styles */
-/* You can add specific styling if needed, e.g., #dupExcursionAccept */
-#dupExcursionAccept {
-    background-color: #28a745; /* Green for accept */
-    color: white;
-}
-#dupExcursionAccept:hover {
-    background-color: #218838;
-}
-
-#dupExcursionCancel {
-    background-color: #6c757d; /* Grey for cancel */
-    color: white;
-}
-#dupExcursionCancel:hover {
-    background-color: #5a6268;
-}
-
-/* Payment Confirmation Modal Styles (similar to simple-modal) */
-#paymentConfirmationModal {
-    display: none; /* Hidden by default */
-    position: fixed;
-    z-index: 1050; /* Higher z-index for payment confirmation */
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0,0,0,0.5);
-    justify-content: center;
-    align-items: center;
-}
-
-#paymentConfirmationModal .simple-modal-content { /* Re-use class for consistency */
-    background-color: #fefefe;
-    margin: auto;
-    padding: 25px;
-    border: 1px solid #888;
-    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    max-width: 500px;
     width: 90%;
-    max-width: 450px; /* Or adjust as needed */
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    position: relative;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
 }
 
-#paymentConfirmationModal .simple-modal-content h4 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 1.4em;
-    color: #333;
+#excursion-detail-modal {
+    position: fixed; /* Override position for this specific one if needed, but the general rule should work */
 }
 
-#paymentConfirmationModal .simple-modal-content p {
-    margin-bottom: 15px;
-}
-
-#paymentConfirmationModal .simple-modal-content div {
-    margin-bottom: 15px; /* Spacing for input groups */
-}
-
-/* Styling for the financial grids within tesoreria-excursion-financial-modal */
-.financial-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
-    margin-bottom: 15px;
-}
-.financial-grid div { /* Assuming direct children are the items to stack label/input */
-    display: flex;
-    flex-direction: column;
-}
-
-.financial-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
-    margin-bottom: 15px;
-}
-/* End financial grid styling */
-
-#paymentConfirmationModal .simple-modal-content label {
-    display: block;
-    margin-bottom: 6px;
-    font-weight: bold;
-}
-
-#paymentConfirmationModal .simple-modal-content input[type="number"],
-#paymentConfirmationModal .simple-modal-content input[type="date"] {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-sizing: border-box;
-}
-
-#paymentConfirmationModal .simple-modal-buttons {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 20px; /* More space before buttons */
-}
-/* Payment Confirmation Modal Styles (similar to simple-modal) */
-/* The #paymentConfirmationModal ID selector itself primarily serves to be targeted by JS.
-   Most visual styling (overlay, centering) comes from the .simple-modal class it uses.
-   The .simple-modal-content class styles its content box.
-   Specific overrides if #paymentConfirmationModal needed to be different from other
-   simple-modals would go here, but for now, it relies on .simple-modal and .simple-modal-content.
-*/
-#paymentConfirmationModal .simple-modal-content {
-    /* Base styles are inherited from .simple-modal-content.
-       Specific adjustments for this modal, if different from general .simple-modal-content, would go here.
-       For example, if it needed a slightly different max-width than other simple modals:
-       max-width: 420px; */
-    /* The media query below already handles padding and font size adjustments for small screens. */
-}
-
-/* Input and label styling within paymentConfirmationModal are already covered by general modal styles
-   or specific styles in the media query. If more specific styling were needed: */
-/*
-#paymentConfirmationModal .simple-modal-content label {
-    font-weight: bold;
-}
-#paymentConfirmationModal .simple-modal-content input[type="number"],
-#paymentConfirmationModal .simple-modal-content input[type="date"] {
-    margin-bottom: 10px;
-}
-*/
-/* End Payment Confirmation Modal Styles */
-
-/* Sidebar Toggle Button Styling */
-/* Old styles for .sidebar-toggle-button that were inside @media (max-width: 768px) are removed. */
-/* New general styles for .sidebar-toggle-button: */
+/* Toggle Button */
 .sidebar-toggle-button {
-    position: fixed; 
-    top: 15px;
-    left: 15px;
-    z-index: 1005; 
-    background-color: #36454F; 
-    color: #ecf0f1; 
-    border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 20px; 
-    cursor: pointer;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    transition: background-color 0.3s ease;
-}
-.sidebar-toggle-button:hover {
-    background-color: #4A5A67; 
+    background-color: transparent;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    padding: 0.5rem;
+    box-shadow: none;
+    display: none; /* Hidden on desktop */
 }
 
-/* Style for the new main application title */
-#main-app-title {
-    font-size: 1.4em; 
-    color: #333; 
-    margin: 0; 
-    margin-right: auto; 
-    line-height: normal; 
-    font-weight: 500; 
+/* Footer */
+.footer-credit {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
 }
 
-/* New class for desktop collapsed state */
-.sidebar-desktop-collapsed {
-    left: -230px; /* To slide it off-screen using left property */
-    /* Or alternatively:
-    width: 0;
-    padding-left: 0;
-    padding-right: 0;
-    overflow: hidden;
-    */
-}
+/* Utilities */
+.text-right { text-align: right; }
+.mt-4 { margin-top: 1rem; }
+.mb-4 { margin-bottom: 1rem; }
+.flex-end { display: flex; justify-content: flex-end; gap: 1rem; }
 
-/* Responsive adjustments for mobile/tablet */
+/* Responsive */
 @media (max-width: 768px) {
-    /* Reset desktop collapse styles if they could interfere */
-    .sidebar.sidebar-desktop-collapsed { /* Target sidebar if it has both classes */
-        /* For mobile, transform is used, ensure 'left' from desktop fixed doesn't break mobile's -100% transform start */
-        /* The existing margin-left: 0 !important was for when margin-left was used for desktop collapse.
-           With 'left' for desktop collapse, we need to ensure 'left' is reset for mobile if necessary.
-           However, mobile primarily uses 'transform'. Let's ensure 'left' is not -230px.
-        */
-        left: 0 !important; /* Override desktop collapsed 'left: -230px' for mobile view if class is present */
-        margin-left: 0 !important; /* Keep this as a safeguard */
-
-    }
-    /* .sidebar-toggle-button specific styles removed from here as it's globally styled now */
-
     .sidebar {
-        /* Mobile specific overrides for .sidebar if desktop fixed styles interfere */
-        /* position: fixed; top: 0; height: 100%; z-index: 1000; are fine from desktop or already set for mobile */
-        left: 0; /* Explicitly set left to 0 for mobile initial state before transform */
         transform: translateX(-100%);
-        transition: transform 0.3s ease-in-out; /* Mobile uses transform for transitions */
-        overflow-y: auto; /* Or hidden, depending on original mobile design. 'auto' is likely fine. */
-        /* width: 230px; is already set */
-        /* background-color: #36454F; is already set */
+        width: 280px;
     }
 
     .sidebar.open {
         transform: translateX(0);
-        /* left: 0; is implied or can be set explicitly if needed */
-    }
-
-    /* Optional: Prevent body scroll when sidebar is open */
-    body.body-sidebar-open {
-        overflow: hidden;
-    }
-
-    /* Change toggle button color for contrast when sidebar is open */
-    body.body-sidebar-open .sidebar-toggle-button {
-        color: #FFFFFF; /* White color for good contrast */
+        box-shadow: 100vw 0 0 rgba(0,0,0,0.5); /* Overlay hack */
     }
 
     .main-panel {
-        margin-left: 0 !important; /* Main panel should take full width on mobile */
-    }
-    .main-panel-sidebar-collapsed { /* Ensure this class also results in full width on mobile */
-        margin-left: 0 !important;
+        margin-left: 0;
     }
 
-
-    /* Adjust header padding if toggle button takes space on the left */
-    header.main-header {
-        padding-left: 60px; /* Consistent padding to avoid overlap with fixed sidebar toggle */
-        flex-wrap: wrap; /* Allow header items to wrap */
-        justify-content: space-between; /* Adjust alignment for wrapped items */
-    }
-    #main-app-title {
-        /* Ensure main-app-title is not overly shrunk if header becomes too narrow before wrapping in the 768px query */
-        flex-shrink: 0; /* Prevent shrinking if space is tight before wrapping point */
-        order: 1; /* Ensure title comes first */
-        width: 100%; /* Allow title to take full width if it wraps */
-        text-align: center; /* Center title when it wraps */
-        margin-bottom: 10px; /* Add space below title when wrapped */
-        margin-right: 0; /* Reset margin-right for wrapping */
-    }
-    #auth-status {
-        order: 2; /* Auth status comes after title */
-        width: 100%; /* Allow auth status to take full width if it wraps */
-        justify-content: center; /* Center auth status items when wrapped */
-    }
-
-    /* --- Table Responsiveness --- */
-    table { /* Ensure this applies to all tables within this media query */
+    .sidebar-toggle-button {
         display: block;
-        width: 100%;
-        overflow-x: auto;
-        /* white-space: nowrap; /* Removed from table to allow th/td to control wrapping */
+        position: relative;
+        top: auto;
+        left: auto;
     }
 
-    table th, table td {
-        white-space: nowrap; /* Default for cells to prevent unwanted wrapping */
-        padding: 8px 10px; /* Adjust padding for smaller screens */
+    header.main-header {
+        justify-content: flex-start;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
     }
 
-    /* Allow specific cells to wrap if needed, e.g. description cells */
-    table td.wrap-text {
-        white-space: normal;
-    }
-
-    /* Ensure action buttons in table cells are visible and manageable */
-    .actions-cell button {
-        white-space: normal; /* Allow button text to wrap if needed */
-        display: inline-block; /* Ensure buttons are laid out correctly */
-        margin-bottom: 5px; /* Add some space if they stack */
-        margin-right: 5px; /* Add some horizontal spacing too */
-    }
-
-    /* Header adjustments for better centering when wrapped */
     #main-app-title {
-        flex-basis: 100%; /* Ensure it takes full width when wrapping */
-        text-align: center; /* Center title when it wraps */
-        margin-bottom: 10px; /* Add space below title when wrapped */
-        margin-right: 0; /* Reset margin-right for wrapping */
-        order: 1; /* Ensure title comes first */
-    }
-    #auth-status {
-        flex-basis: 100%; /* Ensure it takes full width when wrapping */
-        justify-content: center; /* Center auth status items when wrapped */
-        order: 2; /* Auth status comes after title */
-    }
-}
-
-/* Further Responsive Adjustments for Smaller Screens */
-@media (max-width: 576px) {
-    /* --- Forms --- */
-    form {
-        grid-template-columns: 1fr; /* Stack form elements */
-        gap: 15px; /* Slightly reduce gap for stacked elements */
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
-    /* --- Font Sizes --- */
-    body {
-        font-size: 95%; /* Slightly reduce base font size */
-    }
-    .main-section h2 {
-        font-size: 1.5em; /* Reduce header font size */
-        margin-bottom: 20px; /* Adjust margin */
-    }
-    .main-section h3 {
-        font-size: 1.15em;
-    }
-     .main-section h4 {
-        font-size: 1.0em;
-    }
-
-
-    /* --- Padding and Margins --- */
     main.content-area {
-        padding: 15px;
+        padding: 1rem;
     }
+
     .main-section {
-        padding: 15px;
+        padding: 1.5rem;
     }
-    header.main-header { /* Further adjust header for very small screens */
-        padding: 8px 15px; /* General padding */
-        padding-left: 60px; /* Consistent padding to avoid overlap with fixed sidebar toggle */
-    }
-     /* Reset title and auth-status stacking for very small screens if they are already full width from 768px */
-    /* No changes needed here for #main-app-title width and #auth-status width as they will behave based on the 768px rules unless overridden */
-    /* Text alignment and margins for #main-app-title are already handled in the 768px block for wrapped state */
-    /* Header elements will retain their centered, full-width style from 768px if they wrap.
-       If there's enough space and they don't wrap, they'll naturally align due to header flex properties.
-       Explicitly resetting here can be complex, so we rely on the 768px wrapped styles. */
+
     #auth-status {
-        font-size: 0.9em; /* Reduce font size of auth status slightly */
-    }
-    #auth_button, #signout_button {
-        padding: 5px 10px;
-        font-size: 0.8em;
+        margin-left: auto;
     }
 
-    /* General button font size adjustment for this breakpoint */
-    button {
-        font-size: 0.9rem; /* Adjust base button font size */
-    }
-    /* Adjust specific button paddings if necessary, but general font size is a good start */
-    .form-buttons button, .section-buttons button {
-        padding: 8px 15px; /* Ensure decent tap targets */
-    }
-
-
-    /* --- Login Section --- */
-    #login-section {
-        margin: 20px auto;
-        padding: 20px;
-        max-width: 90%; /* Allow it to use more width on small screens */
-    }
-    #login-section h3 {
-        font-size: 1.4em;
-    }
-
-    /* --- Footer Credit --- */
-    .footer-credit {
-        float: none; /* Unfloat */
-        text-align: center; /* Center it */
-        margin-top: 20px;
-        margin-right: 0;
-        font-size: 0.75em;
-    }
-}
-
-/* Responsive Adjustments for Very Narrow Screens (e.g., Calendar) */
-@media (max-width: 480px) {
-    /* --- Font size adjustments --- */
-    body {
-        font-size: 90%; /* Further reduce base font size for very small screens */
-    }
-
-    /* --- Calendar --- */
-    .calendar-day {
-        min-height: 50px;
-        padding: 5px 3px; /* Adjust padding for smaller cells */
-        font-size: 0.8em; /* Increased from 0.75em for better readability */
-    }
-    .calendar-day-header {
-        font-size: 0.75em; /* Increased from 0.7em for better readability */
-        padding: 6px 2px; /* Adjust padding */
-    }
-    .calendar-header h4 {
-        font-size: 1.0em; /* Reduce calendar title font size */
-    }
-    .calendar-header button {
-        padding: 5px 8px; /* Adjust button padding */
-        font-size: 0.75em; /* Adjust button font size */
-    }
-
-    /* Adjust main section H2 further if needed */
-    .main-section h2 {
-        font-size: 1.2em; /* Further reduce section title font size */
-        margin-bottom: 15px; /* Adjust margin */
-    }
-     .main-section h3 {
-        font-size: 1.05em;
-    }
-     .main-section h4 {
-        font-size: 0.9em;
-    }
-    #main-app-title { /* Further reduce title font on very small screens */
-        font-size: 1.1em;
-    }
-
-    /* Adjust form input/select padding and font size for very small screens */
-    input[type="text"], input[type="date"], input[type="number"],
-    input[type="file"], input[type="email"], select, textarea {
-        padding: 8px 10px; /* Keep padding reasonable for tapping */
-        font-size: 0.85em; /* Reduce font size inside inputs */
-    }
-    label {
-        font-size: 0.85em; /* Reduce label font size */
-    }
-
-    button { /* General button padding and font adjustment */
-        padding: 7px 12px; /* Adjust padding */
-        font-size: 0.85em; /* Adjust font size */
-    }
-    #auth_button, #signout_button { /* Specific header buttons */
-        padding: 4px 8px;
-        font-size: 0.75em;
-    }
-
-    /* Modal content adjustments */
-    /* General adjustments for all simple modals and excursion detail modal */
-    .simple-modal-content, #excursion-detail-modal {
-        padding: 15px;
-        font-size: 0.9em;
-    }
-    .simple-modal-content h4, #excursion-detail-modal h4 {
-        font-size: 1.2em;
-    }
-
-    /* Specific adjustments for paymentConfirmationModal if its content (inputs, labels) needs finer tuning
-       than the general .simple-modal-content adjustments above. */
-    #paymentConfirmationModal .simple-modal-content {
-        /* Padding and font-size are inherited from .simple-modal-content above.
-           If specific overrides are needed for paymentConfirmationModal at this breakpoint: */
-        /* e.g., font-size: 0.85em; */
-    }
-    #paymentConfirmationModal .simple-modal-content label,
-    #paymentConfirmationModal .simple-modal-content input[type="number"],
-    #paymentConfirmationModal .simple-modal-content input[type="date"] {
-        font-size: 1em; /* Relative to the parent's font-size (0.9em) */
-    }
-    #paymentConfirmationModal .simple-modal-content input[type="number"],
-    #paymentConfirmationModal .simple-modal-content input[type="date"] {
-        padding: 8px; /* Ensure inputs are tappable */
-    }
-
-    /* Increase sidebar link padding for better tap targets on very small screens */
-    #main-nav-sidebar li a {
-        padding: 14px 20px; /* Increased vertical padding */
-    }
-
-    /* Table cell padding */
-    table th, table td {
-        padding: 6px 8px; /* Reduce cell padding */
+    #userInfoDisplay {
+        display: none;
     }
 }

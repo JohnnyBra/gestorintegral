@@ -23,7 +23,7 @@ const fontkit = require('fontkit');
 
 const app = express();
 app.use(morgan('dev'));
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3002;
 const JWT_SECRET = process.env.JWT_SECRET || "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV";
 
 if (JWT_SECRET === "ESTE_SECRETO_DEBE_SER_CAMBIADO_EN_PRODUCCION_Y_EN_.ENV") {
