@@ -3257,20 +3257,64 @@ async function updateParticipacionesSummary(excursionId, excursionNombre) {
     const sidebar = document.querySelector('.sidebar');
     const mainPanel = document.querySelector('.main-panel'); // Added mainPanel
 
+    // Initialize sidebar state based on storage or default
+    const savedSidebarState = localStorage.getItem('sidebarState');
+    if (savedSidebarState === 'collapsed' && window.innerWidth > 768) {
+        document.body.classList.add('desktop-sidebar-collapsed');
+    }
+
     if (sidebarToggle && sidebar) {
-        sidebarToggle.addEventListener('click', () => {
+        sidebarToggle.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent click from bubbling
             const isMobileView = window.innerWidth <= 768;
 
             if (isMobileView) {
                 sidebar.classList.toggle('open'); // Mobile uses 'open' for transform
-                document.body.classList.toggle('body-sidebar-open'); // Mobile uses this to prevent body scroll
+                // Create or remove overlay
+                let overlay = document.getElementById('sidebar-overlay');
+                if (sidebar.classList.contains('open')) {
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.id = 'sidebar-overlay';
+                        overlay.style.position = 'fixed';
+                        overlay.style.top = '0';
+                        overlay.style.left = '0';
+                        overlay.style.width = '100vw';
+                        overlay.style.height = '100vh';
+                        overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+                        overlay.style.zIndex = '45';
+                        overlay.addEventListener('click', () => {
+                            sidebar.classList.remove('open');
+                            overlay.remove();
+                        });
+                        document.body.appendChild(overlay);
+                    }
+                } else {
+                    if (overlay) overlay.remove();
+                }
             } else {
-                // Desktop toggles classes for sidebar and main-panel
-                sidebar.classList.toggle('sidebar-desktop-collapsed');
-                if (mainPanel) { // Check if mainPanel exists
-                    mainPanel.classList.toggle('main-panel-sidebar-collapsed');
+                // Desktop toggles classes for body
+                document.body.classList.toggle('desktop-sidebar-collapsed');
+                // Save state preference
+                if (document.body.classList.contains('desktop-sidebar-collapsed')) {
+                    localStorage.setItem('sidebarState', 'collapsed');
+                } else {
+                    localStorage.setItem('sidebarState', 'expanded');
                 }
             }
+        });
+    }
+
+    // Close sidebar when clicking a link on mobile
+    if (navLinks) {
+        navLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.remove('open');
+                    const overlay = document.getElementById('sidebar-overlay');
+                    if (overlay) overlay.remove();
+                }
+            });
         });
     }
 

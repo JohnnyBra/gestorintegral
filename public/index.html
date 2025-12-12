@@ -9,27 +9,27 @@
     </head>
 <body>
     <div class="app-container">
-        <button id="sidebarToggle" class="sidebar-toggle-button">&#9776;</button> <!-- MOVED HERE -->
+
         <aside class="sidebar">
             <div class="logo-container">
                 <div class="logo-text"><img src="folder/logo.jpg" alt="GestorPlus Logo"></div>
             </div>
             <nav id="main-nav-sidebar" style="display:none;"> <ul>
-                    <li><a href="#" data-section="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
-                    <li><a href="#" data-section="clases"><i class="fas fa-chalkboard-teacher"></i> Clases</a></li>
-                    <li><a href="#" data-section="alumnos"><i class="fas fa-user-graduate"></i> Alumnos</a></li>
-                    <li><a href="#" data-section="excursiones"><i class="fas fa-map-signs"></i> Excursiones</a></li>
-                    <li><a href="#" data-section="participaciones"><i class="fas fa-clipboard-check"></i> Participaciones</a></li>
-                    <li><a href="#" data-section="tesoreria"><i class="fas fa-cash-register"></i> Tesorería</a></li>
+                    <li><a href="#" data-section="dashboard"><i class="fas fa-tachometer-alt"></i> <span>Dashboard</span></a></li>
+                    <li><a href="#" data-section="clases"><i class="fas fa-chalkboard-teacher"></i> <span>Clases</span></a></li>
+                    <li><a href="#" data-section="alumnos"><i class="fas fa-user-graduate"></i> <span>Alumnos</span></a></li>
+                    <li><a href="#" data-section="excursiones"><i class="fas fa-map-signs"></i> <span>Excursiones</span></a></li>
+                    <li><a href="#" data-section="participaciones"><i class="fas fa-clipboard-check"></i> <span>Participaciones</span></a></li>
+                    <li><a href="#" data-section="tesoreria"><i class="fas fa-cash-register"></i> <span>Tesorería</span></a></li>
                     <!-- Elemento de navegación de Coordinación eliminado -->
                     <li id="nav-shared-excursions" style="display:none;">
-                        <a href="#" data-section="shared-excursions"><i class="fas fa-inbox"></i> Recibidas</a>
+                        <a href="#" data-section="shared-excursions"><i class="fas fa-inbox"></i> <span>Recibidas</span></a>
                     </li>
                     <li id="nav-import-export" style="display:none;"> <!-- Initial display:none controlled by JS later -->
-                        <a href="#" data-section="import-export"><i class="fas fa-exchange-alt"></i> Importar/Exportar</a>
+                        <a href="#" data-section="import-export"><i class="fas fa-exchange-alt"></i> <span>Importar/Exportar</span></a>
                     </li>
                     <li id="nav-admin-usuarios" style="display:none;"> 
-                        <a href="#" data-section="admin-usuarios"><i class="fas fa-users-cog"></i> Admin Usuarios</a>
+                        <a href="#" data-section="admin-usuarios"><i class="fas fa-users-cog"></i> <span>Admin Usuarios</span></a>
                     </li>
                 </ul>
             </nav>
@@ -37,13 +37,15 @@
 
         <div class="main-panel">
             <header class="main-header">
-                <!-- Button removed from here -->
-                <h1 id="main-app-title">Gestor de excursiones del Colegio La Hispanidad</h1>
+                <div class="header-left">
+                    <button id="sidebarToggle" class="sidebar-toggle-btn"><i class="fas fa-bars"></i></button>
+                    <h1 id="main-app-title">Gestor de Excursiones</h1>
+                </div>
                 <div id="auth-status">
                     <span id="userInfoDisplay">Por favor, inicia sesión.</span>
-                    <button id="showChangePasswordModalBtn" class="button secondary" style="display: none; margin-left: 10px;">Cambiar Contraseña</button>
-                    <button id="auth_button">Iniciar Sesión</button>
-                    <button id="signout_button" style="display:none;">Cerrar Sesión</button>
+                    <button id="showChangePasswordModalBtn" class="button secondary" style="display: none;">Cambiar Contraseña</button>
+                    <button id="auth_button" class="primary">Iniciar Sesión</button>
+                    <button id="signout_button" class="danger" style="display:none;">Cerrar Sesión</button>
                 </div>
             </header>
 
@@ -58,8 +60,8 @@
                             <label for="password">Contraseña:</label>
                             <input type="password" id="password" name="password" required autocomplete="current-password">
                         </div>
-                        <button type="submit" class="primary">Entrar</button>
-                        <p id="loginError" class="error-message"></p>
+                        <button type="submit" class="primary" style="width: 100%;">Entrar</button>
+                        <p id="loginError" class="error-message" style="color: var(--danger-color); margin-top: 1rem;"></p>
                     </form>
                 </div>
 
@@ -68,9 +70,9 @@
                     <p>Bienvenido/a <span class="current-user-name" style="font-weight:bold;"></span>.</p>
                     <div id="dashboard-summary-content">
                         </div>
-                    <hr class="dashboard-divider">
+                    <hr class="dashboard-divider" style="margin: 2rem 0; border: 0; border-top: 1px solid var(--border-color);">
                     <h4>Calendario de Excursiones</h4>
-                    <div id="excursion-calendar-container"></div>
+                    <div id="excursion-calendar-container" style="background: white; padding: 1.5rem; border-radius: var(--border-radius); border: 1px solid var(--border-color);"></div>
 
                 </div>
 
@@ -166,24 +168,30 @@
                 </div>
 
             </main>
-            <div class="footer-credit">Creado por Javi Barrero</div>
+            <div class="footer-credit" style="text-align: center; padding: 2rem; color: var(--text-secondary); font-size: 0.85rem;">Creado por Javi Barrero</div>
         </div>
 
         <div id="excursion-detail-modal" style="display:none;">
-            <h4 id="modal-excursion-title"></h4>
-            <p><strong>Fecha:</strong> <span id="modal-excursion-date"></span></p>
-            <p><strong>Lugar:</strong> <span id="modal-excursion-place"></span></p>
-            <p><strong>Participan:</strong> <span id="modal-excursion-participants"></span></p>
-            <p><strong>Justificantes Recibidos:</strong> <span id="modal-excursion-auth-count">N/A</span></p>
-            <p><strong>Descripción:</strong> <span id="modal-excursion-description"></span></p>
-            <p><strong>Hora Salida:</strong> <span id="modal-excursion-hora-salida"></span></p>
-            <p><strong>Hora Llegada:</strong> <span id="modal-excursion-hora-llegada"></span></p>
-            <p><strong>Coste:</strong> <span id="modal-excursion-coste"></span></p>
-            <p><strong>Vestimenta:</strong> <span id="modal-excursion-vestimenta"></span></p>
-            <p><strong>Transporte:</strong> <span id="modal-excursion-transporte"></span></p>
-            <p><strong>Justificación:</strong> <span id="modal-excursion-justificacion"></span></p>
-            <p><strong>Notas:</strong> <span id="modal-excursion-notas"></span></p>
-            <button id="modal-close-button">Cerrar</button>
+            <div class="modal-content"> <!-- Added wrapper for new style -->
+                <h4 id="modal-excursion-title"></h4>
+                <div class="modal-body-content">
+                    <p><strong>Fecha:</strong> <span id="modal-excursion-date"></span></p>
+                    <p><strong>Lugar:</strong> <span id="modal-excursion-place"></span></p>
+                    <p><strong>Participan:</strong> <span id="modal-excursion-participants"></span></p>
+                    <p><strong>Justificantes Recibidos:</strong> <span id="modal-excursion-auth-count">N/A</span></p>
+                    <p><strong>Descripción:</strong> <span id="modal-excursion-description"></span></p>
+                    <p><strong>Hora Salida:</strong> <span id="modal-excursion-hora-salida"></span></p>
+                    <p><strong>Hora Llegada:</strong> <span id="modal-excursion-hora-llegada"></span></p>
+                    <p><strong>Coste:</strong> <span id="modal-excursion-coste"></span></p>
+                    <p><strong>Vestimenta:</strong> <span id="modal-excursion-vestimenta"></span></p>
+                    <p><strong>Transporte:</strong> <span id="modal-excursion-transporte"></span></p>
+                    <p><strong>Justificación:</strong> <span id="modal-excursion-justificacion"></span></p>
+                    <p><strong>Notas:</strong> <span id="modal-excursion-notas"></span></p>
+                </div>
+                <div class="modal-footer" style="margin-top: 2rem; text-align: right;">
+                    <button id="modal-close-button" class="secondary">Cerrar</button>
+                </div>
+            </div>
         </div>
 
         <div id="tesoreria-excursion-financial-modal" class="simple-modal" style="display:none;">
@@ -191,9 +199,9 @@
                 <h4 id="financial-modal-title">Detalles Financieros de Excursión</h4>
                 <p><strong>Excursión:</strong> <span id="financial-modal-excursion-nombre"></span></p>
                 <p><strong>Fecha:</strong> <span id="financial-modal-excursion-fecha"></span></p>
-                <hr>
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1rem 0;">
                 
-                <div class="financial-grid">
+                <div class="financial-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div>
                         <label for="financial-modal-numero-autobuses">Número de Autobuses:</label>
                         <input type="number" id="financial-modal-numero-autobuses" min="0" step="1">
@@ -211,10 +219,10 @@
                         <input type="number" id="financial-modal-coste-actividad-global" min="0" step="0.01">
                     </div>
                 </div>
-                <hr>
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 1rem 0;">
 
                 <h4>Resumen Financiero (Calculado)</h4>
-                <div class="financial-summary-grid">
+                <div class="financial-summary-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem;">
                     <p><strong>Total Dinero Recaudado:</strong> <span id="financial-modal-total-recaudado">0.00 €</span></p>
                     <p><strong>Alumnos Asistentes (Autorizados):</strong> <span id="financial-modal-alumnos-asistentes">0</span></p>
                     <p><strong>Coste Total Autobuses:</strong> <span id="financial-modal-coste-total-autobuses">0.00 €</span></p>
@@ -222,8 +230,8 @@
                     <p><strong>Coste por Niño (Act. Global):</strong> <span id="financial-modal-coste-nino-act-global">0.00 €</span></p>
                     <p><strong>Balance Excursión:</strong> <strong id="financial-modal-balance" style="font-size: 1.1em;">0.00 €</strong></p>
                 </div>
-                <p id="financial-modal-status" class="status-message" style="min-height: 20px;"></p>
-                <div class="simple-modal-buttons">
+                <p id="financial-modal-status" class="status-message" style="min-height: 20px; margin-top: 1rem;"></p>
+                <div class="simple-modal-buttons" style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
                     <button id="financial-modal-save-button" class="success">Guardar Cambios</button>
                     <button id="financial-modal-close-button" class="secondary">Cerrar</button>
                 </div>
@@ -234,15 +242,15 @@
             <div class="simple-modal-content">
                 <h4>Confirmar Pago de Excursión</h4>
                 <p>El niño/a ha pagado la excursión?</p>
-                <div>
+                <div style="margin-bottom: 1rem;">
                     <label for="paymentAmount">Cantidad Pagada (€):</label>
                     <input type="number" id="paymentAmount" name="paymentAmount" step="0.01" min="0">
                 </div>
-                <div>
+                <div style="margin-bottom: 1rem;">
                     <label for="paymentDate">Fecha de Pago:</label>
                     <input type="date" id="paymentDate" name="paymentDate">
                 </div>
-                <div class="simple-modal-buttons">
+                <div class="simple-modal-buttons" style="display: flex; gap: 1rem; justify-content: flex-end;">
                     <button id="confirmPaymentButton" class="success">Confirmar</button>
                     <button id="cancelPaymentButton" class="secondary">Cancelar</button>
                 </div>
@@ -269,12 +277,12 @@
                     <label for="confirmNewPassword">Confirmar Nueva Contraseña:</label>
                     <input type="password" id="confirmNewPassword" name="confirmNewPassword" required minlength="8">
                 </div>
-                <div class="form-buttons">
+                <div class="form-buttons" style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
                     <button type="submit" class="success">Actualizar Contraseña</button>
                     <button type="button" id="cancelChangePasswordBtn" class="secondary">Cancelar</button>
                 </div>
-                <p id="changePasswordError" class="error-message" style="margin-top: 10px;"></p>
-                <p id="changePasswordSuccess" class="success-message" style="margin-top: 10px;"></p>
+                <p id="changePasswordError" class="error-message" style="margin-top: 10px; color: var(--danger-color);"></p>
+                <p id="changePasswordSuccess" class="success-message" style="margin-top: 10px; color: var(--success-color);"></p>
             </form>
         </div>
     </div>

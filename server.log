@@ -1,0 +1,22 @@
+
+> start
+> node server.js
+
+ ADVERTENCIA CRÍTICA: Estás usando un JWT_SECRET por defecto. ¡DEBES CAMBIARLO!
+Conectado a la base de datos SQLite (database.db).
+Claves foráneas habilitadas en SQLite.
+====================================================
+      Servidor backend CORRIENDO en http://localhost:3002
+      Endpoints API disponibles en http://localhost:3002/api
+      Para detener el servidor: Ctrl+C
+====================================================
+[0mGET / [32m200[0m 5.856 ms - 18637[0m
+[0mGET /style.css [32m200[0m 4.583 ms - 12373[0m
+[0mGET /folder/logo.jpg [32m200[0m 3.776 ms - 73271[0m
+[0mGET /app.js [32m200[0m 3.890 ms - 191285[0m
+[0mGET /calendar.js [32m200[0m 1.135 ms - 7652[0m
+[0mGET / [32m200[0m 1.329 ms - 18637[0m
+[0mGET /style.css [32m200[0m 6.748 ms - 12373[0m
+[0mGET /folder/logo.jpg [32m200[0m 8.523 ms - 73271[0m
+[0mGET /calendar.js [32m200[0m 5.915 ms - 7652[0m
+[0mGET /app.js [32m200[0m 10.195 ms - 191285[0m
