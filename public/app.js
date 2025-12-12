@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentToken = null;
     let storedScrollY;
 
-    const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:3002/api`;
+    const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:3000/api`;
 
     const loginSection = document.getElementById('login-section');
     const loginForm = document.getElementById('loginForm');
@@ -308,23 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateUIAfterLogin() {
         if (loginSection) loginSection.style.display = 'none';
         if (authStatusDiv) authStatusDiv.style.display = 'flex';
-
-        // Updated User Info Pill Design
-        const initial = currentUser.nombre_completo ? currentUser.nombre_completo.charAt(0).toUpperCase() : 'U';
-        const firstName = currentUser.nombre_completo ? currentUser.nombre_completo.split(' ')[0] : 'Usuario';
-
-        if (userInfoDisplay) {
-            userInfoDisplay.innerHTML = `
-                <div class="user-pill">
-                    <div class="user-initial-circle">${initial}</div>
-                    <div class="user-details">
-                        <strong>${firstName}</strong>
-                        <span>${currentUser.rol}</span>
-                    </div>
-                </div>
-            `;
-        }
-
+        if (userInfoDisplay) userInfoDisplay.innerHTML = `Usuario: <strong>${currentUser.nombre_completo}</strong> (${currentUser.rol}${currentUser.claseNombre ? ` - ${currentUser.claseNombre}` : ''})`;
         if (authButton) authButton.style.display = 'none';
         if (signoutButton) signoutButton.style.display = 'inline-block';
         if (showChangePasswordModalBtn) showChangePasswordModalBtn.style.display = 'inline-block'; // Show change password button
@@ -398,31 +382,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeSectionDiv = document.getElementById(`${sectionName}-section`);
         const activeLink = document.querySelector(`#main-nav-sidebar a[data-section="${sectionName}"]`);
 
-        // Handle Sidebar Visibility based on View (Dashboard vs Inner Pages)
-        const sidebar = document.querySelector('.sidebar');
-        const mainPanel = document.querySelector('.main-panel');
-        const mainHeader = document.querySelector('.main-header');
-
-        if (sectionName === 'dashboard') {
-            // Hide sidebar for Landing/Selection Screen look
-            if (sidebar) sidebar.style.display = 'none';
-            if (mainPanel) {
-                mainPanel.style.marginLeft = '0';
-                mainPanel.style.width = '100%';
-            }
-            if (mainHeader) mainHeader.style.width = 'calc(100% - 3rem)'; // Maintain floating margins
-        } else if (sectionName === 'login') {
-            // Login covers everything via CSS z-index, but ensure sidebar doesn't interfere
-            if (sidebar) sidebar.style.display = 'none';
-        } else {
-            // Restore Sidebar for internal modules
-            if (sidebar) sidebar.style.display = 'flex';
-            if (mainPanel) {
-                mainPanel.style.marginLeft = ''; // Revert to CSS default
-                mainPanel.style.width = '';      // Revert to CSS default
-            }
-        }
-
         if (sectionName === 'login') {
             if (loginSection) loginSection.style.display = 'block';
         } else if (activeSectionDiv) {
@@ -431,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loadContentForSection(sectionName);
         } else {
             if (sectionName !== 'coordinacion') {
-                // Element for section not found
+                // Element for section not found, this could be an issue if the section is expected.
             }
         }
     }

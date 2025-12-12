@@ -1,3 +1,7 @@
+
+> start
+> node server.js
+
  ADVERTENCIA CRÍTICA: Estás usando un JWT_SECRET por defecto. ¡DEBES CAMBIARLO!
 Conectado a la base de datos SQLite (database.db).
 Claves foráneas habilitadas en SQLite.
@@ -6,8 +10,23 @@ Claves foráneas habilitadas en SQLite.
       Endpoints API disponibles en http://localhost:3002/api
       Para detener el servidor: Ctrl+C
 ====================================================
-[0mGET / [32m200[0m 6.178 ms - 23287[0m
-[0mGET /style.css [32m200[0m 3.380 ms - 16966[0m
-[0mGET /folder/logo.jpg [32m200[0m 2.398 ms - 73271[0m
-[0mGET /app.js [32m200[0m 2.260 ms - 192938[0m
-[0mGET /calendar.js [32m200[0m 4.737 ms - 7652[0m
+[0mGET / [32m200[0m 5.856 ms - 18637[0m
+[0mGET /style.css [32m200[0m 4.583 ms - 12373[0m
+[0mGET /folder/logo.jpg [32m200[0m 3.776 ms - 73271[0m
+[0mGET /app.js [32m200[0m 3.890 ms - 191285[0m
+[0mGET /calendar.js [32m200[0m 1.135 ms - 7652[0m
+[0mGET / [32m200[0m 1.329 ms - 18637[0m
+[0mGET /style.css [32m200[0m 6.748 ms - 12373[0m
+[0mGET /folder/logo.jpg [32m200[0m 8.523 ms - 73271[0m
+[0mGET /calendar.js [32m200[0m 5.915 ms - 7652[0m
+[0mGET /app.js [32m200[0m 10.195 ms - 191285[0m
+[0mGET / [32m200[0m 42.452 ms - 18637[0m
+[0mGET /style.css [32m200[0m 16.391 ms - 12158[0m
+[0mGET /folder/logo.jpg [32m200[0m 18.557 ms - 73271[0m
+[0mGET /app.js [32m200[0m 15.521 ms - 191285[0m
+[0mGET /calendar.js [32m200[0m 32.861 ms - 7652[0m
+[0mGET / [32m200[0m 86.796 ms - 18637[0m
+[0mGET /style.css [32m200[0m 6.377 ms - 12158[0m
+[0mGET /calendar.js [32m200[0m 4.454 ms - 7652[0m
+[0mGET /folder/logo.jpg [32m200[0m 9.419 ms - 73271[0m
+[0mGET /app.js [32m200[0m 9.550 ms - 191285[0m
